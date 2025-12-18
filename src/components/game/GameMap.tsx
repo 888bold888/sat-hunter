@@ -15,9 +15,10 @@ interface GameMapProps {
   selectedStop: SatStop | null;
   onSelectMonster: (monster: Monster | null) => void;
   onSelectStop: (stop: SatStop | null) => void;
+  onMonsterCaptured?: (monster: Monster) => void;
 }
 
-export function GameMap({ selectedMonster, selectedStop, onSelectMonster, onSelectStop }: GameMapProps) {
+export function GameMap({ selectedMonster, selectedStop, onSelectMonster, onSelectStop, onMonsterCaptured }: GameMapProps) {
   const { state, getAvailableMonsters, getAvailableStops, captureMonster, collectBalls, startLocationTracking } = useGame();
   const { activeHunt, playerLocation, locationError, playerStats } = state;
   const { toast } = useToast();
@@ -63,11 +64,15 @@ export function GameMap({ selectedMonster, selectedStop, onSelectMonster, onSele
   const handleCapture = (monster: Monster) => {
     const success = captureMonster(monster);
     if (success) {
-      toast({
-        title: `${monster.name} Captured! ⚡`,
-        description: `You earned ${monster.satAmount.toLocaleString()} sats!`,
-      });
       onSelectMonster(null);
+      if (onMonsterCaptured) {
+        onMonsterCaptured(monster);
+      } else {
+        toast({
+          title: `${monster.name} Captured! ⚡`,
+          description: `You earned ${monster.satAmount.toLocaleString()} sats!`,
+        });
+      }
     }
   };
 
@@ -203,7 +208,7 @@ export function GameMap({ selectedMonster, selectedStop, onSelectMonster, onSele
           >
             {/* Capture range indicator */}
             <div className="absolute w-32 h-32 -translate-x-1/2 -translate-y-1/2 left-1/2 top-1/2 rounded-full border border-primary/30 bg-primary/5 animate-radar" />
-            
+
             {/* Player marker */}
             <div className="relative">
               <div className="w-8 h-8 rounded-full bg-gradient-to-br from-primary to-orange-600 border-4 border-white shadow-glow-orange flex items-center justify-center">

@@ -6,6 +6,7 @@ import { GameMap } from '@/components/game/GameMap';
 import { Leaderboard } from '@/components/game/Leaderboard';
 import { CapturedInventory } from '@/components/game/CapturedInventory';
 import { CreateHuntForm } from '@/components/game/CreateHuntForm';
+import { CaptureSuccessDialog } from '@/components/game/CaptureSuccessDialog';
 import { useCurrentUser } from '@/hooks/useCurrentUser';
 import { useSeoMeta } from '@unhead/react';
 import { Button } from '@/components/ui/button';
@@ -29,6 +30,8 @@ export default function GamePage() {
   const [showLeaderboard, setShowLeaderboard] = useState(false);
   const [showInventory, setShowInventory] = useState(false);
   const [showCreateHunt, setShowCreateHunt] = useState(false);
+  const [capturedMonster, setCapturedMonster] = useState<Monster | null>(null);
+  const [showCaptureSuccess, setShowCaptureSuccess] = useState(false);
 
   useSeoMeta({
     title: activeHunt ? `${activeHunt.name} | Sat Hunter` : 'Sat Hunter',
@@ -118,6 +121,10 @@ export default function GamePage() {
         selectedStop={selectedStop}
         onSelectMonster={setSelectedMonster}
         onSelectStop={setSelectedStop}
+        onMonsterCaptured={(monster) => {
+          setCapturedMonster(monster);
+          setShowCaptureSuccess(true);
+        }}
       />
 
       {/* Quick Exit Button */}
@@ -150,6 +157,16 @@ export default function GamePage() {
           <CapturedInventory />
         </DialogContent>
       </Dialog>
+
+      {/* Capture Success Dialog */}
+      <CaptureSuccessDialog
+        monster={capturedMonster}
+        open={showCaptureSuccess}
+        onClose={() => {
+          setShowCaptureSuccess(false);
+          setCapturedMonster(null);
+        }}
+      />
     </div>
   );
 }
