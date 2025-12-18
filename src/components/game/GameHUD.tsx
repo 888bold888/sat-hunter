@@ -1,0 +1,200 @@
+import { useState, useEffect } from 'react';
+import { useGame } from '@/contexts/GameContext';
+import { formatSats, formatTimeRemaining } from '@/lib/gameUtils';
+import { Badge } from '@/components/ui/badge';
+import { Card } from '@/components/ui/card';
+import { Progress } from '@/components/ui/progress';
+import { Button } from '@/components/ui/button';
+import {
+  Zap,
+  Circle,
+  Clock,
+  MapPin,
+  Trophy,
+  Target,
+  Skull,
+  Navigation,
+  Menu,
+} from 'lucide-react';
+import { cn } from '@/lib/utils';
+import {
+  Sheet,
+  SheetContent,
+  SheetHeader,
+  SheetTitle,
+  SheetTrigger,
+} from '@/components/ui/sheet';
+
+interface GameHUDProps {
+  onOpenLeaderboard: () => void;
+  onOpenInventory: () => void;
+}
+
+export function GameHUD({ onOpenLeaderboard, onOpenInventory }: GameHUDProps) {
+  const { state, getAvailableMonsters } = useGame();
+  const { activeHunt, playerStats, playerLocation, locationError } = state;
+  const [timeRemaining, setTimeRemaining] = useState('');
+
+  // Update time remaining every second
+  useEffect(() => {
+    if (!activeHunt) return;
+
+    const updateTime = () => {
+      setTimeRemaining(formatTimeRemaining(activeHunt.endTime));
+    };
+
+    updateTime();
+    const interval = setInterval(updateTime, 1000);
+    return () => clearInterval(interval);
+  }, [activeHunt]);
+
+  if (!activeHunt) return null;
+
+  const availableMonsters = getAvailableMonsters();
+  const capturedCount = activeHunt.monsters.filter((m) => m.captured).length;
+  const progress = (capturedCount / activeHunt.monsterCount) * 100;
+  const satsRemaining =
+    activeHunt.totalSats -
+    activeHunt.monsters.filter((m) => m.captured).reduce((sum, m) => sum + m.satAmount, 0);
+
+  const isHuntEnded = Date.now() > activeHunt.endTime;
+
+  return (
+    <>
+      {/* Top HUD Bar */}
+      <div className="fixed top-0 left-0 right-0 z-40 p-3 bg-gradient-to-b from-background via-background/95 to-transparent">
+        <Card className="bg-card/90 backdrop-blur-md border-primary/30 shadow-glow-orange">
+          <div className="p-3 space-y-3">
+            {/* Hunt Name and Timer */}
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Target className="w-5 h-5 text-primary" />
+                <span className="font-display font-bold text-sm truncate max-w-[150px]">
+                  {activeHunt.name}
+                </span>
+              </div>
+              <Badge
+                variant={isHuntEnded ? 'destructive' : 'outline'}
+                className={cn(
+                  'font-mono text-xs',
+                  !isHuntEnded && 'border-primary/50 text-primary animate-pulse'
+                )}
+              >
+                <Clock className="w-3 h-3 mr-1" />
+                {timeRemaining}
+              </Badge>
+            </div>
+
+            {/* Progress Bar */}
+            <div className="space-y-1">
+              <div className="flex items-center justify-between text-xs text-muted-foreground">
+                <span className="flex items-center gap-1">
+                  <Skull className="w-3 h-3" />
+                  {capturedCount}/{activeHunt.monsterCount} captured
+                </span>
+                <span className="flex items-center gap-1">
+                  <Zap className="w-3 h-3 text-primary" />
+                  {formatSats(satsRemaining)} sats remaining
+                </span>
+              </div>
+              <Progress value={progress} className="h-2 bg-muted" />
+            </div>
+
+            {/* Quick Stats Row */}
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-4 text-xs">
+                {/* Location Status */}
+                <div
+                  className={cn(
+                    'flex items-center gap-1',
+                    locationError ? 'text-destructive' : playerLocation ? 'text-secondary' : 'text-muted-foreground'
+                  )}
+                >
+                  <Navigation className="w-3 h-3" />
+                  {locationError ? 'No GPS' : playerLocation ? 'Tracking' : 'Loading...'}
+                </div>
+
+                {/* Nearby Monsters */}
+                <div className="flex items-center gap-1 text-primary">
+                  <MapPin className="w-3 h-3" />
+                  {availableMonsters.length} nearby
+                </div>
+              </div>
+
+              {/* Menu Button */}
+              <Sheet>
+                <SheetTrigger asChild>
+                  <Button variant="ghost" size="sm" className="h-8 w-8 p-0">
+                    <Menu className="w-4 h-4" />
+                  </Button>
+                </SheetTrigger>
+                <SheetContent side="right" className="w-72 bg-card/95 backdrop-blur-md">
+                  <SheetHeader>
+                    <SheetTitle className="font-display text-primary">Menu</SheetTitle>
+                  </SheetHeader>
+                  <div className="mt-6 space-y-3">
+                    <Button
+                      onClick={onOpenLeaderboard}
+                      variant="outline"
+                      className="w-full justify-start border-primary/30"
+                    >
+                      <Trophy className="w-4 h-4 mr-2 text-yellow-400" />
+                      Leaderboard
+                    </Button>
+                    <Button
+                      onClick={onOpenInventory}
+                      variant="outline"
+                      className="w-full justify-start border-secondary/30"
+                    >
+                      <Circle className="w-4 h-4 mr-2 text-secondary" />
+                      My Captures
+                    </Button>
+                  </div>
+                </SheetContent>
+              </Sheet>
+            </div>
+          </div>
+        </Card>
+      </div>
+
+      {/* Bottom Player Stats Bar */}
+      <div className="fixed bottom-0 left-0 right-0 z-40 p-3 bg-gradient-to-t from-background via-background/95 to-transparent">
+        <Card className="bg-card/90 backdrop-blur-md border-secondary/30 shadow-glow-green">
+          <div className="p-3 flex items-center justify-between">
+            {/* SatBalls Count */}
+            <div className="flex items-center gap-2">
+              <div className="relative">
+                <div className="w-10 h-10 rounded-full bg-gradient-to-br from-secondary to-green-600 flex items-center justify-center border-2 border-secondary/50">
+                  <Circle className="w-5 h-5 text-black fill-white" />
+                </div>
+                <Badge className="absolute -top-1 -right-1 h-5 w-5 p-0 flex items-center justify-center bg-primary text-[10px] font-bold">
+                  {playerStats.balls}
+                </Badge>
+              </div>
+              <div className="text-xs">
+                <p className="font-display font-bold text-secondary">SatBalls</p>
+                <p className="text-muted-foreground">Tap stops to collect</p>
+              </div>
+            </div>
+
+            {/* Player Stats */}
+            <div className="flex items-center gap-4">
+              <div className="text-center">
+                <p className="font-display font-bold text-lg text-primary text-glow-orange">
+                  {formatSats(playerStats.totalSatsEarned)}
+                </p>
+                <p className="text-[10px] text-muted-foreground uppercase tracking-wider">Sats Earned</p>
+              </div>
+              <div className="text-center">
+                <p className="font-display font-bold text-lg text-accent">
+                  {playerStats.totalCaptured}
+                </p>
+                <p className="text-[10px] text-muted-foreground uppercase tracking-wider">Captured</p>
+              </div>
+            </div>
+          </div>
+        </Card>
+      </div>
+    </>
+  );
+}
