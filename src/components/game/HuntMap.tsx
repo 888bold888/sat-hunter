@@ -173,7 +173,7 @@ export function HuntMap({
         iconAnchor: [20, 20],
       });
 
-      const playerMarker = L.marker([playerLocation.lat, playerLocation.lng], { icon })
+      const playerMarker = L.marker([playerLocation.lat, playerLocation.lng], { icon: playerIcon })
         .bindPopup('<div style="text-align: center; font-weight: bold;">Your Location</div>')
         .addTo(map);
 
