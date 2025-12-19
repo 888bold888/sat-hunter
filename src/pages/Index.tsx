@@ -190,11 +190,11 @@ const Index = () => {
 
           <div className="flex flex-wrap justify-center gap-4">
             {[
-              { emoji: '🐸', name: 'Frog Fren', rarity: 'Common', color: 'gray' },
-              { emoji: '🦊', name: 'Freedom Fox', rarity: 'Uncommon', color: 'green' },
-              { emoji: '🐉', name: 'Blockchain Bear', rarity: 'Rare', color: 'blue' },
-              { emoji: '👻', name: 'Guy Fawkes Ghost', rarity: 'Legendary', color: 'purple' },
-              { emoji: '👑', name: 'Satoshi Nakamoto', rarity: 'Mythic', color: 'yellow' },
+              { emoji: '🐁', name: 'Ratasat', rarity: 'Common', color: 'gray' },
+              { emoji: '🐛', name: 'Mesatpod', rarity: 'Uncommon', color: 'green' },
+              { emoji: '🦅', name: 'Satgeot', rarity: 'Rare', color: 'blue' },
+              { emoji: '🔥', name: 'Satmander', rarity: 'Legendary', color: 'purple' },
+              { emoji: '⚡', name: 'Pisatchu', rarity: 'Mythic', color: 'yellow' },
             ].map((creature) => (
               <Card
                 key={creature.name}

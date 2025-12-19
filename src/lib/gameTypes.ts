@@ -112,37 +112,37 @@ export const RARITY_MULTIPLIERS: Record<MonsterRarity, { min: number; max: numbe
   mythic: { min: 15.0, max: 50.0 },
 };
 
-// Cypherpunk-themed monster names
+// Pokémon-inspired monster names with cypherpunk theme
 export const MONSTER_NAMES = {
   common: [
-    'Bit Blob', 'Hash Hopper', 'Node Nibbler', 'Chain Chick', 'Block Bunny',
-    'Frog Fren', 'Sats Snail', 'Meme Mite', 'Cyber Cub', 'Digital Duckling'
+    'Ratasat', 'Saterpie', 'Satgey', 'Satdle', 'Bittle',
+    'Pepechu', 'Satby', 'Nodeon', 'Hashrat', 'Blocklett'
   ],
   uncommon: [
-    'Lightning Lemur', 'Protocol Panther', 'Merkle Monkey', 'Pepe Puppy', 'Satoshi Squirrel',
-    'Anonymous Anteater', 'Decentralized Deer', 'P2P Penguin', 'Consensus Cat', 'Wallet Wolf'
+    'Mesatpod', 'Satgeotto', 'Ratisate', 'Pepemon', 'Lightning Lemur',
+    'Hashbug', 'Nodepup', 'Cyphercat', 'Blockbun', 'Chainling'
   ],
   rare: [
-    'Nakamoto Naga', 'Cypherpunk Chimera', 'Freedom Fox', 'Sovereign Serpent', 'Privacy Panther',
-    'Lightning Lord', 'Hash Hawk', 'Blockchain Bear', 'Rebel Raven', 'Matrix Mantis'
+    'Saterfree', 'Satgeot', 'Freedom Fox', 'Hash Hawk', 'Lightning Lord',
+    'Nakamoto Naga', 'Cypherpunk Chimera', 'Sovereign Serpent', 'Privacy Panther', 'Rebel Raven'
   ],
   legendary: [
-    'Guy Fawkes Ghost', 'Pepe Prime', 'Bitcoin Basilisk', 'Anon Alpha', 'Satoshi Spirit',
-    'Cipher Cerberus', 'Revolution Rex', 'Freedom Phoenix', 'Decentralized Dragon', 'Liberty Lion'
+    'Bulsatba', 'Satmander', 'Saturtle', 'Guy Fawkes Ghost', 'Pepe Prime',
+    'Bitcoin Basilisk', 'Anon Alpha', 'Cipher Cerberus', 'Revolution Rex', 'Freedom Phoenix'
   ],
   mythic: [
-    'Satoshi Nakamoto', 'The Anonymous One', 'Genesis Ghost', 'Hal Finney Spirit', 'Cypherpunk God',
+    'Pisatchu', 'Satoshi Nakamoto', 'The Anonymous One', 'Genesis Ghost', 'Hal Finney Spirit',
     'The Orange Pill Dragon', 'Ultimate Pepe', 'Freedom Incarnate', 'The Sovereign', 'Lightning Emperor'
   ],
 };
 
-// Monster emojis by rarity
+// Monster emojis by rarity (Pokémon-inspired)
 export const MONSTER_EMOJIS: Record<MonsterRarity, string[]> = {
-  common: ['🐸', '🦎', '🐛', '🦗', '🐌', '🐣', '🐥', '🦔', '🐹', '🐁'],
-  uncommon: ['🦊', '🐺', '🦝', '🦨', '🦦', '🦥', '🐨', '🐼', '🦘', '🦙'],
-  rare: ['🦅', '🦉', '🐉', '🐲', '🦖', '🦕', '🦈', '🐊', '🦁', '🐯'],
-  legendary: ['🔥', '⚡', '💀', '👻', '🤖', '👽', '🦹', '🧙', '🎭', '👁️'],
-  mythic: ['🏆', '💎', '⭐', '🌟', '✨', '🔱', '👑', '🗡️', '🛡️', '💫'],
+  common: ['🐁', '🐛', '🐦', '🐢', '🐝', '🐸', '🦎', '🐌', '🦗', '🐣'],
+  uncommon: ['🐛', '🐦', '🐁', '🐸', '🦊', '🐺', '🦝', '🐨', '🦘', '🦙'],
+  rare: ['🐦', '🦅', '🦊', '🦅', '⚡', '🐉', '🐲', '🦈', '🦁', '🐯'],
+  legendary: ['🐢', '🔥', '💧', '👻', '⚡', '💀', '🤖', '🎭', '🧙', '👁️'],
+  mythic: ['⚡', '👑', '💎', '⭐', '🌟', '✨', '🔱', '🗡️', '🛡️', '💫'],
 };
 
 // Cypherpunk descriptions

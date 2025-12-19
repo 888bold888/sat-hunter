@@ -17,6 +17,7 @@ import {
   isAtSatStop,
   generateId,
 } from '@/lib/gameUtils';
+import { isMockLocationEnabled, getMockLocation } from '@/lib/devMode';
 
 interface GameState {
   activeHunt: HuntEvent | null;
@@ -323,8 +324,28 @@ export function GameProvider({ children }: { children: ReactNode }) {
 
   // Start location tracking
   const startLocationTracking = useCallback(() => {
+    // Check for mock location in development mode
+    if (isMockLocationEnabled()) {
+      const mockLoc = getMockLocation();
+      if (mockLoc) {
+        dispatch({ type: 'SET_PLAYER_LOCATION', location: mockLoc });
+        console.log('[DEV] Using mock location:', mockLoc);
+        return;
+      }
+    }
+
     if (!navigator.geolocation) {
-      dispatch({ type: 'SET_LOCATION_ERROR', error: 'Geolocation is not supported' });
+      dispatch({ type: 'SET_LOCATION_ERROR', error: 'Geolocation is not supported by your browser' });
+      return;
+    }
+
+    // Check if the page is served over HTTPS or localhost
+    const isSecureContext = window.isSecureContext || window.location.hostname === 'localhost';
+    if (!isSecureContext) {
+      dispatch({
+        type: 'SET_LOCATION_ERROR',
+        error: 'Geolocation requires HTTPS. Please use a secure connection.'
+      });
       return;
     }
 
@@ -339,12 +360,28 @@ export function GameProvider({ children }: { children: ReactNode }) {
         });
       },
       (error) => {
-        dispatch({ type: 'SET_LOCATION_ERROR', error: error.message });
+        let errorMessage = 'Location error occurred';
+
+        switch (error.code) {
+          case error.PERMISSION_DENIED:
+            errorMessage = 'Please enable location permissions in your browser settings to play';
+            break;
+          case error.POSITION_UNAVAILABLE:
+            errorMessage = 'Location unavailable. Please check your device settings';
+            break;
+          case error.TIMEOUT:
+            errorMessage = 'Location request timed out. Please try again';
+            break;
+          default:
+            errorMessage = error.message;
+        }
+
+        dispatch({ type: 'SET_LOCATION_ERROR', error: errorMessage });
       },
       {
         enableHighAccuracy: true,
         maximumAge: 5000,
-        timeout: 10000,
+        timeout: 15000,
       }
     );
 

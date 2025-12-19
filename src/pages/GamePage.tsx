@@ -7,6 +7,7 @@ import { Leaderboard } from '@/components/game/Leaderboard';
 import { CapturedInventory } from '@/components/game/CapturedInventory';
 import { CreateHuntForm } from '@/components/game/CreateHuntForm';
 import { CaptureSuccessDialog } from '@/components/game/CaptureSuccessDialog';
+import { DevTools } from '@/components/game/DevTools';
 import { useCurrentUser } from '@/hooks/useCurrentUser';
 import { useSeoMeta } from '@unhead/react';
 import { Button } from '@/components/ui/button';
@@ -167,6 +168,9 @@ export default function GamePage() {
           setCapturedMonster(null);
         }}
       />
+
+      {/* Dev Tools (only in development) */}
+      <DevTools />
     </div>
   );
 }

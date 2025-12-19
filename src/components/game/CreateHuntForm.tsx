@@ -3,6 +3,7 @@ import { useGame } from '@/contexts/GameContext';
 import { useCurrentUser } from '@/hooks/useCurrentUser';
 import { validateHuntConfig, formatSats } from '@/lib/gameUtils';
 import type { GeoLocation } from '@/lib/gameTypes';
+import { LocationPermissionPrompt } from './LocationPermissionPrompt';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -103,43 +104,29 @@ export function CreateHuntForm({ onHuntCreated }: CreateHuntFormProps) {
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-6">
-        {/* Location Status */}
-        <div
-          className={cn(
-            'p-3 rounded-lg border flex items-center gap-3',
-            playerLocation
-              ? 'bg-secondary/10 border-secondary/30'
-              : 'bg-destructive/10 border-destructive/30'
-          )}
-        >
-          {playerLocation ? (
-            <>
-              <Navigation className="w-5 h-5 text-secondary" />
-              <div className="flex-1">
-                <p className="text-sm font-medium text-secondary">Location Acquired</p>
-                <p className="text-xs text-muted-foreground">
-                  {playerLocation.lat.toFixed(6)}, {playerLocation.lng.toFixed(6)}
-                </p>
-              </div>
-            </>
-          ) : locationError ? (
-            <>
-              <AlertCircle className="w-5 h-5 text-destructive" />
-              <div className="flex-1">
-                <p className="text-sm font-medium text-destructive">Location Error</p>
-                <p className="text-xs text-muted-foreground">{locationError}</p>
-              </div>
-              <Button variant="outline" size="sm" onClick={startLocationTracking}>
-                Retry
-              </Button>
-            </>
-          ) : (
-            <>
-              <Loader2 className="w-5 h-5 text-muted-foreground animate-spin" />
-              <p className="text-sm text-muted-foreground">Getting location...</p>
-            </>
-          )}
-        </div>
+        {/* Location Permission/Status */}
+        {locationError && !playerLocation ? (
+          <LocationPermissionPrompt error={locationError} onRequestPermission={startLocationTracking} />
+        ) : playerLocation ? (
+          <div className="p-3 rounded-lg border flex items-center gap-3 bg-secondary/10 border-secondary/30">
+            <Navigation className="w-5 h-5 text-secondary" />
+            <div className="flex-1">
+              <p className="text-sm font-medium text-secondary">Location Acquired</p>
+              <p className="text-xs text-muted-foreground">
+                {playerLocation.lat.toFixed(6)}, {playerLocation.lng.toFixed(6)}
+              </p>
+            </div>
+          </div>
+        ) : (
+          <div className="p-3 rounded-lg border flex items-center gap-3 bg-muted/20 border-border">
+            <Loader2 className="w-5 h-5 text-muted-foreground animate-spin" />
+            <p className="text-sm text-muted-foreground">Getting location...</p>
+          </div>
+        )}
+
+        {/* Only show form if location is available or being loaded */}
+        {!locationError && (
+          <>
 
         {/* Hunt Name */}
         <div className="space-y-2">
@@ -312,6 +299,8 @@ export function CreateHuntForm({ onHuntCreated }: CreateHuntFormProps) {
             </>
           )}
         </Button>
+        </>
+        )}
       </CardContent>
     </Card>
   );
