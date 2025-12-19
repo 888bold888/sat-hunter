@@ -3,6 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { useSeoMeta } from '@unhead/react';
 import { useGame } from '@/contexts/GameContext';
 import { useCurrentUser } from '@/hooks/useCurrentUser';
+import { useHuntByCode } from '@/hooks/useHuntByCode';
 import { LoginArea } from '@/components/auth/LoginArea';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -10,6 +11,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
+import { Skeleton } from '@/components/ui/skeleton';
 import {
   Zap,
   Target,
@@ -21,19 +23,24 @@ import {
   Loader2,
   AlertCircle,
   QrCode,
+  CheckCircle,
 } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { formatSats, formatTimeRemaining } from '@/lib/gameUtils';
+import { useToast } from '@/hooks/useToast';
 
 export default function JoinHuntPage() {
+  const { toast } = useToast();
   const { code } = useParams<{ code?: string }>();
   const navigate = useNavigate();
   const { state, joinHunt, addParticipant, startLocationTracking } = useGame();
   const { user } = useCurrentUser();
-  
+
   const [inputCode, setInputCode] = useState(code?.toUpperCase() || '');
-  const [isLoading, setIsLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [searchCode, setSearchCode] = useState(code?.toUpperCase() || '');
+
+  // Query hunt from Nostr
+  const { data: foundHunt, isLoading: isSearching, error: searchError } = useHuntByCode(searchCode);
 
   useSeoMeta({
     title: 'Join Hunt | Sat Hunter',
@@ -53,43 +60,54 @@ export default function JoinHuntPage() {
     }
   }, [code, state.activeHunt, navigate]);
 
-  const handleJoin = async () => {
+  const handleSearch = () => {
+    if (!inputCode || inputCode.length < 6) return;
+    setSearchCode(inputCode.toUpperCase());
+  };
+
+  const handleJoin = () => {
     if (!user) {
-      setError('Please log in with Nostr to join a hunt');
+      toast({
+        title: 'Login Required',
+        description: 'Please log in with Nostr to join a hunt',
+        variant: 'destructive',
+      });
       return;
     }
 
-    if (!inputCode || inputCode.length < 6) {
-      setError('Please enter a valid 6-character hunt code');
+    if (!foundHunt) {
+      toast({
+        title: 'No Hunt Found',
+        description: 'Please search for a hunt first',
+        variant: 'destructive',
+      });
       return;
     }
 
-    setIsLoading(true);
-    setError(null);
-
-    try {
-      // In a real app, we would query the server for the hunt with this code
-      // For now, check if we have a stored hunt with this code
-      const storedHunt = localStorage.getItem('sathunter:active-hunt');
-      
-      if (storedHunt) {
-        const hunt = JSON.parse(storedHunt);
-        if (hunt.shareCode === inputCode.toUpperCase()) {
-          // Found the hunt!
-          joinHunt(hunt);
-          addParticipant(user.pubkey);
-          navigate('/play');
-          return;
-        }
-      }
-
-      // Hunt not found
-      setError('Hunt not found. Please check the code and try again.');
-    } catch (err) {
-      setError('Failed to join hunt. Please try again.');
-    } finally {
-      setIsLoading(false);
+    // Check if hunt is still active
+    if (foundHunt.endTime < Date.now()) {
+      toast({
+        title: 'Hunt Ended',
+        description: 'This hunt has already ended',
+        variant: 'destructive',
+      });
+      return;
     }
+
+    // Check payment status
+    if (foundHunt.paymentStatus !== 'paid') {
+      toast({
+        title: 'Hunt Not Ready',
+        description: 'This hunt is waiting for payment confirmation',
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    // Join the hunt
+    joinHunt(foundHunt);
+    addParticipant(user.pubkey);
+    navigate('/play');
   };
 
   return (
@@ -129,22 +147,75 @@ export default function JoinHuntPage() {
             {/* Code Input */}
             <div className="space-y-2">
               <Label htmlFor="code" className="font-display">Hunt Code</Label>
-              <Input
-                id="code"
-                placeholder="ABC123"
-                value={inputCode}
-                onChange={(e) => setInputCode(e.target.value.toUpperCase().slice(0, 6))}
-                className="text-center font-mono text-2xl tracking-widest h-14 border-primary/30"
-                maxLength={6}
-              />
+              <div className="flex gap-2">
+                <Input
+                  id="code"
+                  placeholder="ABC123"
+                  value={inputCode}
+                  onChange={(e) => setInputCode(e.target.value.toUpperCase().slice(0, 6))}
+                  onKeyPress={(e) => e.key === 'Enter' && handleSearch()}
+                  className="text-center font-mono text-2xl tracking-widest h-14 border-primary/30"
+                  maxLength={6}
+                />
+                <Button
+                  onClick={handleSearch}
+                  disabled={!inputCode || inputCode.length < 6 || isSearching}
+                  variant="outline"
+                  className="h-14"
+                >
+                  {isSearching ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Search'}
+                </Button>
+              </div>
             </div>
 
-            {/* Error */}
-            {error && (
+            {/* Search Error */}
+            {searchError && (
               <Alert variant="destructive">
                 <AlertCircle className="w-4 h-4" />
-                <AlertDescription>{error}</AlertDescription>
+                <AlertDescription>
+                  {searchError instanceof Error ? searchError.message : 'Hunt not found. Please check the code.'}
+                </AlertDescription>
               </Alert>
+            )}
+
+            {/* Hunt Found - Show Preview */}
+            {foundHunt && (
+              <Card className="border-secondary/30 bg-secondary/5">
+                <CardContent className="p-4 space-y-3">
+                  <div className="flex items-start justify-between">
+                    <div className="flex-1">
+                      <div className="flex items-center gap-2 mb-1">
+                        <CheckCircle className="w-4 h-4 text-secondary" />
+                        <h3 className="font-display font-bold">{foundHunt.name}</h3>
+                      </div>
+                      <p className="text-xs text-muted-foreground">{foundHunt.description}</p>
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-2 gap-2 text-xs">
+                    <div className="flex items-center gap-1">
+                      <Zap className="w-3 h-3 text-primary" />
+                      <span>{formatSats(foundHunt.totalSats)} sats</span>
+                    </div>
+                    <div className="flex items-center gap-1">
+                      <Skull className="w-3 h-3 text-accent" />
+                      <span>{foundHunt.monsterCount} creatures</span>
+                    </div>
+                    <div className="flex items-center gap-1">
+                      <Clock className="w-3 h-3 text-secondary" />
+                      <span>{formatTimeRemaining(foundHunt.endTime)}</span>
+                    </div>
+                    <div className="flex items-center gap-1">
+                      <MapPin className="w-3 h-3 text-blue-400" />
+                      <span>{foundHunt.geoFence.radiusMeters}m radius</span>
+                    </div>
+                  </div>
+                  {foundHunt.paymentStatus !== 'paid' && (
+                    <Badge variant="outline" className="border-yellow-500/50 text-yellow-500">
+                      Waiting for payment
+                    </Badge>
+                  )}
+                </CardContent>
+              </Card>
             )}
 
             {/* Login Prompt */}
@@ -160,20 +231,11 @@ export default function JoinHuntPage() {
             {/* Join Button */}
             <Button
               onClick={handleJoin}
-              disabled={isLoading || !inputCode || inputCode.length < 6}
+              disabled={!foundHunt || !user || foundHunt.paymentStatus !== 'paid'}
               className="w-full h-12 font-display text-lg bg-gradient-to-r from-primary to-orange-600 hover:from-orange-600 hover:to-primary shadow-glow-orange"
             >
-              {isLoading ? (
-                <>
-                  <Loader2 className="w-5 h-5 mr-2 animate-spin" />
-                  Joining...
-                </>
-              ) : (
-                <>
-                  <Target className="w-5 h-5 mr-2" />
-                  Join Hunt
-                </>
-              )}
+              <Target className="w-5 h-5 mr-2" />
+              {!foundHunt ? 'Search for Hunt First' : !user ? 'Login to Join' : 'Join Hunt!'}
             </Button>
           </CardContent>
         </Card>

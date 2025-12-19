@@ -4,6 +4,7 @@ import { useCurrentUser } from '@/hooks/useCurrentUser';
 import { validateHuntConfig, formatSats } from '@/lib/gameUtils';
 import type { GeoLocation } from '@/lib/gameTypes';
 import { LocationPermissionPrompt } from './LocationPermissionPrompt';
+import { PaymentConfirmation } from './PaymentConfirmation';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -29,9 +30,9 @@ interface CreateHuntFormProps {
 }
 
 export function CreateHuntForm({ onHuntCreated }: CreateHuntFormProps) {
-  const { createHunt, startLocationTracking, state } = useGame();
+  const { createHunt, startLocationTracking, state, confirmPayment } = useGame();
   const { user } = useCurrentUser();
-  const { playerLocation, locationError } = state;
+  const { playerLocation, locationError, activeHunt } = state;
 
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
@@ -41,6 +42,7 @@ export function CreateHuntForm({ onHuntCreated }: CreateHuntFormProps) {
   const [radiusMeters, setRadiusMeters] = useState(500);
   const [isCreating, setIsCreating] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [step, setStep] = useState<'form' | 'payment'>('form');
 
   // Start location tracking on mount
   useEffect(() => {
@@ -82,7 +84,9 @@ export function CreateHuntForm({ onHuntCreated }: CreateHuntFormProps) {
         center: playerLocation,
         radiusMeters,
       });
-      onHuntCreated();
+
+      // Move to payment step
+      setStep('payment');
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to create hunt');
     } finally {
@@ -90,7 +94,30 @@ export function CreateHuntForm({ onHuntCreated }: CreateHuntFormProps) {
     }
   };
 
+  // When payment is confirmed, close the form
+  useEffect(() => {
+    if (activeHunt?.paymentStatus === 'paid') {
+      onHuntCreated();
+    }
+  }, [activeHunt?.paymentStatus, onHuntCreated]);
+
   const avgSatsPerMonster = Math.floor(totalSats / monsterCount);
+
+  // Show payment step if hunt is created but not paid
+  if (step === 'payment') {
+    return (
+      <div className="space-y-4">
+        <Button
+          variant="ghost"
+          onClick={() => setStep('form')}
+          className="mb-2"
+        >
+          ← Back to Configuration
+        </Button>
+        <PaymentConfirmation />
+      </div>
+    );
+  }
 
   return (
     <Card className="bg-card/80 backdrop-blur border-primary/30 shadow-glow-orange">
