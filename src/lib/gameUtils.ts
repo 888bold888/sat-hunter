@@ -23,6 +23,22 @@ export function generateId(): string {
   return Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15);
 }
 
+// Generate a short share code for joining hunts
+export function generateShareCode(): string {
+  const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; // Removed confusable chars (0,O,1,I)
+  let code = '';
+  for (let i = 0; i < 6; i++) {
+    code += chars[Math.floor(Math.random() * chars.length)];
+  }
+  return code;
+}
+
+// Generate share URL for a hunt
+export function generateShareUrl(shareCode: string): string {
+  const baseUrl = window.location.origin;
+  return `${baseUrl}/join/${shareCode}`;
+}
+
 // Calculate distance between two points in meters (Haversine formula)
 export function calculateDistance(point1: GeoLocation, point2: GeoLocation): number {
   const R = 6371e3; // Earth's radius in meters
@@ -138,6 +154,11 @@ function distributeSats(totalSats: number, monsterCount: number, rarities: Monst
   return amounts;
 }
 
+// Get canonical monster type from name
+function getMonsterType(name: string): string {
+  return name.toLowerCase().replace(/\s+/g, '-');
+}
+
 // Generate monsters for a hunt event
 export function generateMonsters(config: MonsterGenConfig): Monster[] {
   const { totalSats, monsterCount, geoFence } = config;
@@ -156,9 +177,11 @@ export function generateMonsters(config: MonsterGenConfig): Monster[] {
 
   for (let i = 0; i < monsterCount; i++) {
     const rarity = rarities[i];
+    const name = generateMonsterName(rarity);
     const monster: Monster = {
       id: generateId(),
-      name: generateMonsterName(rarity),
+      name,
+      type: getMonsterType(name),
       description: generateMonsterDescription(rarity),
       satAmount: satAmounts[i],
       rarity,
@@ -166,6 +189,7 @@ export function generateMonsters(config: MonsterGenConfig): Monster[] {
       emoji: getMonsterEmoji(rarity),
       spawnTime: now + Math.random() * 60000, // Spawn within first minute randomly
       captured: false,
+      invoiceStatus: 'pending',
     };
     monsters.push(monster);
   }

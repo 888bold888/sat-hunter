@@ -23,6 +23,7 @@ export type MonsterRarity = 'common' | 'uncommon' | 'rare' | 'legendary' | 'myth
 export interface Monster {
   id: string;
   name: string;
+  type: string; // e.g., "ratasat", "pisatchu" - the canonical type name
   description: string;
   satAmount: number;
   rarity: MonsterRarity;
@@ -33,6 +34,9 @@ export interface Monster {
   captured: boolean;
   capturedBy?: string; // pubkey
   capturedAt?: number;
+  // Lightning invoice for this specific monster's reward
+  invoice?: string;
+  invoiceStatus?: 'pending' | 'paid' | 'expired';
 }
 
 export interface SatStop {
@@ -44,6 +48,9 @@ export interface SatStop {
   lastCollected?: number;
   ballsPerCollection: number;
 }
+
+export type PaymentStatus = 'pending' | 'paid' | 'failed' | 'expired';
+export type HuntStatus = 'draft' | 'pending_payment' | 'ready' | 'active' | 'ended';
 
 export interface HuntEvent {
   id: string;
@@ -58,7 +65,25 @@ export interface HuntEvent {
   createdAt: number;
   monsters: Monster[];
   satStops: SatStop[];
-  status: 'upcoming' | 'active' | 'ended';
+  status: HuntStatus;
+  // Payment tracking
+  paymentStatus: PaymentStatus;
+  lightningInvoice?: string;
+  paymentHash?: string;
+  // Sharing
+  shareCode: string; // Short code for joining
+  shareUrl?: string;
+  // Player tracking (for host dashboard)
+  participants: HuntParticipant[];
+}
+
+export interface HuntParticipant {
+  pubkey: string;
+  joinedAt: number;
+  lastLocation?: GeoLocation;
+  lastLocationUpdate?: number;
+  totalCaptured: number;
+  totalSatsEarned: number;
 }
 
 export interface PlayerStats {

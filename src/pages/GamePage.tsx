@@ -7,6 +7,7 @@ import { Leaderboard } from '@/components/game/Leaderboard';
 import { CapturedInventory } from '@/components/game/CapturedInventory';
 import { CreateHuntForm } from '@/components/game/CreateHuntForm';
 import { CaptureSuccessDialog } from '@/components/game/CaptureSuccessDialog';
+import { HostDashboard } from '@/components/game/HostDashboard';
 import { DevTools } from '@/components/game/DevTools';
 import { useCurrentUser } from '@/hooks/useCurrentUser';
 import { useSeoMeta } from '@unhead/react';
@@ -17,14 +18,21 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
+import {
+  Tabs,
+  TabsContent,
+  TabsList,
+  TabsTrigger,
+} from '@/components/ui/tabs';
 import { Card, CardContent } from '@/components/ui/card';
-import { Target, ArrowLeft, LogOut, Sparkles } from 'lucide-react';
-import { Link } from 'react-router-dom';
+import { Target, ArrowLeft, LogOut, Sparkles, QrCode, Eye, Play } from 'lucide-react';
+import { Link, useNavigate } from 'react-router-dom';
 
 export default function GamePage() {
-  const { state, leaveHunt, startLocationTracking, stopLocationTracking } = useGame();
+  const { state, leaveHunt, startLocationTracking, stopLocationTracking, isHost } = useGame();
   const { activeHunt } = state;
   const { user } = useCurrentUser();
+  const navigate = useNavigate();
 
   const [selectedMonster, setSelectedMonster] = useState<Monster | null>(null);
   const [selectedStop, setSelectedStop] = useState<SatStop | null>(null);
@@ -33,6 +41,9 @@ export default function GamePage() {
   const [showCreateHunt, setShowCreateHunt] = useState(false);
   const [capturedMonster, setCapturedMonster] = useState<Monster | null>(null);
   const [showCaptureSuccess, setShowCaptureSuccess] = useState(false);
+  const [activeTab, setActiveTab] = useState<'map' | 'dashboard'>('map');
+
+  const userIsHost = isHost();
 
   useSeoMeta({
     title: activeHunt ? `${activeHunt.name} | Sat Hunter` : 'Sat Hunter',
@@ -84,12 +95,21 @@ export default function GamePage() {
             </CardContent>
           </Card>
 
-          {/* Join Hunt Info */}
-          <Card className="bg-muted/30 border-dashed">
-            <CardContent className="p-6 text-center">
-              <p className="text-muted-foreground">
-                To join a hunt, scan a hunt QR code or receive an invite link from a host.
-              </p>
+          {/* Join Hunt Option */}
+          <Card
+            className="bg-card/80 backdrop-blur border-secondary/30 hover:border-secondary/60 transition-colors cursor-pointer"
+            onClick={() => navigate('/join')}
+          >
+            <CardContent className="p-6 flex items-center gap-4">
+              <div className="w-16 h-16 rounded-full bg-gradient-to-br from-secondary to-green-600 flex items-center justify-center">
+                <QrCode className="w-8 h-8 text-white" />
+              </div>
+              <div className="flex-1">
+                <h3 className="font-display font-bold text-lg">Join a Hunt</h3>
+                <p className="text-sm text-muted-foreground">
+                  Enter a code to join an existing hunt
+                </p>
+              </div>
             </CardContent>
           </Card>
         </div>
@@ -107,7 +127,47 @@ export default function GamePage() {
     );
   }
 
-  // Active hunt view
+  // Active hunt view - different for host vs player
+  // Host sees dashboard, player sees game map
+  if (userIsHost) {
+    return (
+      <div className="min-h-screen bg-background bg-cyber-grid">
+        <div className="container max-w-lg mx-auto p-4 py-8 space-y-4">
+          {/* Host Header */}
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <Link to="/">
+                <Button variant="ghost" size="icon">
+                  <ArrowLeft className="w-5 h-5" />
+                </Button>
+              </Link>
+              <div>
+                <h1 className="font-display text-xl font-bold text-primary">Host Dashboard</h1>
+                <p className="text-xs text-muted-foreground">Monitor your hunt</p>
+              </div>
+            </div>
+            <Button
+              variant="outline"
+              size="sm"
+              className="border-destructive/30 text-destructive hover:bg-destructive hover:text-destructive-foreground"
+              onClick={leaveHunt}
+            >
+              <LogOut className="w-4 h-4 mr-1" />
+              End
+            </Button>
+          </div>
+
+          {/* Host Dashboard */}
+          <HostDashboard />
+
+          {/* Dev Tools */}
+          <DevTools />
+        </div>
+      </div>
+    );
+  }
+
+  // Player view
   return (
     <div className="fixed inset-0 flex flex-col bg-background">
       {/* HUD */}

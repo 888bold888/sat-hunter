@@ -3,6 +3,7 @@ import { ScrollToTop } from "./components/ScrollToTop";
 
 import Index from "./pages/Index";
 import GamePage from "./pages/GamePage";
+import JoinHuntPage from "./pages/JoinHuntPage";
 import LeaderboardPage from "./pages/LeaderboardPage";
 import { NIP19Page } from "./pages/NIP19Page";
 import NotFound from "./pages/NotFound";
@@ -14,6 +15,8 @@ export function AppRouter() {
       <Routes>
         <Route path="/" element={<Index />} />
         <Route path="/play" element={<GamePage />} />
+        <Route path="/join" element={<JoinHuntPage />} />
+        <Route path="/join/:code" element={<JoinHuntPage />} />
         <Route path="/leaderboard" element={<LeaderboardPage />} />
         {/* NIP-19 route for npub1, note1, naddr1, nevent1, nprofile1 */}
         <Route path="/:nip19" element={<NIP19Page />} />

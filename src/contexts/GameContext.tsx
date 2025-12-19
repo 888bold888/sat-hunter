@@ -16,7 +16,10 @@ import {
   isInCaptureRange,
   isAtSatStop,
   generateId,
+  generateShareCode,
+  generateShareUrl,
 } from '@/lib/gameUtils';
+import type { HuntStatus, HuntParticipant } from '@/lib/gameTypes';
 import { isMockLocationEnabled, getMockLocation } from '@/lib/devMode';
 
 interface GameState {
@@ -169,8 +172,13 @@ interface GameContextType {
     center: GeoLocation;
     radiusMeters: number;
   }) => HuntEvent;
+  confirmPayment: () => void;
+  startHunt: () => void;
   joinHunt: (hunt: HuntEvent) => void;
   leaveHunt: () => void;
+  addParticipant: (pubkey: string) => void;
+  updateParticipantLocation: (pubkey: string, location: GeoLocation) => void;
+  isHost: () => boolean;
   captureMonster: (monster: Monster) => boolean;
   collectBalls: (stop: SatStop) => boolean;
   startLocationTracking: () => void;
@@ -238,7 +246,7 @@ export function GameProvider({ children }: { children: ReactNode }) {
     dispatch({ type: 'SET_NEARBY_STOPS', stops: nearbyStops });
   }, [state.playerLocation, state.activeHunt]);
 
-  // Create a new hunt
+  // Create a new hunt (draft mode - needs payment confirmation)
   const createHunt = useCallback(
     (config: {
       name: string;
@@ -258,6 +266,8 @@ export function GameProvider({ children }: { children: ReactNode }) {
       const satStops = generateSatStops(geoFence, Math.min(10, Math.floor(config.monsterCount / 10)));
 
       const now = Date.now();
+      const shareCode = generateShareCode();
+
       const hunt: HuntEvent = {
         id: generateId(),
         name: config.name,
@@ -271,7 +281,11 @@ export function GameProvider({ children }: { children: ReactNode }) {
         createdAt: now,
         monsters,
         satStops,
-        status: 'active',
+        status: 'pending_payment', // Requires payment before activation
+        paymentStatus: 'pending',
+        shareCode,
+        shareUrl: generateShareUrl(shareCode),
+        participants: [],
       };
 
       dispatch({ type: 'SET_ACTIVE_HUNT', hunt });
@@ -279,6 +293,79 @@ export function GameProvider({ children }: { children: ReactNode }) {
     },
     [user?.pubkey]
   );
+
+  // Confirm payment and activate the hunt
+  const confirmPayment = useCallback(() => {
+    if (!state.activeHunt) return;
+
+    const activatedHunt: HuntEvent = {
+      ...state.activeHunt,
+      status: 'ready',
+      paymentStatus: 'paid',
+      startTime: Date.now(), // Reset start time to now
+      endTime: Date.now() + (state.activeHunt.endTime - state.activeHunt.startTime), // Preserve duration
+    };
+
+    dispatch({ type: 'SET_ACTIVE_HUNT', hunt: activatedHunt });
+  }, [state.activeHunt]);
+
+  // Start the hunt (after payment confirmed)
+  const startHunt = useCallback(() => {
+    if (!state.activeHunt || state.activeHunt.status !== 'ready') return;
+
+    const activeHunt: HuntEvent = {
+      ...state.activeHunt,
+      status: 'active',
+      startTime: Date.now(),
+      endTime: Date.now() + (state.activeHunt.endTime - state.activeHunt.startTime),
+    };
+
+    dispatch({ type: 'SET_ACTIVE_HUNT', hunt: activeHunt });
+  }, [state.activeHunt]);
+
+  // Add participant to hunt
+  const addParticipant = useCallback((pubkey: string) => {
+    if (!state.activeHunt) return;
+
+    // Check if already a participant
+    if (state.activeHunt.participants.some(p => p.pubkey === pubkey)) return;
+
+    const newParticipant: HuntParticipant = {
+      pubkey,
+      joinedAt: Date.now(),
+      totalCaptured: 0,
+      totalSatsEarned: 0,
+    };
+
+    const updatedHunt: HuntEvent = {
+      ...state.activeHunt,
+      participants: [...state.activeHunt.participants, newParticipant],
+    };
+
+    dispatch({ type: 'SET_ACTIVE_HUNT', hunt: updatedHunt });
+  }, [state.activeHunt]);
+
+  // Update participant location (for host dashboard)
+  const updateParticipantLocation = useCallback((pubkey: string, location: GeoLocation) => {
+    if (!state.activeHunt) return;
+
+    const updatedHunt: HuntEvent = {
+      ...state.activeHunt,
+      participants: state.activeHunt.participants.map(p =>
+        p.pubkey === pubkey
+          ? { ...p, lastLocation: location, lastLocationUpdate: Date.now() }
+          : p
+      ),
+    };
+
+    dispatch({ type: 'SET_ACTIVE_HUNT', hunt: updatedHunt });
+  }, [state.activeHunt]);
+
+  // Check if current user is the host
+  const isHost = useCallback((): boolean => {
+    if (!state.activeHunt || !user?.pubkey) return false;
+    return state.activeHunt.hostPubkey === user.pubkey;
+  }, [state.activeHunt, user?.pubkey]);
 
   // Join an existing hunt
   const joinHunt = useCallback((hunt: HuntEvent) => {
@@ -417,8 +504,13 @@ export function GameProvider({ children }: { children: ReactNode }) {
       value={{
         state,
         createHunt,
+        confirmPayment,
+        startHunt,
         joinHunt,
         leaveHunt,
+        addParticipant,
+        updateParticipantLocation,
+        isHost,
         captureMonster,
         collectBalls,
         startLocationTracking,
