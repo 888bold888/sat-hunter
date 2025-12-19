@@ -44,6 +44,9 @@ Think Pokémon GO meets Bitcoin treasure hunting with a cypherpunk aesthetic!
 - ⏱️ **Timed events** - 15 minutes to 8 hours
 - 🎲 **Automatic distribution** - Sats randomly allocated to creatures by rarity
 - 📍 **SatStops** - Auto-generated collection points for players
+- 📊 **Real-time Dashboard** - Live map overview with player pins, monster locations, and stats
+- 🔗 **Easy Sharing** - QR codes and 6-character codes for players to join
+- 💰 **Payment confirmation** - Lightning invoice confirmation before hunt activation
 
 ### Technical
 - 🔐 **Nostr authentication** - Login with your npub
