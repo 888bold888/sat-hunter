@@ -374,8 +374,8 @@ export function validateHuntConfig(
   monsterCount: number,
   durationMinutes: number
 ): { valid: boolean; error?: string } {
-  if (totalSats < 1000) {
-    return { valid: false, error: 'Minimum total sats is 1,000' };
+  if (totalSats < 100) {
+    return { valid: false, error: 'Minimum total sats is 100' };
   }
   if (monsterCount < 10) {
     return { valid: false, error: 'Minimum monster count is 10' };

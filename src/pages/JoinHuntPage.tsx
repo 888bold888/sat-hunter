@@ -5,6 +5,7 @@ import { useGame } from '@/contexts/GameContext';
 import { useCurrentUser } from '@/hooks/useCurrentUser';
 import { useHuntByCode } from '@/hooks/useHuntByCode';
 import { LoginArea } from '@/components/auth/LoginArea';
+import { QRScanner } from '@/components/game/QRScanner';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -144,6 +145,23 @@ export default function JoinHuntPage() {
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
+            {/* QR Scanner */}
+            <QRScanner
+              onCodeScanned={(code) => {
+                setInputCode(code);
+                setSearchCode(code);
+              }}
+            />
+
+            <div className="relative">
+              <div className="absolute inset-0 flex items-center">
+                <span className="w-full border-t" />
+              </div>
+              <div className="relative flex justify-center text-xs uppercase">
+                <span className="bg-card px-2 text-muted-foreground">Or enter code manually</span>
+              </div>
+            </div>
+
             {/* Code Input */}
             <div className="space-y-2">
               <Label htmlFor="code" className="font-display">Hunt Code</Label>

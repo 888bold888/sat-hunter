@@ -1,3 +1,5 @@
+@import 'leaflet/dist/leaflet.css';
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
@@ -115,11 +117,11 @@
   .text-glow-orange {
     text-shadow: 0 0 10px hsl(32 100% 50% / 0.7), 0 0 20px hsl(32 100% 50% / 0.5), 0 0 30px hsl(32 100% 50% / 0.3);
   }
-  
+
   .text-glow-green {
     text-shadow: 0 0 10px hsl(142 70% 45% / 0.7), 0 0 20px hsl(142 70% 45% / 0.5), 0 0 30px hsl(142 70% 45% / 0.3);
   }
-  
+
   .text-glow-purple {
     text-shadow: 0 0 10px hsl(270 90% 60% / 0.7), 0 0 20px hsl(270 90% 60% / 0.5), 0 0 30px hsl(270 90% 60% / 0.3);
   }
@@ -128,11 +130,11 @@
   .shadow-glow-orange {
     box-shadow: 0 0 15px hsl(32 100% 50% / 0.4), 0 0 30px hsl(32 100% 50% / 0.2), inset 0 1px 0 hsl(32 100% 70% / 0.2);
   }
-  
+
   .shadow-glow-green {
     box-shadow: 0 0 15px hsl(142 70% 45% / 0.4), 0 0 30px hsl(142 70% 45% / 0.2), inset 0 1px 0 hsl(142 70% 70% / 0.2);
   }
-  
+
   .shadow-glow-purple {
     box-shadow: 0 0 15px hsl(270 90% 60% / 0.4), 0 0 30px hsl(270 90% 60% / 0.2), inset 0 1px 0 hsl(270 90% 80% / 0.2);
   }
@@ -153,7 +155,7 @@
 
   /* Matrix Rain Effect Background */
   .bg-matrix {
-    background: 
+    background:
       linear-gradient(180deg, transparent 0%, hsl(220 20% 6%) 100%),
       repeating-linear-gradient(
         0deg,
@@ -166,7 +168,7 @@
 
   /* Cyber Grid Background */
   .bg-cyber-grid {
-    background-image: 
+    background-image:
       linear-gradient(hsl(32 100% 50% / 0.05) 1px, transparent 1px),
       linear-gradient(90deg, hsl(32 100% 50% / 0.05) 1px, transparent 1px);
     background-size: 50px 50px;

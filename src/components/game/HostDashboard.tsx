@@ -1,7 +1,7 @@
-import { useEffect, useState, useRef } from 'react';
+import { useEffect, useState } from 'react';
 import { useGame } from '@/contexts/GameContext';
-import { formatSats, formatTimeRemaining, calculateDistance } from '@/lib/gameUtils';
-import type { GeoLocation } from '@/lib/gameTypes';
+import { formatSats, formatTimeRemaining } from '@/lib/gameUtils';
+import { HuntMap } from './HuntMap';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -32,8 +32,6 @@ export function HostDashboard() {
   const [timeRemaining, setTimeRemaining] = useState('');
   const [copied, setCopied] = useState(false);
   const [qrCodeUrl, setQrCodeUrl] = useState<string | null>(null);
-  const mapRef = useRef<HTMLDivElement>(null);
-  const [mapDimensions, setMapDimensions] = useState({ width: 0, height: 0 });
 
   // Update time remaining
   useEffect(() => {
@@ -55,20 +53,7 @@ export function HostDashboard() {
     }
   }, [activeHunt?.shareUrl]);
 
-  // Update map dimensions
-  useEffect(() => {
-    const updateDimensions = () => {
-      if (mapRef.current) {
-        setMapDimensions({
-          width: mapRef.current.offsetWidth,
-          height: mapRef.current.offsetHeight,
-        });
-      }
-    };
-    updateDimensions();
-    window.addEventListener('resize', updateDimensions);
-    return () => window.removeEventListener('resize', updateDimensions);
-  }, []);
+
 
   if (!activeHunt || !isHost()) return null;
 
@@ -79,15 +64,6 @@ export function HostDashboard() {
   const satsRemaining = activeHunt.totalSats - satsCollected;
   const progress = (capturedCount / activeHunt.monsterCount) * 100;
   const isEnded = Date.now() > activeHunt.endTime;
-
-  // Convert geo to pixel for mini-map
-  const geoToPixel = (loc: GeoLocation): { x: number; y: number } | null => {
-    if (!mapDimensions.width) return null;
-    const { bounds } = activeHunt.geoFence;
-    const x = ((loc.lng - bounds.west) / (bounds.east - bounds.west)) * mapDimensions.width;
-    const y = ((bounds.north - loc.lat) / (bounds.north - bounds.south)) * mapDimensions.height;
-    return { x, y };
-  };
 
   const handleCopyLink = () => {
     if (activeHunt.shareUrl) {
@@ -172,7 +148,7 @@ export function HostDashboard() {
         </CardContent>
       </Card>
 
-      {/* Mini Map Overview */}
+      {/* Live Map Overview */}
       <Card className="border-accent/30">
         <CardHeader className="pb-2">
           <CardTitle className="text-sm flex items-center gap-2">
@@ -180,81 +156,16 @@ export function HostDashboard() {
             Live Map Overview
           </CardTitle>
         </CardHeader>
-        <CardContent>
-          <div
-            ref={mapRef}
-            className="relative h-48 bg-muted/30 rounded-lg border border-border overflow-hidden"
-            style={{
-              backgroundImage: `
-                linear-gradient(hsl(var(--primary) / 0.05) 1px, transparent 1px),
-                linear-gradient(90deg, hsl(var(--primary) / 0.05) 1px, transparent 1px)
-              `,
-              backgroundSize: '20px 20px',
-            }}
-          >
-            {/* Geofence boundary */}
-            <div className="absolute inset-2 border-2 border-dashed border-primary/40 rounded-lg" />
-
-            {/* Monsters */}
-            {activeHunt.monsters.map((monster) => {
-              const pos = geoToPixel(monster.location);
-              if (!pos) return null;
-              return (
-                <div
-                  key={monster.id}
-                  className={cn(
-                    'absolute w-2 h-2 rounded-full transform -translate-x-1/2 -translate-y-1/2',
-                    monster.captured ? 'bg-gray-500/50' : 'bg-primary animate-pulse'
-                  )}
-                  style={{ left: pos.x, top: pos.y }}
-                  title={`${monster.name} (${monster.captured ? 'Captured' : formatSats(monster.satAmount) + ' sats'})`}
-                />
-              );
-            })}
-
-            {/* SatStops */}
-            {activeHunt.satStops.map((stop) => {
-              const pos = geoToPixel(stop.location);
-              if (!pos) return null;
-              return (
-                <div
-                  key={stop.id}
-                  className="absolute w-3 h-3 rounded-full bg-secondary border border-white transform -translate-x-1/2 -translate-y-1/2"
-                  style={{ left: pos.x, top: pos.y }}
-                  title={stop.name}
-                />
-              );
-            })}
-
-            {/* Players */}
-            {activeHunt.participants.map((participant) => {
-              if (!participant.lastLocation) return null;
-              const pos = geoToPixel(participant.lastLocation);
-              if (!pos) return null;
-              return (
-                <div
-                  key={participant.pubkey}
-                  className="absolute transform -translate-x-1/2 -translate-y-1/2"
-                  style={{ left: pos.x, top: pos.y }}
-                  title={`Player (${participant.totalCaptured} captured)`}
-                >
-                  <div className="w-3 h-3 rounded-full bg-blue-500 border-2 border-white animate-pulse" />
-                </div>
-              );
-            })}
-
-            {/* Legend */}
-            <div className="absolute bottom-1 left-1 flex gap-2 text-[8px] text-muted-foreground bg-background/80 px-1 rounded">
-              <span className="flex items-center gap-1">
-                <Circle className="w-2 h-2 fill-primary text-primary" /> Monster
-              </span>
-              <span className="flex items-center gap-1">
-                <Circle className="w-2 h-2 fill-secondary text-secondary" /> Stop
-              </span>
-              <span className="flex items-center gap-1">
-                <Circle className="w-2 h-2 fill-blue-500 text-blue-500" /> Player
-              </span>
-            </div>
+        <CardContent className="p-0">
+          <div className="h-64 rounded-lg overflow-hidden">
+            <HuntMap
+              center={activeHunt.geoFence.center}
+              radiusMeters={activeHunt.geoFence.radiusMeters}
+              playerLocation={playerLocation}
+              monsters={activeHunt.monsters}
+              satStops={activeHunt.satStops}
+              showAllMonsters={true}
+            />
           </div>
         </CardContent>
       </Card>

@@ -1,13 +1,13 @@
-import { useEffect, useRef, useState } from 'react';
+import { useState } from 'react';
 import { useGame } from '@/contexts/GameContext';
-import type { Monster, SatStop, GeoLocation } from '@/lib/gameTypes';
-import { calculateDistance, isInCaptureRange, isAtSatStop, getRarityColor } from '@/lib/gameUtils';
+import type { Monster, SatStop } from '@/lib/gameTypes';
+import { isInCaptureRange, isAtSatStop } from '@/lib/gameUtils';
 import { MonsterCard } from './MonsterCard';
 import { SatStopCard } from './SatStopCard';
-import { cn } from '@/lib/utils';
-import { Button } from '@/components/ui/button';
+import { HuntMap } from './HuntMap';
 import { Card } from '@/components/ui/card';
-import { Navigation, Compass, RefreshCw, MapPin, Zap } from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import { MapPin, Compass, RefreshCw } from 'lucide-react';
 import { useToast } from '@/hooks/useToast';
 
 interface GameMapProps {
@@ -22,49 +22,10 @@ export function GameMap({ selectedMonster, selectedStop, onSelectMonster, onSele
   const { state, getAvailableMonsters, getAvailableStops, captureMonster, collectBalls, startLocationTracking } = useGame();
   const { activeHunt, playerLocation, locationError, playerStats } = state;
   const { toast } = useToast();
-  const mapRef = useRef<HTMLDivElement>(null);
-  const [mapDimensions, setMapDimensions] = useState({ width: 0, height: 0 });
 
   // Get available entities
   const availableMonsters = getAvailableMonsters();
   const availableStops = getAvailableStops();
-
-  // Filter monsters to only show those within 10 feet (3 meters) of player
-  const VISIBILITY_RANGE_METERS = 3; // 10 feet ≈ 3 meters
-  const visibleMonsters = playerLocation
-    ? availableMonsters.filter(m => calculateDistance(playerLocation, m.location) <= VISIBILITY_RANGE_METERS)
-    : [];
-
-  // Update map dimensions on resize
-  useEffect(() => {
-    const updateDimensions = () => {
-      if (mapRef.current) {
-        setMapDimensions({
-          width: mapRef.current.offsetWidth,
-          height: mapRef.current.offsetHeight,
-        });
-      }
-    };
-
-    updateDimensions();
-    window.addEventListener('resize', updateDimensions);
-    return () => window.removeEventListener('resize', updateDimensions);
-  }, []);
-
-  // Convert geo coordinates to map pixel position
-  const geoToPixel = (location: GeoLocation): { x: number; y: number } | null => {
-    if (!activeHunt || !mapDimensions.width) return null;
-
-    const { bounds } = activeHunt.geoFence;
-    const latRange = bounds.north - bounds.south;
-    const lngRange = bounds.east - bounds.west;
-
-    // Map lat/lng to pixel coordinates
-    const x = ((location.lng - bounds.west) / lngRange) * mapDimensions.width;
-    const y = ((bounds.north - location.lat) / latRange) * mapDimensions.height;
-
-    return { x, y };
-  };
 
   // Handle monster capture
   const handleCapture = (monster: Monster) => {
@@ -112,127 +73,23 @@ export function GameMap({ selectedMonster, selectedStop, onSelectMonster, onSele
 
   return (
     <div className="flex-1 relative">
-      {/* Map Container */}
-      <div
-        ref={mapRef}
-        className="absolute inset-0 bg-cyber-grid bg-matrix overflow-hidden"
-        style={{
-          backgroundImage: `
-            radial-gradient(circle at center, hsl(var(--muted) / 0.1) 1px, transparent 1px),
-            linear-gradient(hsl(var(--primary) / 0.03) 1px, transparent 1px),
-            linear-gradient(90deg, hsl(var(--primary) / 0.03) 1px, transparent 1px)
-          `,
-          backgroundSize: '20px 20px, 50px 50px, 50px 50px',
-        }}
-      >
-        {/* Geofence boundary - clearly visible to players */}
-        <div className="absolute inset-8 border-4 border-dashed border-primary/50 rounded-lg pointer-events-none">
-          <div className="absolute -top-6 left-4 bg-primary/90 text-primary-foreground px-3 py-1 rounded-full text-xs font-display font-bold">
-            Hunt Boundary
-          </div>
-        </div>
-
-        {/* Sat Stops */}
-        {activeHunt.satStops.map((stop) => {
-          const pos = geoToPixel(stop.location);
-          if (!pos) return null;
-          const isInRange = playerLocation ? isAtSatStop(playerLocation, stop.location) : false;
-          const isAvailable = availableStops.some((s) => s.id === stop.id);
-
-          return (
-            <button
-              key={stop.id}
-              onClick={() => onSelectStop(stop)}
-              className={cn(
-                'absolute transform -translate-x-1/2 -translate-y-1/2 transition-all duration-300',
-                'w-10 h-10 rounded-full flex items-center justify-center',
-                'bg-gradient-to-br from-secondary/80 to-green-700/80 border-2',
-                isAvailable ? 'border-secondary shadow-glow-green' : 'border-secondary/30 opacity-50',
-                isInRange && isAvailable && 'animate-bounce scale-125'
-              )}
-              style={{
-                left: pos.x,
-                top: pos.y,
-              }}
-            >
-              <MapPin className="w-5 h-5 text-white" />
-            </button>
-          );
-        })}
-
-        {/* Monsters - only visible within 10 feet (3m) of player */}
-        {visibleMonsters.map((monster) => {
-          const pos = geoToPixel(monster.location);
-          if (!pos) return null;
-          const isInRange = playerLocation ? isInCaptureRange(playerLocation, monster.location) : false;
-          const distance = playerLocation ? calculateDistance(playerLocation, monster.location) : Infinity;
-
-          return (
-            <button
-              key={monster.id}
-              onClick={() => onSelectMonster(monster)}
-              className={cn(
-                'absolute transform -translate-x-1/2 -translate-y-1/2 transition-all duration-300',
-                'animate-spawn',
-                isInRange && 'animate-bounce'
-              )}
-              style={{
-                left: pos.x,
-                top: pos.y,
-              }}
-            >
-              <div
-                className={cn(
-                  'relative w-12 h-12 rounded-full flex items-center justify-center',
-                  'bg-gradient-to-br from-card to-muted border-2 shadow-lg',
-                  getRarityColor(monster.rarity).replace('text-', 'border-'),
-                  monster.rarity === 'mythic' && 'animate-glow-pulse',
-                  monster.rarity === 'legendary' && 'shadow-glow-purple'
-                )}
-              >
-                <span className="text-2xl drop-shadow-lg">{monster.emoji}</span>
-                {/* Sats indicator */}
-                <div className="absolute -bottom-1 -right-1 bg-primary text-primary-foreground text-[8px] font-bold px-1 rounded-full flex items-center">
-                  <Zap className="w-2 h-2" />
-                  {monster.satAmount > 1000 ? `${(monster.satAmount / 1000).toFixed(0)}k` : monster.satAmount}
-                </div>
-                {/* Distance indicator */}
-                {distance < 200 && (
-                  <div className="absolute -top-5 left-1/2 transform -translate-x-1/2 text-[8px] text-muted-foreground whitespace-nowrap bg-card/80 px-1 rounded">
-                    {Math.round(distance)}m
-                  </div>
-                )}
-              </div>
-            </button>
-          );
-        })}
-
-        {/* Player Position */}
-        {playerLocation && (
-          <div
-            className="absolute transform -translate-x-1/2 -translate-y-1/2 pointer-events-none z-10"
-            style={{
-              left: geoToPixel(playerLocation)?.x ?? '50%',
-              top: geoToPixel(playerLocation)?.y ?? '50%',
-            }}
-          >
-            {/* Capture range indicator */}
-            <div className="absolute w-32 h-32 -translate-x-1/2 -translate-y-1/2 left-1/2 top-1/2 rounded-full border border-primary/30 bg-primary/5 animate-radar" />
-
-            {/* Player marker */}
-            <div className="relative">
-              <div className="w-8 h-8 rounded-full bg-gradient-to-br from-primary to-orange-600 border-4 border-white shadow-glow-orange flex items-center justify-center">
-                <Navigation className="w-4 h-4 text-white" />
-              </div>
-              {/* Pulsing ring */}
-              <div className="absolute inset-0 rounded-full border-2 border-primary animate-ping" />
-            </div>
-          </div>
-        )}
-
-        {/* Location Error Overlay */}
-        {locationError && (
-          <div className="absolute inset-0 flex items-center justify-center bg-background/80 backdrop-blur-sm">
+      {/* Leaflet Map */}
+      {playerLocation && !locationError ? (
+        <HuntMap
+          center={activeHunt.geoFence.center}
+          radiusMeters={activeHunt.geoFence.radiusMeters}
+          playerLocation={playerLocation}
+          monsters={availableMonsters}
+          satStops={availableStops}
+          onMonsterClick={onSelectMonster}
+          onStopClick={onSelectStop}
+          showAllMonsters={false}
+          className="absolute inset-0"
+        />
+      ) : (
+        <div className="absolute inset-0 bg-cyber-grid bg-matrix flex items-center justify-center">
+          {/* Location Error Overlay */}
+          {locationError && (
             <Card className="p-6 max-w-xs text-center space-y-4 bg-card/90">
               <Compass className="w-16 h-16 mx-auto text-destructive animate-pulse" />
               <div>
@@ -244,9 +101,9 @@ export function GameMap({ selectedMonster, selectedStop, onSelectMonster, onSele
                 Enable Location
               </Button>
             </Card>
-          </div>
-        )}
-      </div>
+          )}
+        </div>
+      )}
 
       {/* Selected Monster Panel */}
       {selectedMonster && (

@@ -36,7 +36,7 @@ export function CreateHuntForm({ onHuntCreated }: CreateHuntFormProps) {
 
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
-  const [totalSats, setTotalSats] = useState(100000); // 100k sats default
+  const [totalSats, setTotalSats] = useState(10000); // 10k sats default
   const [monsterCount, setMonsterCount] = useState(50);
   const [durationMinutes, setDurationMinutes] = useState(60);
   const [radiusMeters, setRadiusMeters] = useState(500);
@@ -94,12 +94,16 @@ export function CreateHuntForm({ onHuntCreated }: CreateHuntFormProps) {
     }
   };
 
-  // When payment is confirmed, close the form
+  // When payment is confirmed AND hunt is published, close the form
   useEffect(() => {
-    if (activeHunt?.paymentStatus === 'paid') {
-      onHuntCreated();
+    if (activeHunt?.paymentStatus === 'paid' && (activeHunt.status === 'ready' || activeHunt.status === 'active')) {
+      // Small delay to show success state
+      const timer = setTimeout(() => {
+        onHuntCreated();
+      }, 1500);
+      return () => clearTimeout(timer);
     }
-  }, [activeHunt?.paymentStatus, onHuntCreated]);
+  }, [activeHunt?.paymentStatus, activeHunt?.status, onHuntCreated]);
 
   const avgSatsPerMonster = Math.floor(totalSats / monsterCount);
 
@@ -194,13 +198,13 @@ export function CreateHuntForm({ onHuntCreated }: CreateHuntFormProps) {
           <Slider
             value={[totalSats]}
             onValueChange={([value]) => setTotalSats(value)}
-            min={10000}
+            min={100}
             max={10000000}
-            step={10000}
+            step={100}
             className="py-2"
           />
           <div className="flex justify-between text-xs text-muted-foreground">
-            <span>10k</span>
+            <span>100</span>
             <span>10M</span>
           </div>
         </div>
