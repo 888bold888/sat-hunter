@@ -59,22 +59,29 @@ Think Pokémon GO meets Bitcoin treasure hunting with a cypherpunk aesthetic!
 
 | Rarity | Examples | Sat Multiplier | Spawn Rate |
 |--------|----------|----------------|------------|
-| **Common** 🟢 | Bit Blob, Hash Hopper | 0.5x - 1x | 50% |
-| **Uncommon** 🔵 | Lightning Lemur, Pepe Puppy | 1x - 2x | 30% |
-| **Rare** 💎 | Freedom Fox, Hash Hawk | 2x - 5x | 13% |
-| **Legendary** 🟣 | Guy Fawkes Ghost, Pepe Prime | 5x - 15x | 5% |
-| **Mythic** 👑 | Satoshi Nakamoto, The Sovereign | 15x - 50x | 2% |
+| **Common** 🟢 | Ratasat, Saterpie, Satgey | 0.5x - 1x | 50% |
+| **Uncommon** 🔵 | Mesatpod, Satgeotto, Ratisate | 1x - 2x | 30% |
+| **Rare** 💎 | Saterfree, Satgeot, Freedom Fox | 2x - 5x | 13% |
+| **Legendary** 🟣 | Bulsatba, Satmander, Saturtle | 5x - 15x | 5% |
+| **Mythic** 👑 | Pisatchu, Satoshi Nakamoto | 15x - 50x | 2% |
 
 ---
 
 ## 🚀 Quick Start
 
+### Requirements
+
+- **HTTPS Connection**: Geolocation API requires secure context (HTTPS or localhost)
+- **GPS-enabled Device**: Mobile phone or laptop with location services
+- **Modern Browser**: Chrome, Firefox, Safari, or Edge with geolocation support
+- **Nostr Login**: Browser extension like Alby, nos2x, or similar
+
 ### Players
 
-1. **Visit the app** - Navigate to the deployed URL
-2. **Login with Nostr** - Use your favorite Nostr extension
-3. **Join or create** - Join an existing hunt or create your own
-4. **Enable location** - Grant GPS permissions
+1. **Visit the app** - Navigate to the deployed URL (must be HTTPS)
+2. **Enable location** - Grant GPS permissions when prompted
+3. **Login with Nostr** - Use your favorite Nostr extension
+4. **Join or create** - Join an existing hunt or create your own
 5. **Start hunting** - Walk around and catch creatures!
 
 ### Creating a Hunt
@@ -186,6 +193,31 @@ Sat Hunter is a Progressive Web App (PWA):
 - [ ] Achievement badges
 - [ ] Seasonal events
 - [ ] Hunt marketplace
+
+---
+
+## 🛠️ Development
+
+### Local Development
+
+1. Clone the repository
+2. Install dependencies: `npm install`
+3. Run dev server: `npm run dev`
+4. Access at `http://localhost:5173`
+
+### Testing Without GPS
+
+For development/testing without GPS hardware:
+
+1. Open the app in development mode
+2. Click the "Dev Tools" button (bottom right)
+3. Enable "Use Mock Location"
+4. Set coordinates or use default (San Francisco)
+5. Page will reload with mock location active
+
+### Environment Variables
+
+No environment variables required for basic functionality. The app works entirely client-side with browser storage.
 
 ---
 
