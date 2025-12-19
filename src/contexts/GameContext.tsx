@@ -235,13 +235,15 @@ export function GameProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (!state.playerLocation || !state.activeHunt) return;
 
+    // Monsters only visible within 3 meters (10 feet)
+    const VISIBILITY_RANGE = 3;
     const nearbyMonsters = state.activeHunt.monsters.filter(
-      (m) => !m.captured && isInCaptureRange(state.playerLocation!, m.location, 100)
+      (m) => !m.captured && isInCaptureRange(state.playerLocation!, m.location, VISIBILITY_RANGE)
     );
     dispatch({ type: 'SET_NEARBY_MONSTERS', monsters: nearbyMonsters });
 
     const nearbyStops = state.activeHunt.satStops.filter((s) =>
-      isAtSatStop(state.playerLocation!, s.location, 50)
+      isAtSatStop(state.playerLocation!, s.location)
     );
     dispatch({ type: 'SET_NEARBY_STOPS', stops: nearbyStops });
   }, [state.playerLocation, state.activeHunt]);

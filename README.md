@@ -58,15 +58,30 @@ Think Pokémon GO meets Bitcoin treasure hunting with a cypherpunk aesthetic!
 
 ---
 
-## 🎲 Creature Rarities
+## 🎲 The 11 Creature Types
 
-| Rarity | Examples | Sat Multiplier | Spawn Rate |
-|--------|----------|----------------|------------|
-| **Common** 🟢 | Ratasat, Saterpie, Satgey | 0.5x - 1x | 50% |
-| **Uncommon** 🔵 | Mesatpod, Satgeotto, Ratisate | 1x - 2x | 30% |
-| **Rare** 💎 | Saterfree, Satgeot, Freedom Fox | 2x - 5x | 13% |
-| **Legendary** 🟣 | Bulsatba, Satmander, Saturtle | 5x - 15x | 5% |
-| **Mythic** 👑 | Pisatchu, The Anonymous One | 15x - 50x | 2% |
+Sat Hunter features **exactly 11 unique creature types**, each with fixed rarity and spawn mechanics:
+
+| Rarity | Type | Sat Value | Spawns Per Hunt |
+|--------|------|-----------|-----------------|
+| **Common** 🟢 | Ratasat | Low | ~50% of total |
+| **Common** 🟢 | Saterpie | Low | ~50% of total |
+| **Common** 🟢 | Satgey | Low | ~50% of total |
+| **Uncommon** 🔵 | Mesatpod | Medium-Low | ~25% of total |
+| **Uncommon** 🔵 | Satgeotto | Medium-Low | ~25% of total |
+| **Rare** 💎 | Saterfree | Medium | ~15% of total |
+| **Rare** 💎 | Satgeot | Medium | ~15% of total |
+| **Legendary** 🟣 | Bulsatba | High | ~9% of total |
+| **Legendary** 🟣 | Satmander | High | ~9% of total |
+| **Legendary** 🟣 | Saturtle | High | ~9% of total |
+| **Mythic** 👑 | Pisatchu | **Highest** | **Exactly 1** |
+
+### Spawn Mechanics
+- **Mythic (Pisatchu)**: Always spawns exactly **once per hunt** with the highest sat value
+- **Legendary**: ~9% spawn rate, high sat rewards
+- **Rare**: ~15% spawn rate, medium sat rewards
+- **Uncommon**: ~25% spawn rate, medium-low sat rewards
+- **Common**: ~50% spawn rate, lowest sat denominations (most abundant)
 
 ---
 
@@ -156,10 +171,13 @@ Think Pokémon GO meets Bitcoin treasure hunting with a cypherpunk aesthetic!
 
 ### Location Mechanics
 
-- **Capture range**: 50 meters from creature
-- **SatStop range**: 30 meters from stop
+- **Visibility range**: 3 meters (~10 feet) - creatures only appear on your map when you're this close
+- **Capture range**: 3 meters from creature
+- **SatStop range**: 10 meters from stop
 - **Cooldown**: 5 minutes between collections at same stop
 - **GPS accuracy**: High accuracy mode required
+- **Geofence**: Clearly marked boundaries visible on player map
+- **Discovery**: Players must physically explore to find creatures (no markers until in range)
 
 ---
 

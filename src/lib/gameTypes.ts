@@ -119,46 +119,34 @@ export interface MonsterGenConfig {
   geoFence: GeoFence;
 }
 
-// Rarity weights for distribution
+// Rarity weights for distribution (percentage of total spawns)
+// Common spawns the most, mythic only once
 export const RARITY_WEIGHTS: Record<MonsterRarity, number> = {
-  common: 50,
-  uncommon: 30,
-  rare: 13,
-  legendary: 5,
-  mythic: 2,
+  common: 50,    // ~50% of all spawns
+  uncommon: 25,  // ~25% of all spawns
+  rare: 15,      // ~15% of all spawns
+  legendary: 9,  // ~9% of all spawns
+  mythic: 1,     // Exactly 1 spawn per hunt
 };
 
 // Rarity multipliers for sat distribution
+// Mythic gets the highest value, common gets smallest
 export const RARITY_MULTIPLIERS: Record<MonsterRarity, { min: number; max: number }> = {
-  common: { min: 0.5, max: 1.0 },
-  uncommon: { min: 1.0, max: 2.0 },
-  rare: { min: 2.0, max: 5.0 },
-  legendary: { min: 5.0, max: 15.0 },
-  mythic: { min: 15.0, max: 50.0 },
+  common: { min: 0.3, max: 0.7 },     // Smallest denomination
+  uncommon: { min: 0.8, max: 1.5 },
+  rare: { min: 2.0, max: 4.0 },
+  legendary: { min: 5.0, max: 10.0 },
+  mythic: { min: 20.0, max: 30.0 },   // Highest value - only 1 per hunt
 };
 
 // Pokémon-inspired monster names with cypherpunk theme
+// Fixed set of 11 total monster types
 export const MONSTER_NAMES = {
-  common: [
-    'Ratasat', 'Saterpie', 'Satgey', 'Satdle', 'Bittle',
-    'Pepechu', 'Satby', 'Nodeon', 'Hashrat', 'Blocklett'
-  ],
-  uncommon: [
-    'Mesatpod', 'Satgeotto', 'Ratisate', 'Pepemon', 'Lightning Lemur',
-    'Hashbug', 'Nodepup', 'Cyphercat', 'Blockbun', 'Chainling'
-  ],
-  rare: [
-    'Saterfree', 'Satgeot', 'Freedom Fox', 'Hash Hawk', 'Lightning Lord',
-    'Nakamoto Naga', 'Cypherpunk Chimera', 'Sovereign Serpent', 'Privacy Panther', 'Rebel Raven'
-  ],
-  legendary: [
-    'Bulsatba', 'Satmander', 'Saturtle', 'Guy Fawkes Ghost', 'Pepe Prime',
-    'Bitcoin Basilisk', 'Anon Alpha', 'Cipher Cerberus', 'Revolution Rex', 'Freedom Phoenix'
-  ],
-  mythic: [
-    'Pisatchu', 'The Anonymous One', 'Genesis Ghost', 'Hal Finney Spirit',
-    'The Orange Pill Dragon', 'Ultimate Pepe', 'Freedom Incarnate', 'The Sovereign', 'Lightning Emperor', 'Cypherpunk God'
-  ],
+  common: ['Ratasat', 'Saterpie', 'Satgey'], // 3 types
+  uncommon: ['Mesatpod', 'Satgeotto'], // 2 types
+  rare: ['Saterfree', 'Satgeot'], // 2 types
+  legendary: ['Bulsatba', 'Satmander', 'Saturtle'], // 3 types
+  mythic: ['Pisatchu'], // 1 type - THE rarest, only spawns once per hunt
 };
 
 // Monster emojis by rarity (Pokémon-inspired)

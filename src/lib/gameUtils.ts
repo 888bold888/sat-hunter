@@ -97,12 +97,15 @@ export function createGeoFence(center: GeoLocation, radiusMeters: number): GeoFe
   };
 }
 
-// Select random rarity based on weights
+// Select random rarity based on weights (excludes mythic - handled separately)
 function selectRarity(): MonsterRarity {
-  const totalWeight = Object.values(RARITY_WEIGHTS).reduce((sum, w) => sum + w, 0);
+  const weights = { ...RARITY_WEIGHTS };
+  delete weights.mythic; // Mythic is guaranteed, not random
+
+  const totalWeight = Object.values(weights).reduce((sum, w) => sum + w, 0);
   let random = Math.random() * totalWeight;
 
-  for (const [rarity, weight] of Object.entries(RARITY_WEIGHTS)) {
+  for (const [rarity, weight] of Object.entries(weights)) {
     random -= weight;
     if (random <= 0) {
       return rarity as MonsterRarity;
@@ -112,7 +115,7 @@ function selectRarity(): MonsterRarity {
   return 'common';
 }
 
-// Generate random monster name
+// Generate random monster name from the fixed set of types
 function generateMonsterName(rarity: MonsterRarity): string {
   const names = MONSTER_NAMES[rarity];
   return names[Math.floor(Math.random() * names.length)];
@@ -163,10 +166,19 @@ function getMonsterType(name: string): string {
 export function generateMonsters(config: MonsterGenConfig): Monster[] {
   const { totalSats, monsterCount, geoFence } = config;
 
-  // Determine rarities for all monsters
-  const rarities: MonsterRarity[] = Array(monsterCount)
-    .fill(null)
-    .map(() => selectRarity());
+  // ALWAYS spawn exactly 1 mythic creature (Pisatchu)
+  const rarities: MonsterRarity[] = ['mythic'];
+
+  // Generate remaining monsters (excluding the 1 mythic)
+  for (let i = 1; i < monsterCount; i++) {
+    rarities.push(selectRarity());
+  }
+
+  // Shuffle to randomize mythic position
+  for (let i = rarities.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [rarities[i], rarities[j]] = [rarities[j], rarities[i]];
+  }
 
   // Distribute sats based on rarities
   const satAmounts = distributeSats(totalSats, monsterCount, rarities);
@@ -324,20 +336,20 @@ export function calculateLeaderboard(
   }));
 }
 
-// Check if monster is within capture range (50 meters default)
+// Check if monster is within capture range (3 meters = ~10 feet)
 export function isInCaptureRange(
   playerLocation: GeoLocation,
   monsterLocation: GeoLocation,
-  rangeMeters: number = 50
+  rangeMeters: number = 3
 ): boolean {
   return calculateDistance(playerLocation, monsterLocation) <= rangeMeters;
 }
 
-// Check if player is at a sat stop
+// Check if player is at a sat stop (10 meters range)
 export function isAtSatStop(
   playerLocation: GeoLocation,
   stopLocation: GeoLocation,
-  rangeMeters: number = 30
+  rangeMeters: number = 10
 ): boolean {
   return calculateDistance(playerLocation, stopLocation) <= rangeMeters;
 }

@@ -29,6 +29,12 @@ export function GameMap({ selectedMonster, selectedStop, onSelectMonster, onSele
   const availableMonsters = getAvailableMonsters();
   const availableStops = getAvailableStops();
 
+  // Filter monsters to only show those within 10 feet (3 meters) of player
+  const VISIBILITY_RANGE_METERS = 3; // 10 feet ≈ 3 meters
+  const visibleMonsters = playerLocation
+    ? availableMonsters.filter(m => calculateDistance(playerLocation, m.location) <= VISIBILITY_RANGE_METERS)
+    : [];
+
   // Update map dimensions on resize
   useEffect(() => {
     const updateDimensions = () => {
@@ -119,8 +125,12 @@ export function GameMap({ selectedMonster, selectedStop, onSelectMonster, onSele
           backgroundSize: '20px 20px, 50px 50px, 50px 50px',
         }}
       >
-        {/* Geofence boundary visualization */}
-        <div className="absolute inset-4 border-2 border-dashed border-primary/30 rounded-lg pointer-events-none" />
+        {/* Geofence boundary - clearly visible to players */}
+        <div className="absolute inset-8 border-4 border-dashed border-primary/50 rounded-lg pointer-events-none">
+          <div className="absolute -top-6 left-4 bg-primary/90 text-primary-foreground px-3 py-1 rounded-full text-xs font-display font-bold">
+            Hunt Boundary
+          </div>
+        </div>
 
         {/* Sat Stops */}
         {activeHunt.satStops.map((stop) => {
@@ -150,8 +160,8 @@ export function GameMap({ selectedMonster, selectedStop, onSelectMonster, onSele
           );
         })}
 
-        {/* Monsters */}
-        {availableMonsters.map((monster) => {
+        {/* Monsters - only visible within 10 feet (3m) of player */}
+        {visibleMonsters.map((monster) => {
           const pos = geoToPixel(monster.location);
           if (!pos) return null;
           const isInRange = playerLocation ? isInCaptureRange(playerLocation, monster.location) : false;

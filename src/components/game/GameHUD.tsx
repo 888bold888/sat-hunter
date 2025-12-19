@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useGame } from '@/contexts/GameContext';
-import { formatSats, formatTimeRemaining } from '@/lib/gameUtils';
+import { formatSats, formatTimeRemaining, calculateDistance } from '@/lib/gameUtils';
 import { Badge } from '@/components/ui/badge';
 import { Card } from '@/components/ui/card';
 import { Progress } from '@/components/ui/progress';
@@ -51,11 +51,15 @@ export function GameHUD({ onOpenLeaderboard, onOpenInventory }: GameHUDProps) {
   if (!activeHunt) return null;
 
   const availableMonsters = getAvailableMonsters();
+
+  // Only show monsters within 3 meters (10 feet) visibility range
+  const VISIBILITY_RANGE_METERS = 3;
+  const visibleMonsters = playerLocation
+    ? availableMonsters.filter(m => calculateDistance(playerLocation, m.location) <= VISIBILITY_RANGE_METERS)
+    : [];
+
   const capturedCount = activeHunt.monsters.filter((m) => m.captured).length;
   const progress = (capturedCount / activeHunt.monsterCount) * 100;
-  const satsRemaining =
-    activeHunt.totalSats -
-    activeHunt.monsters.filter((m) => m.captured).reduce((sum, m) => sum + m.satAmount, 0);
 
   const isHuntEnded = Date.now() > activeHunt.endTime;
 
@@ -85,19 +89,19 @@ export function GameHUD({ onOpenLeaderboard, onOpenInventory }: GameHUDProps) {
               </Badge>
             </div>
 
-            {/* Progress Bar */}
+            {/* Progress Bar - player only sees their own progress */}
             <div className="space-y-1">
               <div className="flex items-center justify-between text-xs text-muted-foreground">
                 <span className="flex items-center gap-1">
                   <Skull className="w-3 h-3" />
-                  {capturedCount}/{activeHunt.monsterCount} captured
+                  You: {playerStats.totalCaptured} captured
                 </span>
                 <span className="flex items-center gap-1">
-                  <Zap className="w-3 h-3 text-primary" />
-                  {formatSats(satsRemaining)} sats remaining
+                  <Clock className="w-3 h-3" />
+                  {timeRemaining}
                 </span>
               </div>
-              <Progress value={progress} className="h-2 bg-muted" />
+              <Progress value={(playerStats.totalCaptured / activeHunt.monsterCount) * 100} className="h-2 bg-muted" />
             </div>
 
             {/* Quick Stats Row */}
@@ -114,10 +118,10 @@ export function GameHUD({ onOpenLeaderboard, onOpenInventory }: GameHUDProps) {
                   {locationError ? 'No GPS' : playerLocation ? 'Tracking' : 'Loading...'}
                 </div>
 
-                {/* Nearby Monsters */}
+                {/* Nearby Monsters - only within 10 feet */}
                 <div className="flex items-center gap-1 text-primary">
                   <MapPin className="w-3 h-3" />
-                  {availableMonsters.length} nearby
+                  {visibleMonsters.length} nearby
                 </div>
               </div>
 

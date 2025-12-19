@@ -237,7 +237,7 @@ const Index = () => {
           <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
             {[
               { icon: Zap, value: '21M', label: 'Sats Available', color: 'primary' },
-              { icon: Skull, value: '∞', label: 'Creatures', color: 'accent' },
+              { icon: Skull, value: '11', label: 'Creature Types', color: 'accent' },
               { icon: Users, value: 'P2P', label: 'Decentralized', color: 'secondary' },
               { icon: Clock, value: '⚡', label: 'Instant Payouts', color: 'primary' },
             ].map((stat) => (
