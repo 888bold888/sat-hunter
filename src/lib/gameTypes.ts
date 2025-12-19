@@ -156,8 +156,8 @@ export const MONSTER_NAMES = {
     'Bitcoin Basilisk', 'Anon Alpha', 'Cipher Cerberus', 'Revolution Rex', 'Freedom Phoenix'
   ],
   mythic: [
-    'Pisatchu', 'Satoshi Nakamoto', 'The Anonymous One', 'Genesis Ghost', 'Hal Finney Spirit',
-    'The Orange Pill Dragon', 'Ultimate Pepe', 'Freedom Incarnate', 'The Sovereign', 'Lightning Emperor'
+    'Pisatchu', 'The Anonymous One', 'Genesis Ghost', 'Hal Finney Spirit',
+    'The Orange Pill Dragon', 'Ultimate Pepe', 'Freedom Incarnate', 'The Sovereign', 'Lightning Emperor', 'Cypherpunk God'
   ],
 };
 

@@ -66,7 +66,7 @@ Think Pokémon GO meets Bitcoin treasure hunting with a cypherpunk aesthetic!
 | **Uncommon** 🔵 | Mesatpod, Satgeotto, Ratisate | 1x - 2x | 30% |
 | **Rare** 💎 | Saterfree, Satgeot, Freedom Fox | 2x - 5x | 13% |
 | **Legendary** 🟣 | Bulsatba, Satmander, Saturtle | 5x - 15x | 5% |
-| **Mythic** 👑 | Pisatchu, Satoshi Nakamoto | 15x - 50x | 2% |
+| **Mythic** 👑 | Pisatchu, The Anonymous One | 15x - 50x | 2% |
 
 ---
 
