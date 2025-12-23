@@ -21,6 +21,7 @@ import {
 } from '@/lib/gameUtils';
 import type { HuntStatus, HuntParticipant } from '@/lib/gameTypes';
 import { isMockLocationEnabled, getMockLocation } from '@/lib/devMode';
+import { NWC } from '@getalby/sdk/dist/nwc'; // Added for refunds
 
 interface GameState {
   activeHunt: HuntEvent | null;
@@ -71,22 +72,16 @@ function gameReducer(state: GameState, action: GameAction): GameState {
   switch (action.type) {
     case 'SET_ACTIVE_HUNT':
       return { ...state, activeHunt: action.hunt };
-
     case 'UPDATE_HUNT':
       return { ...state, activeHunt: action.hunt };
-
     case 'SET_PLAYER_LOCATION':
       return { ...state, playerLocation: action.location, locationError: null };
-
     case 'SET_LOCATION_ERROR':
       return { ...state, locationError: action.error };
-
     case 'SET_NEARBY_MONSTERS':
       return { ...state, nearbyMonsters: action.monsters };
-
     case 'SET_NEARBY_STOPS':
       return { ...state, nearbySatStops: action.stops };
-
     case 'CAPTURE_MONSTER': {
       const capturedMonster: CapturedMonster = {
         monsterId: action.monster.id,
@@ -96,7 +91,6 @@ function gameReducer(state: GameState, action: GameAction): GameState {
         capturedAt: Date.now(),
         huntId: state.activeHunt?.id ?? '',
       };
-
       return {
         ...state,
         playerStats: {
@@ -117,7 +111,6 @@ function gameReducer(state: GameState, action: GameAction): GameState {
           : null,
       };
     }
-
     case 'COLLECT_BALLS':
       return {
         ...state,
@@ -134,7 +127,6 @@ function gameReducer(state: GameState, action: GameAction): GameState {
             }
           : null,
       };
-
     case 'USE_BALL':
       return {
         ...state,
@@ -143,19 +135,14 @@ function gameReducer(state: GameState, action: GameAction): GameState {
           balls: Math.max(0, state.playerStats.balls - 1),
         },
       };
-
     case 'SET_CAPTURING':
       return { ...state, isCapturing: action.capturing };
-
     case 'SET_WATCH_ID':
       return { ...state, watchId: action.watchId };
-
     case 'RESET_PLAYER_STATS':
       return { ...state, playerStats: initialPlayerStats };
-
     case 'LOAD_PLAYER_STATS':
       return { ...state, playerStats: action.stats };
-
     default:
       return state;
   }
@@ -185,6 +172,7 @@ interface GameContextType {
   stopLocationTracking: () => void;
   getAvailableMonsters: () => Monster[];
   getAvailableStops: () => SatStop[];
+  refundUnclaimed: () => void; // Added for refunds
 }
 
 const GameContext = createContext<GameContextType | null>(null);
@@ -234,21 +222,33 @@ export function GameProvider({ children }: { children: ReactNode }) {
   // Update nearby entities when location changes
   useEffect(() => {
     if (!state.playerLocation || !state.activeHunt) return;
-
     // Monsters only visible within 3 meters (10 feet)
     const VISIBILITY_RANGE = 3;
     const nearbyMonsters = state.activeHunt.monsters.filter(
       (m) => !m.captured && isInCaptureRange(state.playerLocation!, m.location, VISIBILITY_RANGE)
     );
     dispatch({ type: 'SET_NEARBY_MONSTERS', monsters: nearbyMonsters });
-
     const nearbyStops = state.activeHunt.satStops.filter((s) =>
       isAtSatStop(state.playerLocation!, s.location)
     );
     dispatch({ type: 'SET_NEARBY_STOPS', stops: nearbyStops });
   }, [state.playerLocation, state.activeHunt]);
 
-  // Create a new hunt (draft mode - needs payment confirmation)
+  // Check for hunt end and refund if host
+  useEffect(() => {
+    const interval = setInterval(() => {
+      if (state.activeHunt && state.activeHunt.endTime < Date.now() && state.activeHunt.status !== 'ended') {
+        const endedHunt = { ...state.activeHunt, status: 'ended' as HuntStatus };
+        dispatch({ type: 'UPDATE_HUNT', hunt: endedHunt });
+        if (isHost()) {
+          refundUnclaimed();
+        }
+      }
+    }, 60000); // Check every minute
+    return () => clearInterval(interval);
+  }, [state.activeHunt, isHost, refundUnclaimed]);
+
+  // Create a new hunt (pending payment)
   const createHunt = useCallback(
     (config: {
       name: string;
@@ -266,10 +266,8 @@ export function GameProvider({ children }: { children: ReactNode }) {
         geoFence,
       });
       const satStops = generateSatStops(geoFence, Math.min(10, Math.floor(config.monsterCount / 10)));
-
       const now = Date.now();
       const shareCode = generateShareCode();
-
       const hunt: HuntEvent = {
         id: generateId(),
         name: config.name,
@@ -289,85 +287,36 @@ export function GameProvider({ children }: { children: ReactNode }) {
         shareUrl: generateShareUrl(shareCode),
         participants: [],
       };
-
       dispatch({ type: 'SET_ACTIVE_HUNT', hunt });
       return hunt;
     },
     [user?.pubkey]
   );
 
-  // Confirm payment and activate the hunt
+  // Confirm payment and set to ready (no auto-active)
   const confirmPayment = useCallback(() => {
-    if (!state.activeHunt) return;
-
-    const activatedHunt: HuntEvent = {
+    if (!state.activeHunt || state.activeHunt.paymentStatus !== 'pending') return;
+    const readyHunt: HuntEvent = {
       ...state.activeHunt,
       status: 'ready',
       paymentStatus: 'paid',
-      startTime: Date.now(), // Reset start time to now
-      endTime: Date.now() + (state.activeHunt.endTime - state.activeHunt.startTime), // Preserve duration
+      startTime: Date.now(),
+      endTime: Date.now() + (state.activeHunt.endTime - state.activeHunt.startTime),
     };
-
-    dispatch({ type: 'SET_ACTIVE_HUNT', hunt: activatedHunt });
+    dispatch({ type: 'UPDATE_HUNT', hunt: readyHunt });
   }, [state.activeHunt]);
 
-  // Start the hunt (after payment confirmed)
+  // Start the hunt (only if ready/paid)
   const startHunt = useCallback(() => {
-    if (!state.activeHunt || state.activeHunt.status !== 'ready') return;
-
+    if (!state.activeHunt || state.activeHunt.status !== 'ready' || state.activeHunt.paymentStatus !== 'paid') return;
     const activeHunt: HuntEvent = {
       ...state.activeHunt,
       status: 'active',
       startTime: Date.now(),
       endTime: Date.now() + (state.activeHunt.endTime - state.activeHunt.startTime),
     };
-
-    dispatch({ type: 'SET_ACTIVE_HUNT', hunt: activeHunt });
+    dispatch({ type: 'UPDATE_HUNT', hunt: activeHunt });
   }, [state.activeHunt]);
-
-  // Add participant to hunt
-  const addParticipant = useCallback((pubkey: string) => {
-    if (!state.activeHunt) return;
-
-    // Check if already a participant
-    if (state.activeHunt.participants.some(p => p.pubkey === pubkey)) return;
-
-    const newParticipant: HuntParticipant = {
-      pubkey,
-      joinedAt: Date.now(),
-      totalCaptured: 0,
-      totalSatsEarned: 0,
-    };
-
-    const updatedHunt: HuntEvent = {
-      ...state.activeHunt,
-      participants: [...state.activeHunt.participants, newParticipant],
-    };
-
-    dispatch({ type: 'SET_ACTIVE_HUNT', hunt: updatedHunt });
-  }, [state.activeHunt]);
-
-  // Update participant location (for host dashboard)
-  const updateParticipantLocation = useCallback((pubkey: string, location: GeoLocation) => {
-    if (!state.activeHunt) return;
-
-    const updatedHunt: HuntEvent = {
-      ...state.activeHunt,
-      participants: state.activeHunt.participants.map(p =>
-        p.pubkey === pubkey
-          ? { ...p, lastLocation: location, lastLocationUpdate: Date.now() }
-          : p
-      ),
-    };
-
-    dispatch({ type: 'SET_ACTIVE_HUNT', hunt: updatedHunt });
-  }, [state.activeHunt]);
-
-  // Check if current user is the host
-  const isHost = useCallback((): boolean => {
-    if (!state.activeHunt || !user?.pubkey) return false;
-    return state.activeHunt.hostPubkey === user.pubkey;
-  }, [state.activeHunt, user?.pubkey]);
 
   // Join an existing hunt
   const joinHunt = useCallback((hunt: HuntEvent) => {
@@ -379,6 +328,44 @@ export function GameProvider({ children }: { children: ReactNode }) {
     dispatch({ type: 'SET_ACTIVE_HUNT', hunt: null });
   }, []);
 
+  // Add participant to hunt
+  const addParticipant = useCallback((pubkey: string) => {
+    if (!state.activeHunt) return;
+    // Check if already a participant
+    if (state.activeHunt.participants.some(p => p.pubkey === pubkey)) return;
+    const newParticipant: HuntParticipant = {
+      pubkey,
+      joinedAt: Date.now(),
+      totalCaptured: 0,
+      totalSatsEarned: 0,
+    };
+    const updatedHunt: HuntEvent = {
+      ...state.activeHunt,
+      participants: [...state.activeHunt.participants, newParticipant],
+    };
+    dispatch({ type: 'UPDATE_HUNT', hunt: updatedHunt });
+  }, [state.activeHunt]);
+
+  // Update participant location (for host dashboard)
+  const updateParticipantLocation = useCallback((pubkey: string, location: GeoLocation) => {
+    if (!state.activeHunt) return;
+    const updatedHunt: HuntEvent = {
+      ...state.activeHunt,
+      participants: state.activeHunt.participants.map(p =>
+        p.pubkey === pubkey
+          ? { ...p, lastLocation: location, lastLocationUpdate: Date.now() }
+          : p
+      ),
+    };
+    dispatch({ type: 'UPDATE_HUNT', hunt: updatedHunt });
+  }, [state.activeHunt]);
+
+  // Check if current user is the host
+  const isHost = useCallback((): boolean => {
+    if (!state.activeHunt || !user?.pubkey) return false;
+    return state.activeHunt.hostPubkey === user.pubkey;
+  }, [state.activeHunt, user?.pubkey]);
+
   // Capture a monster
   const captureMonster = useCallback(
     (monster: Monster): boolean => {
@@ -386,7 +373,6 @@ export function GameProvider({ children }: { children: ReactNode }) {
       if (monster.captured) return false;
       if (!state.playerLocation) return false;
       if (!isInCaptureRange(state.playerLocation, monster.location)) return false;
-
       dispatch({ type: 'USE_BALL' });
       dispatch({ type: 'CAPTURE_MONSTER', monster });
       return true;
@@ -399,17 +385,35 @@ export function GameProvider({ children }: { children: ReactNode }) {
     (stop: SatStop): boolean => {
       if (!state.playerLocation) return false;
       if (!isAtSatStop(state.playerLocation, stop.location)) return false;
-
       // Check cooldown
       if (stop.lastCollected && Date.now() - stop.lastCollected < stop.cooldownMs) {
         return false;
       }
-
       dispatch({ type: 'COLLECT_BALLS', stopId: stop.id, balls: stop.ballsPerCollection });
       return true;
     },
     [state.playerLocation]
   );
+
+  // Refund unclaimed sats to host
+  const refundUnclaimed = useCallback(async () => {
+    if (!state.activeHunt || !isHost() || state.activeHunt.status !== 'ended') return;
+    const unclaimedMonsters = state.activeHunt.monsters.filter(m => !m.captured);
+    const unclaimedSats = unclaimedMonsters.reduce((sum, m) => sum + m.satAmount, 0);
+    if (unclaimedSats <= 0) return;
+
+    try {
+      const nwc = new NWC({ nostrWalletConnectUrl: user?.nwcUrl || '' }); // Assume user has NWC URL
+      const refundInvoice = await generateHostRefundInvoice(unclaimedSats); // Implement: generate invoice for host
+      const result = await nwc.payInvoice({ invoice: refundInvoice });
+      if (result.preimage) {
+        console.log(`Refunded ${unclaimedSats} sats to host`);
+        // Optional: Update hunt with refund status
+      }
+    } catch (error) {
+      console.error('Refund failed', error);
+    }
+  }, [state.activeHunt, isHost, user]);
 
   // Start location tracking
   const startLocationTracking = useCallback(() => {
@@ -422,12 +426,10 @@ export function GameProvider({ children }: { children: ReactNode }) {
         return;
       }
     }
-
     if (!navigator.geolocation) {
       dispatch({ type: 'SET_LOCATION_ERROR', error: 'Geolocation is not supported by your browser' });
       return;
     }
-
     // Check if the page is served over HTTPS or localhost
     const isSecureContext = window.isSecureContext || window.location.hostname === 'localhost';
     if (!isSecureContext) {
@@ -437,7 +439,6 @@ export function GameProvider({ children }: { children: ReactNode }) {
       });
       return;
     }
-
     const watchId = navigator.geolocation.watchPosition(
       (position) => {
         dispatch({
@@ -450,7 +451,6 @@ export function GameProvider({ children }: { children: ReactNode }) {
       },
       (error) => {
         let errorMessage = 'Location error occurred';
-
         switch (error.code) {
           case error.PERMISSION_DENIED:
             errorMessage = 'Please enable location permissions in your browser settings to play';
@@ -464,7 +464,6 @@ export function GameProvider({ children }: { children: ReactNode }) {
           default:
             errorMessage = error.message;
         }
-
         dispatch({ type: 'SET_LOCATION_ERROR', error: errorMessage });
       },
       {
@@ -473,7 +472,6 @@ export function GameProvider({ children }: { children: ReactNode }) {
         timeout: 15000,
       }
     );
-
     dispatch({ type: 'SET_WATCH_ID', watchId });
   }, []);
 
@@ -519,6 +517,7 @@ export function GameProvider({ children }: { children: ReactNode }) {
         stopLocationTracking,
         getAvailableMonsters,
         getAvailableStops,
+        refundUnclaimed,
       }}
     >
       {children}
@@ -532,4 +531,11 @@ export function useGame() {
     throw new Error('useGame must be used within a GameProvider');
   }
   return context;
+}
+
+// Helper for refund invoice (add to gameUtils.ts if needed)
+async function generateHostRefundInvoice(amount: number) {
+  const nwc = new NWC({ nostrWalletConnectUrl: 'your-host-nwc-url' }); // Use host's URL
+  const response = await nwc.makeInvoice({ amount });
+  return response.invoice;
 }

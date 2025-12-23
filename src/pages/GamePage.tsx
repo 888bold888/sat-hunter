@@ -18,14 +18,8 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
-import {
-  Tabs,
-  TabsContent,
-  TabsList,
-  TabsTrigger,
-} from '@/components/ui/tabs';
 import { Card, CardContent } from '@/components/ui/card';
-import { Target, ArrowLeft, LogOut, Sparkles, QrCode, Eye, Play } from 'lucide-react';
+import { Target, ArrowLeft, LogOut, Sparkles, QrCode } from 'lucide-react';
 import { Link, useNavigate } from 'react-router-dom';
 
 export default function GamePage() {
@@ -41,7 +35,6 @@ export default function GamePage() {
   const [showCreateHunt, setShowCreateHunt] = useState(false);
   const [capturedMonster, setCapturedMonster] = useState<Monster | null>(null);
   const [showCaptureSuccess, setShowCaptureSuccess] = useState(false);
-  const [activeTab, setActiveTab] = useState<'map' | 'dashboard'>('map');
 
   const userIsHost = isHost();
 

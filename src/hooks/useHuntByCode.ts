@@ -3,41 +3,38 @@ import { useNostr } from '@nostrify/react';
 import type { HuntEvent } from '@/lib/gameTypes';
 
 const HUNT_EVENT_KIND = 32959;
+const CLAIM_EVENT_KIND = 32960; // Assuming a custom kind for claim events
 
 export function useHuntByCode(shareCode: string | undefined) {
   const { nostr } = useNostr();
-
   return useQuery({
     queryKey: ['hunt', shareCode],
     queryFn: async (c) => {
       if (!shareCode) throw new Error('No share code provided');
-
-      const signal = AbortSignal.any([c.signal, AbortSignal.timeout(3000)]);
+      const signal = AbortSignal.any([c.signal, AbortSignal.timeout(10000)]); // Increased timeout to 10s
       
-      // Query for hunt event with this share code (d tag)
+      // Query for hunt event with this share code (d tag), checking both cases
       const events = await nostr.query(
         [
           {
             kinds: [HUNT_EVENT_KIND],
-            '#d': [shareCode.toUpperCase()],
-            limit: 1,
+            '#d': [shareCode.toUpperCase(), shareCode.toLowerCase()],
+            limit: 5, // Increased limit for reliability
           },
         ],
         { signal }
       );
-
       if (events.length === 0) {
         throw new Error('Hunt not found');
       }
-
-      const event = events[0];
-
+      const event = events[0]; // Take the first (latest/relevant)
+      
       // Parse content
       const contentData = JSON.parse(event.content);
-
+      
       // Extract tags
       const getTag = (name: string) => event.tags.find(([n]) => n === name)?.[1];
-
+      
       const hunt: HuntEvent = {
         id: event.id,
         name: getTag('title') || 'Unnamed Hunt',
@@ -59,11 +56,50 @@ export function useHuntByCode(shareCode: string | undefined) {
         shareUrl: `${window.location.origin}/join/${getTag('d') || shareCode}`,
         participants: [],
       };
-
-      return hunt;
+      
+      // Validate payment status before allowing join
+      if (hunt.paymentStatus !== 'confirmed') { // Adjust 'confirmed' to your actual paid status if different
+        throw new Error('Hunt payment not confirmed');
+      }
+      
+      // Query for claim events to calculate unclaimed sats (for refund prep)
+      const claimEvents = await nostr.query(
+        [
+          {
+            kinds: [CLAIM_EVENT_KIND],
+            '#e': [hunt.id], // Reference the hunt event
+            limit: hunt.monsters.length,
+          },
+        ],
+        { signal }
+      );
+      const claimedMonsters = claimEvents.map(ev => {
+        try {
+          return JSON.parse(ev.content).monsterId;
+        } catch {
+          return null;
+        }
+      }).filter(id => id !== null);
+      
+      const unclaimedSats = hunt.monsters
+        .filter(m => !claimedMonsters.includes(m.id)) // Assume monsters have .id and .sats properties
+        .reduce((sum, m) => sum + (m.sats || 0), 0);
+      
+      // Add preview and unclaimed data to returned object
+      return {
+        ...hunt,
+        unclaimedSats,
+        claimedMonsters,
+        preview: {
+          name: hunt.name,
+          sats: hunt.totalSats,
+          creatures: hunt.monsters.length, // Or hunt.monsterCount
+          time: ((hunt.endTime - hunt.startTime) / 1000 / 60).toFixed(0) + ' minutes', // Simple duration
+        }
+      };
     },
     enabled: !!shareCode && shareCode.length >= 6,
-    retry: 2,
+    retry: (failureCount, error) => error.message !== 'Hunt not found' && failureCount < 2, // Adjusted retry logic
     staleTime: 30000, // 30 seconds
   });
 }
