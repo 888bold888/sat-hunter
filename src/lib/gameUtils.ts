@@ -99,14 +99,19 @@ export function createGeoFence(center: GeoLocation, radiusMeters: number): GeoFe
 
 // Select random rarity based on weights (excludes mythic - handled separately)
 function selectRarity(): MonsterRarity {
-  const weights = { ...RARITY_WEIGHTS };
-  delete weights.mythic; // Mythic is guaranteed, not random
+  // Create weights without mythic (mythic is guaranteed, not random)
+  const weights: Partial<typeof RARITY_WEIGHTS> = {
+    common: RARITY_WEIGHTS.common,
+    uncommon: RARITY_WEIGHTS.uncommon,
+    rare: RARITY_WEIGHTS.rare,
+    legendary: RARITY_WEIGHTS.legendary,
+  };
 
-  const totalWeight = Object.values(weights).reduce((sum, w) => sum + w, 0);
+  const totalWeight = Object.values(weights).reduce((sum, w) => sum + (w ?? 0), 0);
   let random = Math.random() * totalWeight;
 
   for (const [rarity, weight] of Object.entries(weights)) {
-    random -= weight;
+    random -= weight ?? 0;
     if (random <= 0) {
       return rarity as MonsterRarity;
     }

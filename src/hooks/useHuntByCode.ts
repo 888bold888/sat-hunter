@@ -58,7 +58,7 @@ export function useHuntByCode(shareCode: string | undefined) {
       };
       
       // Validate payment status before allowing join
-      if (hunt.paymentStatus !== 'confirmed') { // Adjust 'confirmed' to your actual paid status if different
+      if (hunt.paymentStatus !== 'paid') {
         throw new Error('Hunt payment not confirmed');
       }
       
@@ -82,8 +82,8 @@ export function useHuntByCode(shareCode: string | undefined) {
       }).filter(id => id !== null);
       
       const unclaimedSats = hunt.monsters
-        .filter(m => !claimedMonsters.includes(m.id)) // Assume monsters have .id and .sats properties
-        .reduce((sum, m) => sum + (m.sats || 0), 0);
+        .filter(m => !claimedMonsters.includes(m.id))
+        .reduce((sum, m) => sum + (m.satAmount || 0), 0);
       
       // Add preview and unclaimed data to returned object
       return {

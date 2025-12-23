@@ -10,7 +10,7 @@ import {
   DialogTitle,
   DialogTrigger,
 } from '@/components/ui/dialog';
-import { QrCode, X, Camera, AlertCircle } from 'lucide-react';
+import { QrCode, Camera, AlertCircle } from 'lucide-react';
 
 interface QRScannerProps {
   onCodeScanned: (code: string) => void;
@@ -52,7 +52,7 @@ export function QRScanner({ onCodeScanned }: QRScannerProps) {
             setIsOpen(false);
           }
         },
-        (errorMessage) => {
+        (_errorMessage) => {
           // Ignore scan errors (no QR code in frame)
         }
       );

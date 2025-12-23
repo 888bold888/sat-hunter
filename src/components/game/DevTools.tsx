@@ -23,12 +23,13 @@ import {
 } from '@/lib/devMode';
 
 export function DevTools() {
-  if (!isDevelopmentMode) return null;
-
-  const [mockEnabled, setMockEnabled] = useState(isMockLocationEnabled());
   const mockLoc = getMockLocation() || DEFAULT_TEST_LOCATION;
+  const [mockEnabled, setMockEnabled] = useState(isMockLocationEnabled());
   const [lat, setLat] = useState(mockLoc.lat.toString());
   const [lng, setLng] = useState(mockLoc.lng.toString());
+
+  // Only render in development mode
+  if (!isDevelopmentMode) return null;
 
   const handleToggleMock = (enabled: boolean) => {
     setMockLocationEnabled(enabled);

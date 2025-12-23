@@ -8,6 +8,7 @@ import { CapturedInventory } from '@/components/game/CapturedInventory';
 import { CreateHuntForm } from '@/components/game/CreateHuntForm';
 import { CaptureSuccessDialog } from '@/components/game/CaptureSuccessDialog';
 import { HostDashboard } from '@/components/game/HostDashboard';
+import { PaymentConfirmation } from '@/components/game/PaymentConfirmation';
 import { DevTools } from '@/components/game/DevTools';
 import { useCurrentUser } from '@/hooks/useCurrentUser';
 import { useSeoMeta } from '@unhead/react';
@@ -121,8 +122,10 @@ export default function GamePage() {
   }
 
   // Active hunt view - different for host vs player
-  // Host sees dashboard, player sees game map
+  // Host sees payment confirmation first if not paid, then dashboard
   if (userIsHost) {
+    const needsPayment = activeHunt.status === 'pending_payment' || activeHunt.paymentStatus !== 'paid';
+
     return (
       <div className="min-h-screen bg-background bg-cyber-grid">
         <div className="container max-w-lg mx-auto p-4 py-8 space-y-4">
@@ -135,8 +138,12 @@ export default function GamePage() {
                 </Button>
               </Link>
               <div>
-                <h1 className="font-display text-xl font-bold text-primary">Host Dashboard</h1>
-                <p className="text-xs text-muted-foreground">Monitor your hunt</p>
+                <h1 className="font-display text-xl font-bold text-primary">
+                  {needsPayment ? 'Complete Payment' : 'Host Dashboard'}
+                </h1>
+                <p className="text-xs text-muted-foreground">
+                  {needsPayment ? 'Pay to activate your hunt' : 'Monitor your hunt'}
+                </p>
               </div>
             </div>
             <Button
@@ -146,12 +153,12 @@ export default function GamePage() {
               onClick={leaveHunt}
             >
               <LogOut className="w-4 h-4 mr-1" />
-              End
+              {needsPayment ? 'Cancel' : 'End'}
             </Button>
           </div>
 
-          {/* Host Dashboard */}
-          <HostDashboard />
+          {/* Show PaymentConfirmation if not paid, otherwise HostDashboard */}
+          {needsPayment ? <PaymentConfirmation /> : <HostDashboard />}
 
           {/* Dev Tools */}
           <DevTools />

@@ -1,12 +1,12 @@
 import { useEffect, useRef } from 'react';
 import type { Monster, SatStop, GeoLocation } from '@/lib/gameTypes';
-import { calculateDistance, getRarityColor, formatSats } from '@/lib/gameUtils';
+import { calculateDistance, formatSats } from '@/lib/gameUtils';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import { cn } from '@/lib/utils';
 
-// Fix Leaflet default marker icons
-delete (L.Icon.Default.prototype as any)._getIconUrl;
+// Fix Leaflet default marker icons - uses delete on prototype which requires type assertion
+delete (L.Icon.Default.prototype as unknown as Record<string, unknown>)._getIconUrl;
 L.Icon.Default.mergeOptions({
   iconRetinaUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/images/marker-icon-2x.png',
   iconUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/images/marker-icon.png',

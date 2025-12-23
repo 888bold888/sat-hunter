@@ -20,7 +20,7 @@ interface CaptureSuccessDialogProps {
 }
 
 export function CaptureSuccessDialog({ monster, open, onClose }: CaptureSuccessDialogProps) {
-  const [showConfetti, setShowConfetti] = useState(false);
+  const [, setShowConfetti] = useState(false);
 
   useEffect(() => {
     if (open && monster) {

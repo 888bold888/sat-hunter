@@ -21,7 +21,6 @@ import {
 } from '@/lib/gameUtils';
 import type { HuntStatus, HuntParticipant } from '@/lib/gameTypes';
 import { isMockLocationEnabled, getMockLocation } from '@/lib/devMode';
-import { NWC } from '@getalby/sdk/dist/nwc'; // Added for refunds
 
 interface GameState {
   activeHunt: HuntEvent | null;
@@ -234,19 +233,7 @@ export function GameProvider({ children }: { children: ReactNode }) {
     dispatch({ type: 'SET_NEARBY_STOPS', stops: nearbyStops });
   }, [state.playerLocation, state.activeHunt]);
 
-  // Check for hunt end and refund if host
-  useEffect(() => {
-    const interval = setInterval(() => {
-      if (state.activeHunt && state.activeHunt.endTime < Date.now() && state.activeHunt.status !== 'ended') {
-        const endedHunt = { ...state.activeHunt, status: 'ended' as HuntStatus };
-        dispatch({ type: 'UPDATE_HUNT', hunt: endedHunt });
-        if (isHost()) {
-          refundUnclaimed();
-        }
-      }
-    }, 60000); // Check every minute
-    return () => clearInterval(interval);
-  }, [state.activeHunt, isHost, refundUnclaimed]);
+  // Check for hunt end - moved after function definitions to avoid using before declaration
 
   // Create a new hunt (pending payment)
   const createHunt = useCallback(
@@ -395,25 +382,27 @@ export function GameProvider({ children }: { children: ReactNode }) {
     [state.playerLocation]
   );
 
-  // Refund unclaimed sats to host
-  const refundUnclaimed = useCallback(async () => {
+  // Refund unclaimed sats to host (placeholder - requires wallet integration)
+  const refundUnclaimed = useCallback(() => {
     if (!state.activeHunt || !isHost() || state.activeHunt.status !== 'ended') return;
     const unclaimedMonsters = state.activeHunt.monsters.filter(m => !m.captured);
     const unclaimedSats = unclaimedMonsters.reduce((sum, m) => sum + m.satAmount, 0);
     if (unclaimedSats <= 0) return;
+    // Log for now - actual refund requires wallet integration
+    console.log(`Hunt ended. Unclaimed sats: ${unclaimedSats}`);
+  }, [state.activeHunt, isHost]);
 
-    try {
-      const nwc = new NWC({ nostrWalletConnectUrl: user?.nwcUrl || '' }); // Assume user has NWC URL
-      const refundInvoice = await generateHostRefundInvoice(unclaimedSats); // Implement: generate invoice for host
-      const result = await nwc.payInvoice({ invoice: refundInvoice });
-      if (result.preimage) {
-        console.log(`Refunded ${unclaimedSats} sats to host`);
-        // Optional: Update hunt with refund status
+  // Check for hunt end and trigger refund
+  useEffect(() => {
+    const interval = setInterval(() => {
+      if (state.activeHunt && state.activeHunt.endTime < Date.now() && state.activeHunt.status !== 'ended') {
+        const endedHunt = { ...state.activeHunt, status: 'ended' as HuntStatus };
+        dispatch({ type: 'UPDATE_HUNT', hunt: endedHunt });
+        refundUnclaimed();
       }
-    } catch (error) {
-      console.error('Refund failed', error);
-    }
-  }, [state.activeHunt, isHost, user]);
+    }, 60000); // Check every minute
+    return () => clearInterval(interval);
+  }, [state.activeHunt, refundUnclaimed]);
 
   // Start location tracking
   const startLocationTracking = useCallback(() => {
@@ -531,11 +520,4 @@ export function useGame() {
     throw new Error('useGame must be used within a GameProvider');
   }
   return context;
-}
-
-// Helper for refund invoice (add to gameUtils.ts if needed)
-async function generateHostRefundInvoice(amount: number) {
-  const nwc = new NWC({ nostrWalletConnectUrl: 'your-host-nwc-url' }); // Use host's URL
-  const response = await nwc.makeInvoice({ amount });
-  return response.invoice;
 }

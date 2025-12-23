@@ -1,8 +1,19 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useNostr } from '@nostrify/react';
+import type { NostrEvent } from '@nostrify/nostrify';
 import type { HuntEvent } from '@/lib/gameTypes';
 import { useToast } from '@/hooks/useToast';
 import ngeohash from 'ngeohash';
+
+// NIP-07 window.nostr type declaration
+declare global {
+  interface Window {
+    nostr?: {
+      getPublicKey: () => Promise<string>;
+      signEvent: (event: object) => Promise<NostrEvent>;
+    };
+  }
+}
 
 const HUNT_EVENT_KIND = 32959;
 
@@ -13,6 +24,11 @@ export function usePublishHunt() {
 
   return useMutation({
     mutationFn: async (hunt: HuntEvent) => {
+      // Check for NIP-07 signer
+      if (!window.nostr?.signEvent) {
+        throw new Error('No Nostr signer available. Please install a Nostr extension.');
+      }
+
       // Create geohash for the hunt center
       const geohash = ngeohash.encode(hunt.geoFence.center.lat, hunt.geoFence.center.lng, 5);
 
@@ -34,12 +50,13 @@ export function usePublishHunt() {
         satStops: hunt.satStops,
       });
 
-      // Create event with queryable tags
-      const event = await nostr.event({
+      // Create unsigned event template
+      const eventTemplate = {
         kind: HUNT_EVENT_KIND,
+        created_at: Math.floor(Date.now() / 1000),
         content,
         tags: [
-          ['d', hunt.shareCode], // Addressable identifier
+          ['d', hunt.shareCode],
           ['title', hunt.name],
           ['total_sats', hunt.totalSats.toString()],
           ['monster_count', hunt.monsterCount.toString()],
@@ -47,14 +64,20 @@ export function usePublishHunt() {
           ['end_time', Math.floor(hunt.endTime / 1000).toString()],
           ['status', hunt.status],
           ['payment_status', hunt.paymentStatus],
-          ['g', geohash], // Geohash for discovery
+          ['g', geohash],
           ['alt', `Sat Hunter: ${hunt.name} - ${hunt.monsterCount} creatures, ${hunt.totalSats.toLocaleString()} sats`],
           ...(hunt.lightningInvoice ? [['bolt11', hunt.lightningInvoice]] : []),
           ...(hunt.paymentHash ? [['payment_hash', hunt.paymentHash]] : []),
         ],
-      });
+      };
 
-      return event;
+      // Sign event using NIP-07
+      const signedEvent = await window.nostr.signEvent(eventTemplate) as NostrEvent;
+
+      // Publish to relays
+      await nostr.event(signedEvent);
+
+      return signedEvent;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['hunts'] });

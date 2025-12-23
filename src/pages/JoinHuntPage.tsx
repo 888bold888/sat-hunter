@@ -12,14 +12,12 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
-import { Skeleton } from '@/components/ui/skeleton';
 import {
   Zap,
   Target,
   Clock,
   MapPin,
   Skull,
-  Users,
   ArrowLeft,
   Loader2,
   AlertCircle,

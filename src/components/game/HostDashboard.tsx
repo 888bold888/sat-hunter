@@ -7,11 +7,9 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { Separator } from '@/components/ui/separator';
 import {
   Zap,
   Users,
-  MapPin,
   Clock,
   Target,
   Skull,
@@ -21,9 +19,7 @@ import {
   Copy,
   Check,
   Navigation,
-  Circle,
 } from 'lucide-react';
-import { cn } from '@/lib/utils';
 import QRCode from 'qrcode';
 
 export function HostDashboard() {

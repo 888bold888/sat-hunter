@@ -12,7 +12,6 @@ import {
   Trophy,
   Skull,
   Shield,
-  Sparkles,
   Play,
   Users,
   Clock,

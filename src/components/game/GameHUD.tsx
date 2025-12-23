@@ -6,7 +6,6 @@ import { Card } from '@/components/ui/card';
 import { Progress } from '@/components/ui/progress';
 import { Button } from '@/components/ui/button';
 import {
-  Zap,
   Circle,
   Clock,
   MapPin,
@@ -59,7 +58,7 @@ export function GameHUD({ onOpenLeaderboard, onOpenInventory }: GameHUDProps) {
     : [];
 
   const capturedCount = activeHunt.monsters.filter((m) => m.captured).length;
-  const progress = (capturedCount / activeHunt.monsterCount) * 100;
+  const _progress = (capturedCount / activeHunt.monsterCount) * 100;
 
   const isHuntEnded = Date.now() > activeHunt.endTime;
 

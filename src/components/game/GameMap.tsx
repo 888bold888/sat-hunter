@@ -1,4 +1,3 @@
-import { useState } from 'react';
 import { useGame } from '@/contexts/GameContext';
 import type { Monster, SatStop } from '@/lib/gameTypes';
 import { isInCaptureRange, isAtSatStop } from '@/lib/gameUtils';

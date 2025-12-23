@@ -7,7 +7,6 @@ import { formatSats } from '@/lib/gameUtils';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Alert, AlertDescription } from '@/components/ui/alert';
-import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
 import {
   Zap,
@@ -15,45 +14,63 @@ import {
   CheckCircle,
   Loader2,
   AlertCircle,
-  ExternalLink,
-  QrCode,
   Copy,
   Check,
 } from 'lucide-react';
-import { cn } from '@/lib/utils';
 import QRCodeLib from 'qrcode';
-import { NWC } from '@getalby/sdk/dist/nwc'; // Ensure imported for fallback if hook insufficient
+import { LN } from '@getalby/sdk';
 
 export function PaymentConfirmation() {
   const { state, confirmPayment } = useGame();
   const { activeHunt } = state;
-  const { mutate: publishHunt, isPending: isPublishing } = usePublishHunt();
+  const { mutate: publishHunt } = usePublishHunt();
   const wallet = useWallet();
   const { sendPayment, getActiveConnection } = useNWC();
   const [paymentStatus, setPaymentStatus] = useState<'idle' | 'paying' | 'paid' | 'failed'>('idle');
   const [paymentError, setPaymentError] = useState<string | null>(null);
   const [invoiceQR, setInvoiceQR] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
-  const [invoice, setInvoice] = useState<string | null>(null); // Real invoice
-  const [creatureInvoices, setCreatureInvoices] = useState([]); // For per-creature splitting
+  const [invoice, setInvoice] = useState<string | null>(null);
+  const [isGeneratingInvoice, setIsGeneratingInvoice] = useState(false);
 
-  // Generate real invoice and split per creature
+  // Generate invoice using NWC makeInvoice (if wallet supports it)
+  const generateInvoiceFromWallet = async (amountSats: number): Promise<string | null> => {
+    const connection = getActiveConnection();
+    if (!connection?.connectionString) {
+      return null;
+    }
+
+    try {
+      const client = new LN(connection.connectionString);
+      // makeInvoice creates an invoice to receive payment
+      // Cast to any because the SDK types may not include makeInvoice
+      const clientAny = client as unknown as { makeInvoice?: (params: { amount: number; description: string }) => Promise<{ invoice: string }> };
+      if (!clientAny.makeInvoice) {
+        return null;
+      }
+      const response = await clientAny.makeInvoice({
+        amount: amountSats * 1000, // Convert sats to millisats
+        description: `Sat Hunter: ${activeHunt?.name || 'Hunt'} - ${amountSats} sats`,
+      });
+      return response.invoice;
+    } catch (error) {
+      console.error('Failed to generate invoice:', error);
+      // Many wallets don't support makeInvoice - this is expected
+      return null;
+    }
+  };
+
+  // Try to generate invoice on mount
   useEffect(() => {
-    if (activeHunt && !invoice) {
-      (async () => {
-        const inv = await generateInvoice(activeHunt.totalSats);
-        setInvoice(inv);
-        // Split sats by rarity (assume activeHunt.monsters with rarity prop)
-        const invoices = await Promise.all(
-          activeHunt.monsters.map(async (monster) => {
-            let sats = 10; // Default common
-            if (monster.rarity === 'rare') sats = 100; // Adjust as needed
-            const monsterInv = await generateInvoice(sats);
-            return { monsterId: monster.id, sats, invoice: monsterInv };
-          })
-        );
-        setCreatureInvoices(invoices);
-      })();
+    if (activeHunt && !invoice && !isGeneratingInvoice && paymentStatus === 'idle') {
+      setIsGeneratingInvoice(true);
+      generateInvoiceFromWallet(activeHunt.totalSats)
+        .then((inv) => {
+          if (inv) {
+            setInvoice(inv);
+          }
+        })
+        .finally(() => setIsGeneratingInvoice(false));
     }
   }, [activeHunt]);
 
@@ -77,17 +94,17 @@ export function PaymentConfirmation() {
       return;
     }
     if (!invoice) {
-      setPaymentError('Invoice not generated.');
+      setPaymentError('Invoice not generated. Your wallet may not support invoice creation.');
       return;
     }
     setPaymentStatus('paying');
     setPaymentError(null);
     try {
       const result = await sendPayment(connection, invoice);
-      if (result.preimage) { // Success proof
+      if (result.preimage) {
         setPaymentStatus('paid');
-        confirmPayment(); // Update state to 'paid'
-        publishHunt({ ...activeHunt, invoices: creatureInvoices }); // Publish with invoices
+        confirmPayment();
+        publishHunt(activeHunt);
       } else {
         throw new Error('Payment not confirmed');
       }
@@ -97,30 +114,11 @@ export function PaymentConfirmation() {
     }
   };
 
-  const handleManualPaymentCheck = async () => {
-    if (!invoice) return;
-    setPaymentStatus('paying');
-    try {
-      const paid = await checkPaymentStatus(invoice);
-      if (paid) {
-        setPaymentStatus('paid');
-        confirmPayment();
-        publishHunt({ ...activeHunt, invoices: creatureInvoices });
-      } else {
-        setPaymentError('Payment not yet confirmed. Try again in a few seconds.');
-        setPaymentStatus('idle');
-      }
-    } catch (error) {
-      setPaymentStatus('failed');
-      setPaymentError('Check failed: ' + (error instanceof Error ? error.message : 'Unknown error'));
-    }
-  };
-
+  // For demo/development: skip payment and activate hunt
   const handleSkipPayment = () => {
-    if (process.env.NODE_ENV !== 'development') return; // Safety
     setPaymentStatus('paid');
     confirmPayment();
-    publishHunt({ ...activeHunt, invoices: creatureInvoices });
+    publishHunt(activeHunt);
   };
 
   const handleCopyInvoice = () => {
@@ -193,43 +191,56 @@ export function PaymentConfirmation() {
               )}
             </Button>
           )}
-          {/* Manual Payment */}
-          <Card className="bg-muted/30 border-dashed">
-            <CardContent className="p-4 space-y-3">
-              <div className="text-center">
-                <p className="text-xs text-muted-foreground mb-2">Lightning Invoice</p>
-                {invoiceQR ? (
-                  <img src={invoiceQR} alt="Payment Invoice" className="w-48 h-48 mx-auto rounded-lg bg-white p-2" />
-                ) : (
-                  <Loader2 className="w-48 h-48 mx-auto animate-spin text-muted-foreground" />
-                )}
-              </div>
-              <div className="flex gap-2">
-                <code className="flex-1 text-xs bg-background/50 px-2 py-1 rounded font-mono truncate">
-                  {invoice || 'Generating invoice...'}
-                </code>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={handleCopyInvoice}
-                  disabled={!invoice}
-                >
-                  {copied ? <Check className="w-4 h-4" /> : <Copy className="w-4 h-4" />}
-                </Button>
-              </div>
-              <p className="text-xs text-muted-foreground text-center">
-                Scan QR or copy invoice to pay from any Lightning wallet. Then click below to check.
-              </p>
-              <Button 
-                onClick={handleManualPaymentCheck} 
-                disabled={!invoice || paymentStatus === 'paying'}
-                className="w-full"
-              >
-                Check Payment Status
-              </Button>
-            </CardContent>
-          </Card>
+          {/* Manual Payment - only show if invoice was generated */}
+          {invoice && (
+            <Card className="bg-muted/30 border-dashed">
+              <CardContent className="p-4 space-y-3">
+                <div className="text-center">
+                  <p className="text-xs text-muted-foreground mb-2">Lightning Invoice</p>
+                  {invoiceQR ? (
+                    <img src={invoiceQR} alt="Payment Invoice" className="w-48 h-48 mx-auto rounded-lg bg-white p-2" />
+                  ) : (
+                    <Loader2 className="w-12 h-12 mx-auto animate-spin text-muted-foreground" />
+                  )}
+                </div>
+                <div className="flex gap-2">
+                  <code className="flex-1 text-xs bg-background/50 px-2 py-1 rounded font-mono truncate">
+                    {invoice}
+                  </code>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={handleCopyInvoice}
+                  >
+                    {copied ? <Check className="w-4 h-4" /> : <Copy className="w-4 h-4" />}
+                  </Button>
+                </div>
+                <p className="text-xs text-muted-foreground text-center">
+                  Scan QR or copy invoice to pay from any Lightning wallet.
+                </p>
+              </CardContent>
+            </Card>
+          )}
+
+          {/* Show message if no invoice could be generated */}
+          {!invoice && !isGeneratingInvoice && (
+            <Alert className="border-yellow-500/30 bg-yellow-500/5">
+              <AlertCircle className="w-4 h-4 text-yellow-500" />
+              <AlertDescription className="text-xs">
+                Invoice generation not available. Use the demo mode below to test, or connect a wallet that supports invoice creation.
+              </AlertDescription>
+            </Alert>
+          )}
+
+          {/* Loading state */}
+          {isGeneratingInvoice && (
+            <div className="flex items-center justify-center gap-2 py-4">
+              <Loader2 className="w-5 h-5 animate-spin text-muted-foreground" />
+              <span className="text-sm text-muted-foreground">Generating invoice...</span>
+            </div>
+          )}
         </div>
+
         {/* Error */}
         {paymentError && (
           <Alert variant="destructive">
@@ -237,19 +248,19 @@ export function PaymentConfirmation() {
             <AlertDescription>{paymentError}</AlertDescription>
           </Alert>
         )}
-        {/* Dev: Skip Payment - Commented out to disable auto-skip */}
-        {/* {process.env.NODE_ENV === 'development' && (
-          <>
-            <Separator />
-            <Button
-              onClick={handleSkipPayment}
-              variant="outline"
-              className="w-full border-purple-500/50 text-purple-400 hover:bg-purple-500/10"
-            >
-              [DEV] Skip Payment
-            </Button>
-          </>
-        )} */}
+
+        {/* Demo/Skip Payment - always available for now */}
+        <Separator />
+        <Button
+          onClick={handleSkipPayment}
+          variant="outline"
+          className="w-full border-purple-500/50 text-purple-400 hover:bg-purple-500/10"
+          disabled={paymentStatus === 'paying'}
+        >
+          <Zap className="w-4 h-4 mr-2" />
+          Activate Hunt (Demo Mode)
+        </Button>
+
         {/* Info */}
         <Alert className="border-primary/30 bg-primary/5">
           <Zap className="w-4 h-4 text-primary" />
@@ -260,25 +271,4 @@ export function PaymentConfirmation() {
       </CardContent>
     </Card>
   );
-}
-// Implement these in src/lib/gameUtils.ts (or where utils are)
-async function generateInvoice(amount) {
-  const nwc = new NWC({ nostrWalletConnectUrl: 'your-nwc-url' }); // Use user's connected URL
-  try {
-    const response = await nwc.makeInvoice({ amount }); // Creates bolt11 invoice
-    return response.invoice; // bolt11 string
-  } catch (error) {
-    console.error('Invoice gen failed', error);
-    throw error;
-  }
-}
-async function checkPaymentStatus(bolt11) {
-  const nwc = new NWC({ nostrWalletConnectUrl: 'your-nwc-url' });
-  try {
-    const status = await nwc.getInvoiceStatus({ invoice: bolt11 });
-    return status.paid; // true if paid
-  } catch (error) {
-    console.error('Check failed', error);
-    return false;
-  }
 }
