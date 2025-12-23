@@ -31,48 +31,35 @@ export function PaymentConfirmation() {
   const [invoiceQR, setInvoiceQR] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
   const [invoice, setInvoice] = useState<string | null>(null);
-  const [isGeneratingInvoice, setIsGeneratingInvoice] = useState(false);
+  const [invoiceAttempted, setInvoiceAttempted] = useState(false);
 
-  // Generate invoice using NWC makeInvoice (if wallet supports it)
-  const generateInvoiceFromWallet = async (amountSats: number): Promise<string | null> => {
-    const connection = getActiveConnection();
-    if (!connection?.connectionString) {
-      return null;
-    }
-
-    try {
-      const client = new LN(connection.connectionString);
-      // makeInvoice creates an invoice to receive payment
-      // Cast to any because the SDK types may not include makeInvoice
-      const clientAny = client as unknown as { makeInvoice?: (params: { amount: number; description: string }) => Promise<{ invoice: string }> };
-      if (!clientAny.makeInvoice) {
-        return null;
-      }
-      const response = await clientAny.makeInvoice({
-        amount: amountSats * 1000, // Convert sats to millisats
-        description: `Sat Hunter: ${activeHunt?.name || 'Hunt'} - ${amountSats} sats`,
-      });
-      return response.invoice;
-    } catch (error) {
-      console.error('Failed to generate invoice:', error);
-      // Many wallets don't support makeInvoice - this is expected
-      return null;
-    }
-  };
-
-  // Try to generate invoice on mount
+  // Try to generate invoice on mount (only once)
   useEffect(() => {
-    if (activeHunt && !invoice && !isGeneratingInvoice && paymentStatus === 'idle') {
-      setIsGeneratingInvoice(true);
-      generateInvoiceFromWallet(activeHunt.totalSats)
-        .then((inv) => {
-          if (inv) {
-            setInvoice(inv);
-          }
-        })
-        .finally(() => setIsGeneratingInvoice(false));
-    }
-  }, [activeHunt]);
+    if (!activeHunt || invoiceAttempted) return;
+
+    setInvoiceAttempted(true);
+
+    const generateInvoice = async () => {
+      const connection = getActiveConnection();
+      if (!connection?.connectionString) return;
+
+      try {
+        const client = new LN(connection.connectionString);
+        const clientAny = client as unknown as { makeInvoice?: (params: { amount: number; description: string }) => Promise<{ invoice: string }> };
+        if (!clientAny.makeInvoice) return;
+
+        const response = await clientAny.makeInvoice({
+          amount: activeHunt.totalSats * 1000,
+          description: `Sat Hunter: ${activeHunt.name} - ${activeHunt.totalSats} sats`,
+        });
+        setInvoice(response.invoice);
+      } catch (error) {
+        console.error('Failed to generate invoice:', error);
+      }
+    };
+
+    generateInvoice();
+  }, [activeHunt, invoiceAttempted, getActiveConnection]);
 
   // Generate QR code for invoice
   useEffect(() => {
@@ -223,21 +210,13 @@ export function PaymentConfirmation() {
           )}
 
           {/* Show message if no invoice could be generated */}
-          {!invoice && !isGeneratingInvoice && (
+          {!invoice && invoiceAttempted && (
             <Alert className="border-yellow-500/30 bg-yellow-500/5">
               <AlertCircle className="w-4 h-4 text-yellow-500" />
               <AlertDescription className="text-xs">
                 Invoice generation not available. Use the demo mode below to test, or connect a wallet that supports invoice creation.
               </AlertDescription>
             </Alert>
-          )}
-
-          {/* Loading state */}
-          {isGeneratingInvoice && (
-            <div className="flex items-center justify-center gap-2 py-4">
-              <Loader2 className="w-5 h-5 animate-spin text-muted-foreground" />
-              <span className="text-sm text-muted-foreground">Generating invoice...</span>
-            </div>
           )}
         </div>
 
