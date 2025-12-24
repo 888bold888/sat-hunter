@@ -11,7 +11,7 @@ export function useHuntByCode(shareCode: string | undefined) {
     queryKey: ['hunt', shareCode],
     queryFn: async (c) => {
       if (!shareCode) throw new Error('No share code provided');
-      const signal = AbortSignal.any([c.signal, AbortSignal.timeout(10000)]); // Increased timeout to 10s
+      const signal = AbortSignal.any([c.signal, AbortSignal.timeout(15000)]); // 15s timeout for slow relays
       
       // Query for hunt event with this share code (d tag), checking both cases
       const events = await nostr.query(
@@ -99,7 +99,15 @@ export function useHuntByCode(shareCode: string | undefined) {
       };
     },
     enabled: !!shareCode && shareCode.length >= 6,
-    retry: (failureCount, error) => error.message !== 'Hunt not found' && failureCount < 2, // Adjusted retry logic
+    retry: (failureCount, error) => {
+      // Retry "Hunt not found" up to 3 times (for relay propagation delays)
+      // Retry other errors up to 2 times
+      if (error.message === 'Hunt not found') {
+        return failureCount < 3;
+      }
+      return failureCount < 2;
+    },
+    retryDelay: (attemptIndex) => Math.min(1000 * 2 ** attemptIndex, 5000), // Exponential backoff: 1s, 2s, 4s
     staleTime: 30000, // 30 seconds
   });
 }

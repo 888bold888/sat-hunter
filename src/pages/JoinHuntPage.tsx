@@ -39,7 +39,7 @@ export default function JoinHuntPage() {
   const [searchCode, setSearchCode] = useState(code?.toUpperCase() || '');
 
   // Query hunt from Nostr
-  const { data: foundHunt, isLoading: isSearching, error: searchError } = useHuntByCode(searchCode);
+  const { data: foundHunt, isLoading: isSearching, error: searchError, refetch, isFetching } = useHuntByCode(searchCode);
 
   useSeoMeta({
     title: 'Join Hunt | Sat Hunter',
@@ -188,8 +188,26 @@ export default function JoinHuntPage() {
             {searchError && (
               <Alert variant="destructive">
                 <AlertCircle className="w-4 h-4" />
-                <AlertDescription>
-                  {searchError instanceof Error ? searchError.message : 'Hunt not found. Please check the code.'}
+                <AlertDescription className="flex flex-col gap-2">
+                  <span>
+                    {searchError instanceof Error && searchError.message === 'Hunt not found'
+                      ? 'Hunt not found. The hunt may still be syncing across relays.'
+                      : searchError instanceof Error
+                        ? searchError.message
+                        : 'Hunt not found. Please check the code.'}
+                  </span>
+                  {searchError instanceof Error && searchError.message === 'Hunt not found' && (
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => refetch()}
+                      disabled={isFetching}
+                      className="w-fit"
+                    >
+                      {isFetching ? <Loader2 className="w-3 h-3 animate-spin mr-1" /> : null}
+                      Try Again
+                    </Button>
+                  )}
                 </AlertDescription>
               </Alert>
             )}
