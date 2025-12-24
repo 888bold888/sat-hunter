@@ -11,7 +11,6 @@ import { Separator } from '@/components/ui/separator';
 import {
   Zap,
   Wallet,
-  CheckCircle,
   Loader2,
   AlertCircle,
 } from 'lucide-react';
@@ -19,55 +18,66 @@ import {
 export function PaymentConfirmation() {
   const { state, confirmPayment } = useGame();
   const { activeHunt } = state;
-  const { mutate: publishHunt } = usePublishHunt();
+  const { mutateAsync: publishHunt } = usePublishHunt();
   const wallet = useWallet();
   const { getActiveConnection } = useNWC();
-  const [paymentStatus, setPaymentStatus] = useState<'idle' | 'paying' | 'paid' | 'failed'>('idle');
+  const [isPaying, setIsPaying] = useState(false);
   const [paymentError, setPaymentError] = useState<string | null>(null);
 
   if (!activeHunt || activeHunt.paymentStatus === 'paid') return null;
 
   // Activate hunt with connected wallet (verifies wallet connection)
-  const handleActivateWithWallet = () => {
+  const handleActivateWithWallet = async () => {
     const connection = getActiveConnection();
     if (!connection) {
       setPaymentError('No wallet connected. Please connect NWC in settings.');
       return;
     }
-    setPaymentStatus('paying');
+    setIsPaying(true);
     setPaymentError(null);
 
-    // For now, just activate the hunt since there's no payment backend
-    // In production, this would send sats to an escrow/custodian
-    setTimeout(() => {
-      setPaymentStatus('paid');
+    try {
+      // For now, just activate the hunt since there's no payment backend
+      // In production, this would send sats to an escrow/custodian
+      await new Promise(resolve => setTimeout(resolve, 500));
+
+      // Update hunt status first, then publish with updated status
       confirmPayment();
-      publishHunt(activeHunt);
-    }, 500);
+
+      // Get the updated hunt with paid status for publishing
+      const paidHunt = {
+        ...activeHunt,
+        status: 'ready' as const,
+        paymentStatus: 'paid' as const,
+      };
+      await publishHunt(paidHunt);
+    } catch (error) {
+      setPaymentError(error instanceof Error ? error.message : 'Payment failed');
+      setIsPaying(false);
+    }
   };
 
   // Demo mode: skip payment and activate hunt
-  const handleSkipPayment = () => {
-    setPaymentStatus('paid');
-    confirmPayment();
-    publishHunt(activeHunt);
-  };
+  const handleSkipPayment = async () => {
+    setIsPaying(true);
+    setPaymentError(null);
 
-  if (paymentStatus === 'paid') {
-    return (
-      <Card className="border-secondary/30 bg-secondary/10">
-        <CardContent className="p-6 text-center space-y-4">
-          <CheckCircle className="w-16 h-16 mx-auto text-secondary" />
-          <div>
-            <h3 className="font-display font-bold text-lg text-secondary">Payment Confirmed!</h3>
-            <p className="text-sm text-muted-foreground mt-1">
-              Your hunt has been published to Nostr
-            </p>
-          </div>
-        </CardContent>
-      </Card>
-    );
-  }
+    try {
+      // Update hunt status first
+      confirmPayment();
+
+      // Publish with updated status
+      const paidHunt = {
+        ...activeHunt,
+        status: 'ready' as const,
+        paymentStatus: 'paid' as const,
+      };
+      await publishHunt(paidHunt);
+    } catch (error) {
+      setPaymentError(error instanceof Error ? error.message : 'Failed to activate hunt');
+      setIsPaying(false);
+    }
+  };
 
   return (
     <Card className="border-primary/30 shadow-glow-orange">
@@ -101,10 +111,10 @@ export function PaymentConfirmation() {
           {wallet.hasNWC ? (
             <Button
               onClick={handleActivateWithWallet}
-              disabled={paymentStatus === 'paying'}
+              disabled={isPaying}
               className="w-full h-12 bg-gradient-to-r from-secondary to-green-600 hover:from-green-600 hover:to-secondary shadow-glow-green"
             >
-              {paymentStatus === 'paying' ? (
+              {isPaying ? (
                 <>
                   <Loader2 className="w-5 h-5 mr-2 animate-spin" />
                   Processing Payment...
@@ -140,10 +150,19 @@ export function PaymentConfirmation() {
           onClick={handleSkipPayment}
           variant="outline"
           className="w-full border-purple-500/50 text-purple-400 hover:bg-purple-500/10"
-          disabled={paymentStatus === 'paying'}
+          disabled={isPaying}
         >
-          <Zap className="w-4 h-4 mr-2" />
-          Activate Hunt (Demo Mode)
+          {isPaying ? (
+            <>
+              <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+              Activating...
+            </>
+          ) : (
+            <>
+              <Zap className="w-4 h-4 mr-2" />
+              Activate Hunt (Demo Mode)
+            </>
+          )}
         </Button>
 
         {/* Info */}
