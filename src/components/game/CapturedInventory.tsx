@@ -6,7 +6,7 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { Separator } from '@/components/ui/separator';
 import { Zap, Package, Clock, Sparkles, Trophy } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import { MONSTER_EMOJIS } from '@/lib/gameTypes';
+import { MONSTER_EMOJI_MAP } from '@/lib/gameTypes';
 
 export function CapturedInventory() {
   const { state } = useGame();
@@ -82,10 +82,7 @@ export function CapturedInventory() {
           <ScrollArea className="h-[300px]">
             <div className="space-y-2">
               {[...capturedMonsters].reverse().map((capture, index) => {
-                const emoji =
-                  MONSTER_EMOJIS[capture.rarity]?.[
-                    Math.floor(Math.random() * MONSTER_EMOJIS[capture.rarity].length)
-                  ] ?? '🐸';
+                const emoji = MONSTER_EMOJI_MAP[capture.monsterName] || '⚡';
 
                 return (
                   <div

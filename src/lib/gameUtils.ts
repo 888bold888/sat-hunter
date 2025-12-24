@@ -14,7 +14,7 @@ import {
   RARITY_WEIGHTS,
   RARITY_MULTIPLIERS,
   MONSTER_NAMES,
-  MONSTER_EMOJIS,
+  MONSTER_EMOJI_MAP,
   MONSTER_DESCRIPTIONS,
 } from './gameTypes';
 
@@ -126,10 +126,9 @@ function generateMonsterName(rarity: MonsterRarity): string {
   return names[Math.floor(Math.random() * names.length)];
 }
 
-// Generate random monster emoji
-function getMonsterEmoji(rarity: MonsterRarity): string {
-  const emojis = MONSTER_EMOJIS[rarity];
-  return emojis[Math.floor(Math.random() * emojis.length)];
+// Get monster emoji by name
+function getMonsterEmoji(name: string): string {
+  return MONSTER_EMOJI_MAP[name] || '⚡';
 }
 
 // Generate random monster description
@@ -203,7 +202,7 @@ export function generateMonsters(config: MonsterGenConfig): Monster[] {
       satAmount: satAmounts[i],
       rarity,
       location: randomPointInGeoFence(geoFence),
-      emoji: getMonsterEmoji(rarity),
+      emoji: getMonsterEmoji(name),
       spawnTime: now + Math.random() * 60000, // Spawn within first minute randomly
       captured: false,
       invoiceStatus: 'pending',

@@ -149,13 +149,19 @@ export const MONSTER_NAMES = {
   mythic: ['Pisatchu'], // 1 type - THE rarest, only spawns once per hunt
 };
 
-// Monster emojis by rarity (Pokémon-inspired)
-export const MONSTER_EMOJIS: Record<MonsterRarity, string[]> = {
-  common: ['🐁', '🐛', '🐦', '🐢', '🐝', '🐸', '🦎', '🐌', '🦗', '🐣'],
-  uncommon: ['🐛', '🐦', '🐁', '🐸', '🦊', '🐺', '🦝', '🐨', '🦘', '🦙'],
-  rare: ['🐦', '🦅', '🦊', '🦅', '⚡', '🐉', '🐲', '🦈', '🦁', '🐯'],
-  legendary: ['🐢', '🔥', '💧', '👻', '⚡', '💀', '🤖', '🎭', '🧙', '👁️'],
-  mythic: ['⚡', '👑', '💎', '⭐', '🌟', '✨', '🔱', '🗡️', '🛡️', '💫'],
+// Fixed emoji for each monster type
+export const MONSTER_EMOJI_MAP: Record<string, string> = {
+  'Ratasat': '🐀',
+  'Saterpie': '🐛',
+  'Satgey': '🐥',
+  'Mesatpod': '🫛',
+  'Satgeotto': '🦉',
+  'Saterfree': '🦋',
+  'Satgeot': '🦅',
+  'Bulsatba': '🐸',
+  'Satmander': '🔥',
+  'Saturtle': '🐢',
+  'Pisatchu': '⚡️',
 };
 
 // Cypherpunk descriptions
