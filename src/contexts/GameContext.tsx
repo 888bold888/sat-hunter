@@ -1,4 +1,4 @@
-import { createContext, useContext, useReducer, useEffect, ReactNode, useCallback } from 'react';
+import { createContext, useContext, useReducer, useEffect, ReactNode, useCallback, useRef } from 'react';
 import type {
   HuntEvent,
   Monster,
@@ -181,8 +181,9 @@ export function GameProvider({ children }: { children: ReactNode }) {
   const { user } = useCurrentUser();
   const [savedStats, setSavedStats] = useLocalStorage<PlayerStats | null>('sathunter:player-stats', null);
   const [savedHunt, setSavedHunt] = useLocalStorage<HuntEvent | null>('sathunter:active-hunt', null);
+  const watchIdRef = useRef<number | null>(null); // Use ref to avoid re-renders when watchId changes
 
-  // Load saved stats on mount
+  // Load saved stats on mount only
   useEffect(() => {
     if (savedStats && user?.pubkey) {
       dispatch({ type: 'LOAD_PLAYER_STATS', stats: { ...savedStats, pubkey: user.pubkey } });
@@ -192,11 +193,12 @@ export function GameProvider({ children }: { children: ReactNode }) {
         stats: { ...initialPlayerStats, pubkey: user.pubkey },
       });
     }
-  }, [savedStats, user?.pubkey]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user?.pubkey]); // Only depend on user, not savedStats to avoid circular updates
 
-  // Load saved hunt on mount
+  // Load saved hunt on mount only (not when savedHunt changes to avoid circular updates)
   useEffect(() => {
-    if (savedHunt) {
+    if (savedHunt && !state.activeHunt) {
       // Check if hunt is still active
       if (savedHunt.endTime > Date.now()) {
         dispatch({ type: 'SET_ACTIVE_HUNT', hunt: { ...savedHunt, status: 'active' } });
@@ -204,7 +206,8 @@ export function GameProvider({ children }: { children: ReactNode }) {
         dispatch({ type: 'SET_ACTIVE_HUNT', hunt: { ...savedHunt, status: 'ended' } });
       }
     }
-  }, [savedHunt]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []); // Only run on mount
 
   // Save stats when they change
   useEffect(() => {
@@ -406,6 +409,9 @@ export function GameProvider({ children }: { children: ReactNode }) {
 
   // Start location tracking
   const startLocationTracking = useCallback(() => {
+    // Already tracking
+    if (watchIdRef.current !== null) return;
+
     // Check for mock location in development mode
     if (isMockLocationEnabled()) {
       const mockLoc = getMockLocation();
@@ -461,16 +467,16 @@ export function GameProvider({ children }: { children: ReactNode }) {
         timeout: 15000,
       }
     );
-    dispatch({ type: 'SET_WATCH_ID', watchId });
+    watchIdRef.current = watchId;
   }, []);
 
   // Stop location tracking
   const stopLocationTracking = useCallback(() => {
-    if (state.watchId !== null) {
-      navigator.geolocation.clearWatch(state.watchId);
-      dispatch({ type: 'SET_WATCH_ID', watchId: null });
+    if (watchIdRef.current !== null) {
+      navigator.geolocation.clearWatch(watchIdRef.current);
+      watchIdRef.current = null;
     }
-  }, [state.watchId]);
+  }, []);
 
   // Get available (uncaptured) monsters
   const getAvailableMonsters = useCallback((): Monster[] => {

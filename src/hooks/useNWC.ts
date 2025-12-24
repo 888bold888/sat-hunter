@@ -143,18 +143,22 @@ export function useNWCInternal() {
     });
   };
 
-  // Get active connection
+  // Get active connection (read-only, doesn't set state)
   const getActiveConnection = useCallback((): NWCConnection | null => {
-    if (!activeConnection && connections.length > 0) {
-      setActiveConnection(connections[0].connectionString);
+    // If there's an active connection set, find and return it
+    if (activeConnection) {
+      const found = connections.find(c => c.connectionString === activeConnection);
+      return found || null;
+    }
+
+    // If no active connection but connections exist, return the first one
+    // (but don't set state here to avoid infinite loops)
+    if (connections.length > 0) {
       return connections[0];
     }
 
-    if (!activeConnection) return null;
-
-    const found = connections.find(c => c.connectionString === activeConnection);
-    return found || null;
-  }, [activeConnection, connections, setActiveConnection]);
+    return null;
+  }, [activeConnection, connections]);
 
   // Send payment using the SDK
   const sendPayment = useCallback(async (

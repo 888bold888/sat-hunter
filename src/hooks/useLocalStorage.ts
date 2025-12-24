@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 
 /**
  * Generic hook for managing localStorage state
@@ -11,8 +11,17 @@ export function useLocalStorage<T>(
     deserialize: (value: string) => T;
   }
 ) {
-  const serialize = serializer?.serialize || JSON.stringify;
-  const deserialize = serializer?.deserialize || JSON.parse;
+  // Store serializer in ref to avoid recreating on every render
+  const serializerRef = useRef(serializer);
+  serializerRef.current = serializer;
+
+  const serialize = useCallback((value: T) => {
+    return serializerRef.current?.serialize?.(value) ?? JSON.stringify(value);
+  }, []);
+
+  const deserialize = useCallback((value: string) => {
+    return serializerRef.current?.deserialize?.(value) ?? JSON.parse(value);
+  }, []);
 
   const [state, setState] = useState<T>(() => {
     try {
@@ -24,15 +33,18 @@ export function useLocalStorage<T>(
     }
   });
 
-  const setValue = (value: T | ((prev: T) => T)) => {
-    try {
-      const valueToStore = value instanceof Function ? value(state) : value;
-      setState(valueToStore);
-      localStorage.setItem(key, serialize(valueToStore));
-    } catch (error) {
-      console.warn(`Failed to save ${key} to localStorage:`, error);
-    }
-  };
+  const setValue = useCallback((value: T | ((prev: T) => T)) => {
+    setState(prev => {
+      try {
+        const valueToStore = value instanceof Function ? value(prev) : value;
+        localStorage.setItem(key, serialize(valueToStore));
+        return valueToStore;
+      } catch (error) {
+        console.warn(`Failed to save ${key} to localStorage:`, error);
+        return prev;
+      }
+    });
+  }, [key, serialize]);
 
   // Sync with localStorage changes from other tabs
   useEffect(() => {
