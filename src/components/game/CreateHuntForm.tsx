@@ -64,8 +64,8 @@ export function CreateHuntForm({ onHuntCreated }: CreateHuntFormProps) {
     setIsCreating(true);
     setError(null);
     try {
-      // Create hunt with pending_payment status
-      createHunt({
+      // Create hunt with pending_payment status (async - fetches real POIs for SatStops)
+      await createHunt({
         name: name.trim(),
         description: description.trim(),
         totalSats,

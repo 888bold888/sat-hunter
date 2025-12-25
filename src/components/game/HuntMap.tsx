@@ -1,9 +1,20 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useCallback } from 'react';
 import type { Monster, SatStop, GeoLocation } from '@/lib/gameTypes';
 import { calculateDistance, formatSats } from '@/lib/gameUtils';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import { cn } from '@/lib/utils';
+
+// Helper to safely check if map is ready for operations
+function isMapReady(map: L.Map | null): map is L.Map {
+  if (!map) return false;
+  try {
+    // Check if map container exists and map is initialized
+    return !!(map.getContainer() && map.getSize().x > 0);
+  } catch {
+    return false;
+  }
+}
 
 // Fix Leaflet default marker icons - uses delete on prototype which requires type assertion
 delete (L.Icon.Default.prototype as unknown as Record<string, unknown>)._getIconUrl;
@@ -40,12 +51,41 @@ export function HuntMap({
   const mapInstanceRef = useRef<L.Map | null>(null);
   const markersRef = useRef<L.Marker[]>([]);
   const circlesRef = useRef<L.Circle[]>([]);
+  const isMountedRef = useRef(true);
+  const initialCenterRef = useRef(center);
+  const updateTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // Initialize map
+  // Cleanup function for markers and circles
+  const clearMapLayers = useCallback(() => {
+    markersRef.current.forEach(marker => {
+      try { marker.remove(); } catch { /* ignore */ }
+    });
+    circlesRef.current.forEach(circle => {
+      try { circle.remove(); } catch { /* ignore */ }
+    });
+    markersRef.current = [];
+    circlesRef.current = [];
+  }, []);
+
+  // Memoize stable references for callbacks to prevent unnecessary re-renders
+  const onMonsterClickRef = useRef(onMonsterClick);
+  const onStopClickRef = useRef(onStopClick);
+  onMonsterClickRef.current = onMonsterClick;
+  onStopClickRef.current = onStopClick;
+
+  // Initialize map once on mount
   useEffect(() => {
-    if (!mapRef.current || mapInstanceRef.current) return;
+    if (!mapRef.current) return;
 
-    const map = L.map(mapRef.current).setView([center.lat, center.lng], 16);
+    // Already initialized
+    if (mapInstanceRef.current) return;
+
+    isMountedRef.current = true;
+
+    const map = L.map(mapRef.current, {
+      zoomControl: true,
+      attributionControl: true,
+    }).setView([initialCenterRef.current.lat, initialCenterRef.current.lng], 16);
 
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
       attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
@@ -55,146 +95,178 @@ export function HuntMap({
     mapInstanceRef.current = map;
 
     return () => {
-      map.remove();
-      mapInstanceRef.current = null;
+      isMountedRef.current = false;
+      if (updateTimeoutRef.current) {
+        clearTimeout(updateTimeoutRef.current);
+        updateTimeoutRef.current = null;
+      }
+      clearMapLayers();
+      if (mapInstanceRef.current) {
+        try {
+          mapInstanceRef.current.remove();
+        } catch { /* ignore cleanup errors */ }
+        mapInstanceRef.current = null;
+      }
     };
-  }, [center]);
+  }, [clearMapLayers]);
 
-  // Update markers
+  // Update markers with debouncing to prevent race conditions during zoom
   useEffect(() => {
-    const map = mapInstanceRef.current;
-    if (!map) return;
-
-    // Clear existing markers
-    markersRef.current.forEach(marker => marker.remove());
-    circlesRef.current.forEach(circle => circle.remove());
-    markersRef.current = [];
-    circlesRef.current = [];
-
-    // Add geofence circle
-    const geofenceCircle = L.circle([center.lat, center.lng], {
-      radius: radiusMeters,
-      color: '#f97316',
-      fillColor: '#f97316',
-      fillOpacity: 0.1,
-      weight: 3,
-      dashArray: '10, 10',
-    }).addTo(map);
-    circlesRef.current.push(geofenceCircle);
-
-    // Filter visible monsters
-    const VISIBILITY_RANGE = 3;
-    const visibleMonsters = showAllMonsters
-      ? monsters
-      : playerLocation
-        ? monsters.filter(m => calculateDistance(playerLocation, m.location) <= VISIBILITY_RANGE)
-        : [];
-
-    // Add monster markers
-    visibleMonsters.forEach(monster => {
-      if (monster.captured && !showAllMonsters) return;
-
-      const icon = L.divIcon({
-        html: `
-          <div class="monster-marker ${monster.rarity} ${monster.captured ? 'captured' : ''}">
-            <span>${monster.emoji}</span>
-          </div>
-        `,
-        className: '',
-        iconSize: [40, 40],
-        iconAnchor: [20, 20],
-      });
-
-      const marker = L.marker([monster.location.lat, monster.location.lng], { icon })
-        .bindPopup(`
-          <div style="text-align: center;">
-            <p style="font-size: 24px; margin: 0;">${monster.emoji}</p>
-            <p style="font-weight: bold; margin: 4px 0;">${monster.name}</p>
-            <p style="font-size: 12px; color: #666; text-transform: capitalize;">${monster.rarity}</p>
-            <p style="font-weight: bold; color: #f97316;">⚡ ${formatSats(monster.satAmount)} sats</p>
-            ${monster.captured ? '<p style="color: #888; font-size: 12px;">Captured</p>' : ''}
-          </div>
-        `)
-        .addTo(map);
-
-      if (onMonsterClick) {
-        marker.on('click', () => onMonsterClick(monster));
-      }
-
-      markersRef.current.push(marker);
-    });
-
-    // Add sat stop markers
-    satStops.forEach(stop => {
-      const icon = L.divIcon({
-        html: `
-          <div class="stop-marker">
-            <svg width="32" height="32" viewBox="0 0 24 24" fill="none">
-              <circle cx="12" cy="12" r="10" fill="#22c55e" stroke="#fff" stroke-width="2"/>
-              <circle cx="12" cy="12" r="4" fill="#fff"/>
-            </svg>
-          </div>
-        `,
-        className: '',
-        iconSize: [32, 32],
-        iconAnchor: [16, 16],
-      });
-
-      const marker = L.marker([stop.location.lat, stop.location.lng], { icon })
-        .bindPopup(`
-          <div style="text-align: center;">
-            <p style="font-weight: bold; color: #22c55e;">${stop.name}</p>
-            <p style="font-size: 12px; color: #666;">${stop.description}</p>
-            <p style="font-weight: bold;">🟢 ${stop.ballsPerCollection} SatBalls</p>
-          </div>
-        `)
-        .addTo(map);
-
-      if (onStopClick) {
-        marker.on('click', () => onStopClick(stop));
-      }
-
-      markersRef.current.push(marker);
-    });
-
-    // Add player marker
-    if (playerLocation) {
-      const playerIcon = L.divIcon({
-        html: `
-          <div class="player-marker">
-            <svg width="40" height="40" viewBox="0 0 24 24" fill="none">
-              <circle cx="12" cy="12" r="8" fill="#f97316" stroke="#fff" stroke-width="3"/>
-              <circle cx="12" cy="12" r="4" fill="#fff"/>
-            </svg>
-          </div>
-        `,
-        className: '',
-        iconSize: [40, 40],
-        iconAnchor: [20, 20],
-      });
-
-      const playerMarker = L.marker([playerLocation.lat, playerLocation.lng], { icon: playerIcon })
-        .bindPopup('<div style="text-align: center; font-weight: bold;">Your Location</div>')
-        .addTo(map);
-
-      markersRef.current.push(playerMarker);
-
-      // Add visibility circle for players
-      if (!showAllMonsters) {
-        const visibilityCircle = L.circle([playerLocation.lat, playerLocation.lng], {
-          radius: VISIBILITY_RANGE,
-          color: '#22c55e',
-          fillColor: '#22c55e',
-          fillOpacity: 0.15,
-          weight: 2,
-        }).addTo(map);
-        circlesRef.current.push(visibilityCircle);
-      }
-
-      // Center map on player
-      map.setView([playerLocation.lat, playerLocation.lng], map.getZoom());
+    // Cancel any pending updates
+    if (updateTimeoutRef.current) {
+      clearTimeout(updateTimeoutRef.current);
     }
-  }, [center, radiusMeters, playerLocation, monsters, satStops, showAllMonsters, onMonsterClick, onStopClick]);
+
+    // Debounce the update to avoid conflicts during rapid changes
+    updateTimeoutRef.current = setTimeout(() => {
+      if (!isMountedRef.current) return;
+
+      const map = mapInstanceRef.current;
+      if (!isMapReady(map)) return;
+
+      try {
+        // Clear existing markers safely
+        clearMapLayers();
+
+        // Add geofence circle
+        const geofenceCircle = L.circle([center.lat, center.lng], {
+          radius: radiusMeters,
+          color: '#f97316',
+          fillColor: '#f97316',
+          fillOpacity: 0.1,
+          weight: 3,
+          dashArray: '10, 10',
+        }).addTo(map);
+        circlesRef.current.push(geofenceCircle);
+
+        // Filter visible monsters
+        const VISIBILITY_RANGE = 3;
+        const visibleMonsters = showAllMonsters
+          ? monsters
+          : playerLocation
+            ? monsters.filter(m => calculateDistance(playerLocation, m.location) <= VISIBILITY_RANGE)
+            : [];
+
+        // Add monster markers
+        visibleMonsters.forEach(monster => {
+          if (!isMountedRef.current || !isMapReady(mapInstanceRef.current)) return;
+          if (monster.captured && !showAllMonsters) return;
+
+          const icon = L.divIcon({
+            html: `
+              <div class="monster-marker ${monster.rarity} ${monster.captured ? 'captured' : ''}">
+                <span>${monster.emoji}</span>
+              </div>
+            `,
+            className: '',
+            iconSize: [40, 40],
+            iconAnchor: [20, 20],
+          });
+
+          const marker = L.marker([monster.location.lat, monster.location.lng], { icon })
+            .bindPopup(`
+              <div style="text-align: center;">
+                <p style="font-size: 24px; margin: 0;">${monster.emoji}</p>
+                <p style="font-weight: bold; margin: 4px 0;">${monster.name}</p>
+                <p style="font-size: 12px; color: #666; text-transform: capitalize;">${monster.rarity}</p>
+                <p style="font-weight: bold; color: #f97316;">⚡ ${formatSats(monster.satAmount)} sats</p>
+                ${monster.captured ? '<p style="color: #888; font-size: 12px;">Captured</p>' : ''}
+              </div>
+            `)
+            .addTo(map);
+
+          if (onMonsterClickRef.current) {
+            marker.on('click', () => onMonsterClickRef.current?.(monster));
+          }
+
+          markersRef.current.push(marker);
+        });
+
+        // Add sat stop markers
+        satStops.forEach(stop => {
+          if (!isMountedRef.current || !isMapReady(mapInstanceRef.current)) return;
+
+          const icon = L.divIcon({
+            html: `
+              <div class="stop-marker">
+                <svg width="32" height="32" viewBox="0 0 24 24" fill="none">
+                  <circle cx="12" cy="12" r="10" fill="#22c55e" stroke="#fff" stroke-width="2"/>
+                  <circle cx="12" cy="12" r="4" fill="#fff"/>
+                </svg>
+              </div>
+            `,
+            className: '',
+            iconSize: [32, 32],
+            iconAnchor: [16, 16],
+          });
+
+          const marker = L.marker([stop.location.lat, stop.location.lng], { icon })
+            .bindPopup(`
+              <div style="text-align: center;">
+                <p style="font-weight: bold; color: #22c55e;">${stop.name}</p>
+                <p style="font-size: 12px; color: #666;">${stop.description}</p>
+                <p style="font-weight: bold;">🟢 ${stop.ballsPerCollection} SatBalls</p>
+              </div>
+            `)
+            .addTo(map);
+
+          if (onStopClickRef.current) {
+            marker.on('click', () => onStopClickRef.current?.(stop));
+          }
+
+          markersRef.current.push(marker);
+        });
+
+        // Add player marker
+        if (playerLocation && isMountedRef.current && isMapReady(mapInstanceRef.current)) {
+          const playerIcon = L.divIcon({
+            html: `
+              <div class="player-marker">
+                <svg width="40" height="40" viewBox="0 0 24 24" fill="none">
+                  <circle cx="12" cy="12" r="8" fill="#f97316" stroke="#fff" stroke-width="3"/>
+                  <circle cx="12" cy="12" r="4" fill="#fff"/>
+                </svg>
+              </div>
+            `,
+            className: '',
+            iconSize: [40, 40],
+            iconAnchor: [20, 20],
+          });
+
+          const playerMarker = L.marker([playerLocation.lat, playerLocation.lng], { icon: playerIcon })
+            .bindPopup('<div style="text-align: center; font-weight: bold;">Your Location</div>')
+            .addTo(map);
+
+          markersRef.current.push(playerMarker);
+
+          // Add visibility circle for players
+          if (!showAllMonsters) {
+            const visibilityCircle = L.circle([playerLocation.lat, playerLocation.lng], {
+              radius: VISIBILITY_RANGE,
+              color: '#22c55e',
+              fillColor: '#22c55e',
+              fillOpacity: 0.15,
+              weight: 2,
+            }).addTo(map);
+            circlesRef.current.push(visibilityCircle);
+          }
+
+          // Center map on player (with safety check)
+          if (isMountedRef.current && isMapReady(mapInstanceRef.current)) {
+            map.setView([playerLocation.lat, playerLocation.lng], map.getZoom());
+          }
+        }
+      } catch {
+        // Ignore errors during map updates - map may have been destroyed
+      }
+    }, 50); // 50ms debounce
+
+    return () => {
+      if (updateTimeoutRef.current) {
+        clearTimeout(updateTimeoutRef.current);
+      }
+    };
+  }, [center, radiusMeters, playerLocation, monsters, satStops, showAllMonsters, clearMapLayers]);
 
   return (
     <>
@@ -247,6 +319,16 @@ export function HuntMap({
         }
         .leaflet-container {
           background: #0d0f14 !important;
+          z-index: 10 !important;
+        }
+        .leaflet-pane {
+          z-index: 10 !important;
+        }
+        .leaflet-top, .leaflet-bottom {
+          z-index: 20 !important;
+        }
+        .leaflet-control {
+          z-index: 20 !important;
         }
         .leaflet-popup-content-wrapper {
           background: rgba(13, 15, 20, 0.95);

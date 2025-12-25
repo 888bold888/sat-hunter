@@ -213,7 +213,133 @@ export function generateMonsters(config: MonsterGenConfig): Monster[] {
   return monsters;
 }
 
-// Generate sat stops (collection points)
+// Fetch real Points of Interest from OpenStreetMap Overpass API
+interface OSMNode {
+  type: 'node';
+  id: number;
+  lat: number;
+  lon: number;
+  tags?: {
+    name?: string;
+    amenity?: string;
+    shop?: string;
+    tourism?: string;
+    leisure?: string;
+    building?: string;
+    [key: string]: string | undefined;
+  };
+}
+
+async function fetchPOIsFromOverpass(geoFence: GeoFence, limit: number = 10): Promise<Array<{ name: string; lat: number; lng: number; type: string }>> {
+  const { bounds } = geoFence;
+
+  // Overpass QL query for various POI types
+  const query = `
+    [out:json][timeout:10];
+    (
+      node["amenity"~"cafe|restaurant|bar|pub|fast_food|bank|pharmacy|hospital|library|theatre|cinema|museum"](${bounds.south},${bounds.west},${bounds.north},${bounds.east});
+      node["shop"](${bounds.south},${bounds.west},${bounds.north},${bounds.east});
+      node["tourism"~"attraction|museum|artwork|viewpoint|hotel"](${bounds.south},${bounds.west},${bounds.north},${bounds.east});
+      node["leisure"~"park|playground|sports_centre|fitness_centre"](${bounds.south},${bounds.west},${bounds.north},${bounds.east});
+      node["building"~"church|cathedral|mosque|synagogue|temple|public"](${bounds.south},${bounds.west},${bounds.north},${bounds.east});
+    );
+    out body ${limit * 3};
+  `;
+
+  try {
+    const response = await fetch('https://overpass-api.de/api/interpreter', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: `data=${encodeURIComponent(query)}`,
+    });
+
+    if (!response.ok) {
+      console.warn('Overpass API request failed:', response.status);
+      return [];
+    }
+
+    const data = await response.json();
+    const nodes: OSMNode[] = data.elements || [];
+
+    // Filter nodes with names and map to our format
+    const pois = nodes
+      .filter((node): node is OSMNode & { tags: { name: string } } =>
+        node.type === 'node' && !!node.tags?.name
+      )
+      .map(node => ({
+        name: node.tags.name,
+        lat: node.lat,
+        lng: node.lon,
+        type: node.tags.amenity || node.tags.shop || node.tags.tourism || node.tags.leisure || 'place',
+      }));
+
+    // Shuffle and return up to limit
+    return pois.sort(() => Math.random() - 0.5).slice(0, limit);
+  } catch (error) {
+    console.warn('Failed to fetch POIs from Overpass:', error);
+    return [];
+  }
+}
+
+// Cypherpunk-themed name generator for SatStops
+function generateSatStopName(poiName: string, _poiType: string): string {
+  const prefixes = ['Nakamoto', 'Satoshi', 'Cypherpunk', 'Lightning', 'Hash', 'Block', 'Node', 'Freedom'];
+  const suffixes = ['Stop', 'Cache', 'Hub', 'Point', 'Station', 'Beacon'];
+
+  // Use POI name if it's short enough, otherwise generate themed name
+  if (poiName.length <= 20) {
+    return poiName;
+  }
+
+  const prefix = prefixes[Math.floor(Math.random() * prefixes.length)];
+  const suffix = suffixes[Math.floor(Math.random() * suffixes.length)];
+  return `${prefix} ${suffix}`;
+}
+
+// Generate sat stops from real POIs (async version)
+export async function generateSatStopsAsync(geoFence: GeoFence, count: number = 5): Promise<SatStop[]> {
+  // Try to fetch real POIs
+  const pois = await fetchPOIsFromOverpass(geoFence, count);
+
+  const stops: SatStop[] = [];
+
+  // Use real POIs if available
+  for (let i = 0; i < Math.min(pois.length, count); i++) {
+    const poi = pois[i];
+    stops.push({
+      id: generateId(),
+      name: generateSatStopName(poi.name, poi.type),
+      description: `Collect SatBalls at ${poi.name}!`,
+      location: { lat: poi.lat, lng: poi.lng },
+      cooldownMs: 5 * 60 * 1000,
+      ballsPerCollection: 3 + Math.floor(Math.random() * 3),
+    });
+  }
+
+  // Fall back to random locations if not enough POIs
+  if (stops.length < count) {
+    const fallbackNames = [
+      'Nakamoto Node', 'Cypherpunk Cache', 'Lightning Lair',
+      'Hash Hub', 'Block Beacon', 'Satoshi Shrine',
+      'Freedom Forge', 'Privacy Point', 'Consensus Corner'
+    ];
+
+    for (let i = stops.length; i < count && i < fallbackNames.length; i++) {
+      stops.push({
+        id: generateId(),
+        name: fallbackNames[i],
+        description: `Collect SatBalls at ${fallbackNames[i]} to catch more creatures!`,
+        location: randomPointInGeoFence(geoFence),
+        cooldownMs: 5 * 60 * 1000,
+        ballsPerCollection: 3 + Math.floor(Math.random() * 3),
+      });
+    }
+  }
+
+  return stops;
+}
+
+// Generate sat stops (sync fallback - uses random locations)
 export function generateSatStops(geoFence: GeoFence, count: number = 5): SatStop[] {
   const stopNames = [
     'Nakamoto Node',

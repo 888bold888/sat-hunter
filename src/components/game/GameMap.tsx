@@ -71,7 +71,7 @@ export function GameMap({ selectedMonster, selectedStop, onSelectMonster, onSele
   }
 
   return (
-    <div className="flex-1 relative">
+    <div className="flex-1 relative z-0">
       {/* Leaflet Map */}
       {playerLocation && !locationError ? (
         <HuntMap
@@ -83,7 +83,7 @@ export function GameMap({ selectedMonster, selectedStop, onSelectMonster, onSele
           onMonsterClick={onSelectMonster}
           onStopClick={onSelectStop}
           showAllMonsters={false}
-          className="absolute inset-0"
+          className="absolute inset-0 z-10"
         />
       ) : (
         <div className="absolute inset-0 bg-cyber-grid bg-matrix flex items-center justify-center">

@@ -11,7 +11,7 @@ import { useLocalStorage } from '@/hooks/useLocalStorage';
 import { useCurrentUser } from '@/hooks/useCurrentUser';
 import {
   generateMonsters,
-  generateSatStops,
+  generateSatStopsAsync,
   createGeoFence,
   isInCaptureRange,
   isAtSatStop,
@@ -157,7 +157,7 @@ interface GameContextType {
     durationMinutes: number;
     center: GeoLocation;
     radiusMeters: number;
-  }) => HuntEvent;
+  }) => Promise<HuntEvent>;
   confirmPayment: () => void;
   startHunt: () => void;
   joinHunt: (hunt: HuntEvent) => void;
@@ -240,7 +240,7 @@ export function GameProvider({ children }: { children: ReactNode }) {
 
   // Create a new hunt (pending payment)
   const createHunt = useCallback(
-    (config: {
+    async (config: {
       name: string;
       description: string;
       totalSats: number;
@@ -248,14 +248,15 @@ export function GameProvider({ children }: { children: ReactNode }) {
       durationMinutes: number;
       center: GeoLocation;
       radiusMeters: number;
-    }): HuntEvent => {
+    }): Promise<HuntEvent> => {
       const geoFence = createGeoFence(config.center, config.radiusMeters);
       const monsters = generateMonsters({
         totalSats: config.totalSats,
         monsterCount: config.monsterCount,
         geoFence,
       });
-      const satStops = generateSatStops(geoFence, Math.min(10, Math.floor(config.monsterCount / 10)));
+      // Fetch real POIs for SatStops (falls back to random if API fails)
+      const satStops = await generateSatStopsAsync(geoFence, Math.min(10, Math.floor(config.monsterCount / 10)));
       const now = Date.now();
       const shareCode = generateShareCode();
       const hunt: HuntEvent = {
