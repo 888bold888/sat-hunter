@@ -22,10 +22,11 @@ const NostrProvider: React.FC<NostrProviderProps> = (props) => {
 
   if (!pool.current) {
     const stableRelays = [
-      'wss://relay.damus.io',
       'wss://nos.lol',
-      'wss://relay.primal.net',
-      'wss://relay.nostr.wine',
+      'wss://140.f7z.io',
+      'wss://relays.land/spatianostra',
+      'wss://pyramid.fiatjaf.com',
+      'wss://relay.damus.io',
     ];
     const configRelays = relayMetadata.current.relays.map(r => r.url);
     const usedRelays = configRelays.length > 0 && configRelays.some(r => r.includes('nostr.band') || r.includes('ditto.pub'))

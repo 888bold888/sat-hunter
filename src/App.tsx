@@ -36,8 +36,10 @@ const defaultConfig: AppConfig = {
   theme: "light",
   relayMetadata: {
     relays: [
-      { url: 'wss://relay.ditto.pub', read: true, write: true },
-      { url: 'wss://relay.nostr.band', read: true, write: true },
+      { url: 'wss://nos.lol', read: true, write: true },
+      { url: 'wss://140.f7z.io', read: true, write: true },
+      { url: 'wss://relays.land/spatianostra', read: true, write: true },
+      { url: 'wss://pyramid.fiatjaf.com', read: true, write: true },
       { url: 'wss://relay.damus.io', read: true, write: true },
     ],
     updatedAt: 0,
