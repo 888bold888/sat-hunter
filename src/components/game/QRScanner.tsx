@@ -78,43 +78,97 @@ export function QRScanner({ onCodeScanned }: QRScannerProps) {
       return;
     }
 
+    // If scanner is already running, don't start again
+    if (scannerRef.current) {
+      console.log('Scanner already running');
+      return;
+    }
+
     try {
       setError(null);
       setIsScanning(true);
 
-      const html5QrCode = new Html5Qrcode(qrCodeRegionId);
+      const html5QrCode = new Html5Qrcode(qrCodeRegionId, { verbose: false });
       scannerRef.current = html5QrCode;
 
+      // Get available cameras to pick the best one
+      const cameras = await Html5Qrcode.getCameras();
+      console.log('Available cameras:', cameras);
+
+      // Prefer back camera, fall back to first available
+      const cameraConfig = cameras.length > 0
+        ? { deviceId: cameras.find(c => c.label.toLowerCase().includes('back'))?.id || cameras[0].id }
+        : { facingMode: 'environment' };
+
       await html5QrCode.start(
-        { facingMode: 'environment' },
+        cameraConfig,
         {
           fps: 10,
-          qrbox: { width: 250, height: 250 },
-          // iOS Safari specific settings
+          qrbox: (viewfinderWidth, viewfinderHeight) => {
+            // Make QR box 70% of the smaller dimension
+            const minDimension = Math.min(viewfinderWidth, viewfinderHeight);
+            const qrboxSize = Math.floor(minDimension * 0.7);
+            return { width: qrboxSize, height: qrboxSize };
+          },
           aspectRatio: 1,
         },
         (decodedText) => {
-          // Extract code from URL if it's a full URL
-          let code = decodedText;
-          const urlMatch = decodedText.match(/\/join\/([A-Z0-9]{6})/i);
-          if (urlMatch) {
-            code = urlMatch[1];
+          console.log('QR Code scanned:', decodedText);
+
+          // Extract code from various formats
+          let code = decodedText.trim();
+
+          // Try to extract from URL patterns
+          // Matches: /join/CODE, ?code=CODE, #CODE, or just CODE at end of URL
+          const urlPatterns = [
+            /\/join\/([A-Z0-9]{6})/i,
+            /[?&]code=([A-Z0-9]{6})/i,
+            /#([A-Z0-9]{6})$/i,
+            /\/([A-Z0-9]{6})$/i,
+          ];
+
+          for (const pattern of urlPatterns) {
+            const match = decodedText.match(pattern);
+            if (match) {
+              code = match[1];
+              break;
+            }
           }
+
+          // Clean up the code - remove any non-alphanumeric characters
+          code = code.replace(/[^A-Z0-9]/gi, '');
+
+          // If code is longer than 6 chars, try to find a 6-char sequence
+          if (code.length > 6) {
+            // Take the last 6 characters (most likely to be the code)
+            code = code.slice(-6);
+          }
+
+          console.log('Extracted code:', code);
 
           // Validate code format (6 alphanumeric characters)
           if (/^[A-Z0-9]{6}$/i.test(code)) {
+            console.log('Valid code found, closing scanner');
             onCodeScanned(code.toUpperCase());
             stopScanner();
             setIsOpen(false);
+          } else {
+            console.log('Invalid code format:', code);
           }
         },
-        () => {
-          // Ignore scan errors (no QR code in frame)
+        (errorMessage) => {
+          // Silently ignore "No QR code found" errors
+          if (!errorMessage.includes('No QR code found')) {
+            console.log('Scan error:', errorMessage);
+          }
         }
       );
+
+      console.log('Scanner started successfully');
     } catch (err) {
       console.error('QR Scanner error:', err);
       setIsScanning(false);
+      scannerRef.current = null;
 
       if (err instanceof Error) {
         if (err.message.includes('NotAllowedError') || err.message.includes('Permission')) {
@@ -123,7 +177,7 @@ export function QRScanner({ onCodeScanned }: QRScannerProps) {
         } else if (err.message.includes('NotFoundError')) {
           setError('No camera found on your device.');
         } else {
-          setError('Failed to start camera. Please try again.');
+          setError(`Failed to start camera: ${err.message}`);
         }
       }
     }
