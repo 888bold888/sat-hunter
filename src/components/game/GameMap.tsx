@@ -71,8 +71,8 @@ export function GameMap({ selectedMonster, selectedStop, onSelectMonster, onSele
   }
 
   return (
-    <div className="flex-1 relative" style={{ isolation: 'isolate' }}>
-      {/* Leaflet Map - contained in stacking context */}
+    <div className="w-full h-full relative" style={{ isolation: 'isolate' }}>
+      {/* Leaflet Map - fills container */}
       {playerLocation && !locationError ? (
         <HuntMap
           center={activeHunt.geoFence.center}
@@ -83,10 +83,10 @@ export function GameMap({ selectedMonster, selectedStop, onSelectMonster, onSele
           onMonsterClick={onSelectMonster}
           onStopClick={onSelectStop}
           showAllMonsters={false}
-          className="absolute inset-0"
+          className="w-full h-full"
         />
       ) : (
-        <div className="absolute inset-0 bg-cyber-grid bg-matrix flex items-center justify-center">
+        <div className="w-full h-full bg-cyber-grid bg-matrix flex items-center justify-center">
           {/* Location Error Overlay */}
           {locationError && (
             <Card className="p-6 max-w-xs text-center space-y-4 bg-card/90">

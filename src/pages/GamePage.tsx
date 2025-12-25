@@ -170,9 +170,9 @@ export default function GamePage() {
   // Player view
   // Use isolation and proper stacking contexts to fix iOS Safari z-index issues with Leaflet
   return (
-    <div className="fixed inset-0 flex flex-col bg-background" style={{ isolation: 'isolate' }}>
-      {/* Map Layer - contained in its own stacking context */}
-      <div className="absolute inset-0" style={{ zIndex: 0 }}>
+    <div className="fixed inset-0 bg-background" style={{ isolation: 'isolate' }}>
+      {/* Map Layer - full screen, contained in its own stacking context */}
+      <div className="absolute inset-0" style={{ zIndex: 0, isolation: 'isolate' }}>
         <GameMap
           selectedMonster={selectedMonster}
           selectedStop={selectedStop}
@@ -185,21 +185,17 @@ export default function GamePage() {
         />
       </div>
 
-      {/* HUD Layer - above map with hardware acceleration for iOS */}
-      <div className="pointer-events-none" style={{ zIndex: 50, position: 'relative', transform: 'translateZ(0)' }}>
-        <div className="pointer-events-auto">
-          <GameHUD
-            onOpenLeaderboard={() => setShowLeaderboard(true)}
-            onOpenInventory={() => setShowInventory(true)}
-          />
-        </div>
-      </div>
+      {/* HUD Layer - fixed positioned elements with hardware acceleration for iOS */}
+      <GameHUD
+        onOpenLeaderboard={() => setShowLeaderboard(true)}
+        onOpenInventory={() => setShowInventory(true)}
+      />
 
-      {/* Quick Exit Button - in HUD layer */}
+      {/* Quick Exit Button */}
       <Button
         variant="outline"
         size="sm"
-        className="absolute top-36 right-4 bg-card/80 backdrop-blur border-destructive/30 text-destructive hover:bg-destructive hover:text-destructive-foreground"
+        className="fixed top-36 right-4 bg-card/80 backdrop-blur border-destructive/30 text-destructive hover:bg-destructive hover:text-destructive-foreground"
         style={{ zIndex: 50, transform: 'translateZ(0)' }}
         onClick={leaveHunt}
       >
