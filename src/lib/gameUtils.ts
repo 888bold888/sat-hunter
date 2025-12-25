@@ -245,20 +245,23 @@ interface OSMNode {
   };
 }
 
-async function fetchPOIsFromOverpass(geoFence: GeoFence, limit: number = 10): Promise<Array<{ name: string; lat: number; lng: number; type: string }>> {
-  const { bounds } = geoFence;
+async function fetchPOIsFromOverpass(geoFence: GeoFence): Promise<Array<{ name: string; lat: number; lng: number; type: string }>> {
+  const { bounds, center, radiusMeters } = geoFence;
 
-  // Overpass QL query for various POI types
+  // Overpass QL query for all POI types - no limit, fetch everything in the area
   const query = `
-    [out:json][timeout:10];
+    [out:json][timeout:15];
     (
-      node["amenity"~"cafe|restaurant|bar|pub|fast_food|bank|pharmacy|hospital|library|theatre|cinema|museum"](${bounds.south},${bounds.west},${bounds.north},${bounds.east});
+      node["amenity"~"cafe|restaurant|bar|pub|fast_food|bank|pharmacy|hospital|library|theatre|cinema|museum|place_of_worship|community_centre|marketplace|fuel|parking"](${bounds.south},${bounds.west},${bounds.north},${bounds.east});
       node["shop"](${bounds.south},${bounds.west},${bounds.north},${bounds.east});
-      node["tourism"~"attraction|museum|artwork|viewpoint|hotel"](${bounds.south},${bounds.west},${bounds.north},${bounds.east});
-      node["leisure"~"park|playground|sports_centre|fitness_centre"](${bounds.south},${bounds.west},${bounds.north},${bounds.east});
-      node["building"~"church|cathedral|mosque|synagogue|temple|public"](${bounds.south},${bounds.west},${bounds.north},${bounds.east});
+      node["tourism"~"attraction|museum|artwork|viewpoint|hotel|hostel|information|gallery"](${bounds.south},${bounds.west},${bounds.north},${bounds.east});
+      node["leisure"~"park|playground|sports_centre|fitness_centre|garden|swimming_pool|stadium"](${bounds.south},${bounds.west},${bounds.north},${bounds.east});
+      node["building"~"church|cathedral|mosque|synagogue|temple|public|government|school|university|college|hospital"](${bounds.south},${bounds.west},${bounds.north},${bounds.east});
+      node["office"](${bounds.south},${bounds.west},${bounds.north},${bounds.east});
+      node["historic"](${bounds.south},${bounds.west},${bounds.north},${bounds.east});
+      node["natural"~"peak|spring|cave_entrance"](${bounds.south},${bounds.west},${bounds.north},${bounds.east});
     );
-    out body ${limit * 3};
+    out body;
   `;
 
   try {
@@ -276,7 +279,7 @@ async function fetchPOIsFromOverpass(geoFence: GeoFence, limit: number = 10): Pr
     const data = await response.json();
     const nodes: OSMNode[] = data.elements || [];
 
-    // Filter nodes with names and map to our format
+    // Filter nodes with names, within circular radius, and map to our format
     const pois = nodes
       .filter((node): node is OSMNode & { tags: { name: string } } =>
         node.type === 'node' && !!node.tags?.name
@@ -285,11 +288,13 @@ async function fetchPOIsFromOverpass(geoFence: GeoFence, limit: number = 10): Pr
         name: node.tags.name,
         lat: node.lat,
         lng: node.lon,
-        type: node.tags.amenity || node.tags.shop || node.tags.tourism || node.tags.leisure || 'place',
-      }));
+        type: node.tags.amenity || node.tags.shop || node.tags.tourism || node.tags.leisure || node.tags.historic || 'place',
+      }))
+      // Filter to only POIs within the circular radius (not just bounding box)
+      .filter(poi => calculateDistance(center, { lat: poi.lat, lng: poi.lng }) <= radiusMeters);
 
-    // Shuffle and return up to limit
-    return pois.sort(() => Math.random() - 0.5).slice(0, limit);
+    console.log(`Found ${pois.length} POIs within hunt radius`);
+    return pois;
   } catch (error) {
     console.warn('Failed to fetch POIs from Overpass:', error);
     return [];
@@ -311,39 +316,39 @@ function generateSatStopName(poiName: string, _poiType: string): string {
   return `${prefix} ${suffix}`;
 }
 
-// Generate sat stops from real POIs (async version)
-export async function generateSatStopsAsync(geoFence: GeoFence, count: number = 5): Promise<SatStop[]> {
-  // Try to fetch real POIs
-  const pois = await fetchPOIsFromOverpass(geoFence, count);
+// Generate sat stops from ALL real POIs within the hunt radius
+export async function generateSatStopsAsync(geoFence: GeoFence): Promise<SatStop[]> {
+  // Fetch all real POIs within the hunt radius
+  const pois = await fetchPOIsFromOverpass(geoFence);
 
   const stops: SatStop[] = [];
 
-  // Use real POIs if available
-  for (let i = 0; i < Math.min(pois.length, count); i++) {
-    const poi = pois[i];
+  // Convert all POIs to SatStops
+  for (const poi of pois) {
     stops.push({
       id: generateId(),
       name: generateSatStopName(poi.name, poi.type),
       description: `Collect SatBalls at ${poi.name}!`,
       location: { lat: poi.lat, lng: poi.lng },
-      cooldownMs: 5 * 60 * 1000,
-      ballsPerCollection: 3 + Math.floor(Math.random() * 3),
+      cooldownMs: 5 * 60 * 1000, // 5 minute cooldown per stop
+      ballsPerCollection: 3 + Math.floor(Math.random() * 3), // 3-5 balls
     });
   }
 
-  // Fall back to random locations if not enough POIs
-  if (stops.length < count) {
+  // If no POIs found, add some fallback stops at random locations
+  if (stops.length === 0) {
+    console.log('No POIs found, generating fallback SatStops');
     const fallbackNames = [
       'Nakamoto Node', 'Cypherpunk Cache', 'Lightning Lair',
       'Hash Hub', 'Block Beacon', 'Satoshi Shrine',
       'Freedom Forge', 'Privacy Point', 'Consensus Corner'
     ];
 
-    for (let i = stops.length; i < count && i < fallbackNames.length; i++) {
+    for (const name of fallbackNames) {
       stops.push({
         id: generateId(),
-        name: fallbackNames[i],
-        description: `Collect SatBalls at ${fallbackNames[i]} to catch more creatures!`,
+        name,
+        description: `Collect SatBalls at ${name} to catch more creatures!`,
         location: randomPointInGeoFence(geoFence),
         cooldownMs: 5 * 60 * 1000,
         ballsPerCollection: 3 + Math.floor(Math.random() * 3),
@@ -351,6 +356,7 @@ export async function generateSatStopsAsync(geoFence: GeoFence, count: number = 
     }
   }
 
+  console.log(`Created ${stops.length} SatStops for hunt`);
   return stops;
 }
 

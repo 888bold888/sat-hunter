@@ -255,8 +255,8 @@ export function GameProvider({ children }: { children: ReactNode }) {
         monsterCount: config.monsterCount,
         geoFence,
       });
-      // Fetch real POIs for SatStops (falls back to random if API fails)
-      const satStops = await generateSatStopsAsync(geoFence, Math.min(10, Math.floor(config.monsterCount / 10)));
+      // Fetch ALL real POIs within radius for SatStops (no limit)
+      const satStops = await generateSatStopsAsync(geoFence);
       const now = Date.now();
       const shareCode = generateShareCode();
       const hunt: HuntEvent = {
