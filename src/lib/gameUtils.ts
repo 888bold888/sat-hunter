@@ -66,12 +66,27 @@ export function isInsideGeoFence(point: GeoLocation, geoFence: GeoFence): boolea
   );
 }
 
-// Generate random point within geofence
+// Generate random point within geofence (circular area)
 export function randomPointInGeoFence(geoFence: GeoFence): GeoLocation {
-  const { bounds } = geoFence;
-  const lat = bounds.south + Math.random() * (bounds.north - bounds.south);
-  const lng = bounds.west + Math.random() * (bounds.east - bounds.west);
-  return { lat, lng };
+  const { center, radiusMeters } = geoFence;
+
+  // Generate random point within circle using polar coordinates
+  // Use sqrt for uniform distribution within circle (not clustered at center)
+  const randomRadius = Math.sqrt(Math.random()) * radiusMeters;
+  const randomAngle = Math.random() * 2 * Math.PI;
+
+  // Convert meters to degrees (approximate)
+  const latDegPerMeter = 1 / 111320;
+  const lngDegPerMeter = 1 / (111320 * Math.cos((center.lat * Math.PI) / 180));
+
+  // Calculate offset in degrees
+  const latOffset = randomRadius * Math.cos(randomAngle) * latDegPerMeter;
+  const lngOffset = randomRadius * Math.sin(randomAngle) * lngDegPerMeter;
+
+  return {
+    lat: center.lat + latOffset,
+    lng: center.lng + lngOffset,
+  };
 }
 
 // Create geofence from center point and radius
