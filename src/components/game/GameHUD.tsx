@@ -64,8 +64,11 @@ export function GameHUD({ onOpenLeaderboard, onOpenInventory }: GameHUDProps) {
 
   return (
     <>
-      {/* Top HUD Bar */}
-      <div className="fixed top-0 left-0 right-0 z-40 p-3 bg-gradient-to-b from-background via-background/95 to-transparent">
+      {/* Top HUD Bar - uses transform for iOS Safari hardware acceleration */}
+      <div
+        className="fixed top-0 left-0 right-0 p-3 bg-gradient-to-b from-background via-background/95 to-transparent"
+        style={{ zIndex: 50, transform: 'translateZ(0)', WebkitTransform: 'translateZ(0)' }}
+      >
         <Card className="bg-card/90 backdrop-blur-md border-primary/30 shadow-glow-orange">
           <div className="p-3 space-y-3">
             {/* Hunt Name and Timer */}
@@ -160,8 +163,11 @@ export function GameHUD({ onOpenLeaderboard, onOpenInventory }: GameHUDProps) {
         </Card>
       </div>
 
-      {/* Bottom Player Stats Bar */}
-      <div className="fixed bottom-0 left-0 right-0 z-40 p-3 bg-gradient-to-t from-background via-background/95 to-transparent">
+      {/* Bottom Player Stats Bar - uses transform for iOS Safari hardware acceleration */}
+      <div
+        className="fixed bottom-0 left-0 right-0 p-3 bg-gradient-to-t from-background via-background/95 to-transparent"
+        style={{ zIndex: 50, transform: 'translateZ(0)', WebkitTransform: 'translateZ(0)' }}
+      >
         <Card className="bg-card/90 backdrop-blur-md border-secondary/30 shadow-glow-green">
           <div className="p-3 flex items-center justify-between">
             {/* SatBalls Count */}

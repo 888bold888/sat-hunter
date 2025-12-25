@@ -317,18 +317,45 @@ export function HuntMap({
           0%, 100% { filter: drop-shadow(0 0 10px rgba(250, 204, 21, 0.7)); }
           50% { filter: drop-shadow(0 0 20px rgba(250, 204, 21, 1)); }
         }
+        /* Contain Leaflet in its own stacking context to prevent iOS Safari z-index issues */
+        .leaflet-map-container {
+          isolation: isolate;
+          contain: layout style;
+          position: relative;
+          z-index: 0;
+        }
         .leaflet-container {
           background: #0d0f14 !important;
-          z-index: 10 !important;
+          z-index: 1 !important;
+          /* Prevent Leaflet from creating high z-index elements */
+          isolation: isolate;
         }
         .leaflet-pane {
-          z-index: 10 !important;
+          z-index: 1 !important;
+        }
+        .leaflet-tile-pane {
+          z-index: 1 !important;
+        }
+        .leaflet-overlay-pane {
+          z-index: 2 !important;
+        }
+        .leaflet-shadow-pane {
+          z-index: 3 !important;
+        }
+        .leaflet-marker-pane {
+          z-index: 4 !important;
+        }
+        .leaflet-tooltip-pane {
+          z-index: 5 !important;
+        }
+        .leaflet-popup-pane {
+          z-index: 6 !important;
         }
         .leaflet-top, .leaflet-bottom {
-          z-index: 20 !important;
+          z-index: 10 !important;
         }
         .leaflet-control {
-          z-index: 20 !important;
+          z-index: 10 !important;
         }
         .leaflet-popup-content-wrapper {
           background: rgba(13, 15, 20, 0.95);
@@ -339,7 +366,9 @@ export function HuntMap({
           background: rgba(13, 15, 20, 0.95);
         }
       `}</style>
-      <div ref={mapRef} className={cn('w-full h-full', className)} />
+      <div className={cn('w-full h-full leaflet-map-container', className)}>
+        <div ref={mapRef} className="w-full h-full" />
+      </div>
     </>
   );
 }

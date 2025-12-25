@@ -71,8 +71,8 @@ export function GameMap({ selectedMonster, selectedStop, onSelectMonster, onSele
   }
 
   return (
-    <div className="flex-1 relative z-0">
-      {/* Leaflet Map */}
+    <div className="flex-1 relative" style={{ isolation: 'isolate' }}>
+      {/* Leaflet Map - contained in stacking context */}
       {playerLocation && !locationError ? (
         <HuntMap
           center={activeHunt.geoFence.center}
@@ -83,7 +83,7 @@ export function GameMap({ selectedMonster, selectedStop, onSelectMonster, onSele
           onMonsterClick={onSelectMonster}
           onStopClick={onSelectStop}
           showAllMonsters={false}
-          className="absolute inset-0 z-10"
+          className="absolute inset-0"
         />
       ) : (
         <div className="absolute inset-0 bg-cyber-grid bg-matrix flex items-center justify-center">
@@ -104,9 +104,12 @@ export function GameMap({ selectedMonster, selectedStop, onSelectMonster, onSele
         </div>
       )}
 
-      {/* Selected Monster Panel */}
+      {/* Selected Monster Panel - above map */}
       {selectedMonster && (
-        <div className="absolute bottom-24 left-4 right-4 z-20">
+        <div
+          className="absolute bottom-24 left-4 right-4"
+          style={{ zIndex: 30, transform: 'translateZ(0)' }}
+        >
           <MonsterCard
             monster={selectedMonster}
             totalSats={activeHunt.totalSats}
@@ -117,9 +120,12 @@ export function GameMap({ selectedMonster, selectedStop, onSelectMonster, onSele
         </div>
       )}
 
-      {/* Selected Stop Panel */}
+      {/* Selected Stop Panel - above map */}
       {selectedStop && !selectedMonster && (
-        <div className="absolute bottom-24 left-4 right-4 z-20">
+        <div
+          className="absolute bottom-24 left-4 right-4"
+          style={{ zIndex: 30, transform: 'translateZ(0)' }}
+        >
           <SatStopCard
             stop={selectedStop}
             onCollect={handleCollect}

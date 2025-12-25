@@ -168,31 +168,39 @@ export default function GamePage() {
   }
 
   // Player view
+  // Use isolation and proper stacking contexts to fix iOS Safari z-index issues with Leaflet
   return (
-    <div className="fixed inset-0 flex flex-col bg-background">
-      {/* HUD */}
-      <GameHUD
-        onOpenLeaderboard={() => setShowLeaderboard(true)}
-        onOpenInventory={() => setShowInventory(true)}
-      />
+    <div className="fixed inset-0 flex flex-col bg-background" style={{ isolation: 'isolate' }}>
+      {/* Map Layer - contained in its own stacking context */}
+      <div className="absolute inset-0" style={{ zIndex: 0 }}>
+        <GameMap
+          selectedMonster={selectedMonster}
+          selectedStop={selectedStop}
+          onSelectMonster={setSelectedMonster}
+          onSelectStop={setSelectedStop}
+          onMonsterCaptured={(monster) => {
+            setCapturedMonster(monster);
+            setShowCaptureSuccess(true);
+          }}
+        />
+      </div>
 
-      {/* Map */}
-      <GameMap
-        selectedMonster={selectedMonster}
-        selectedStop={selectedStop}
-        onSelectMonster={setSelectedMonster}
-        onSelectStop={setSelectedStop}
-        onMonsterCaptured={(monster) => {
-          setCapturedMonster(monster);
-          setShowCaptureSuccess(true);
-        }}
-      />
+      {/* HUD Layer - above map with hardware acceleration for iOS */}
+      <div className="pointer-events-none" style={{ zIndex: 50, position: 'relative', transform: 'translateZ(0)' }}>
+        <div className="pointer-events-auto">
+          <GameHUD
+            onOpenLeaderboard={() => setShowLeaderboard(true)}
+            onOpenInventory={() => setShowInventory(true)}
+          />
+        </div>
+      </div>
 
-      {/* Quick Exit Button */}
+      {/* Quick Exit Button - in HUD layer */}
       <Button
         variant="outline"
         size="sm"
-        className="absolute top-36 right-4 z-30 bg-card/80 backdrop-blur border-destructive/30 text-destructive hover:bg-destructive hover:text-destructive-foreground"
+        className="absolute top-36 right-4 bg-card/80 backdrop-blur border-destructive/30 text-destructive hover:bg-destructive hover:text-destructive-foreground"
+        style={{ zIndex: 50, transform: 'translateZ(0)' }}
         onClick={leaveHunt}
       >
         <LogOut className="w-4 h-4 mr-1" />
