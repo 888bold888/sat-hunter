@@ -88,19 +88,56 @@ export interface HuntParticipant {
 
 export interface PlayerStats {
   pubkey: string;
+  // Current hunt stats (reset each hunt)
+  currentHuntId: string | null;
+  currentHuntCaptured: number;
+  currentHuntSatsEarned: number;
+  // Lifetime stats (persistent)
+  lifetimeCaptured: number;
+  lifetimeSatsEarned: number;
+  // All captured monsters (for lifetime tracking)
+  capturedMonsters: CapturedMonster[];
+  // Hunt history
+  huntHistory: HuntHistoryEntry[];
+  // Current inventory
+  balls: number;
+  // Legacy fields for backwards compatibility
   totalCaptured: number;
   totalSatsEarned: number;
-  capturedMonsters: CapturedMonster[];
-  balls: number;
 }
 
 export interface CapturedMonster {
   monsterId: string;
   monsterName: string;
+  monsterType: string; // Canonical type name for grouping (e.g., "Pisatchu")
   satAmount: number;
   rarity: MonsterRarity;
   capturedAt: number;
   huntId: string;
+  huntName?: string;
+}
+
+export interface HuntHistoryEntry {
+  huntId: string;
+  huntName: string;
+  hostPubkey: string;
+  startTime: number;
+  endTime: number;
+  joinedAt: number;
+  leftAt?: number;
+  monstersCapt: number;
+  satsEarned: number;
+  capturedMonsters: CapturedMonster[];
+}
+
+// Monster capture stats grouped by type
+export interface MonsterTypeStats {
+  type: string;
+  name: string;
+  emoji: string;
+  rarity: MonsterRarity;
+  totalCaptured: number;
+  totalSatsEarned: number;
 }
 
 export interface LeaderboardEntry {

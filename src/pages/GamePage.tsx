@@ -9,6 +9,7 @@ import { CreateHuntForm } from '@/components/game/CreateHuntForm';
 import { CaptureSuccessDialog } from '@/components/game/CaptureSuccessDialog';
 import { HostDashboard } from '@/components/game/HostDashboard';
 import { PaymentConfirmation } from '@/components/game/PaymentConfirmation';
+import { PlayerStatsView } from '@/components/game/PlayerStatsView';
 import { DevTools } from '@/components/game/DevTools';
 import { useCurrentUser } from '@/hooks/useCurrentUser';
 import { useSeoMeta } from '@unhead/react';
@@ -20,7 +21,7 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import { Card, CardContent } from '@/components/ui/card';
-import { Target, ArrowLeft, LogOut, Sparkles, QrCode } from 'lucide-react';
+import { Target, ArrowLeft, LogOut, Sparkles, QrCode, BarChart3 } from 'lucide-react';
 import { Link, useNavigate } from 'react-router-dom';
 
 export default function GamePage() {
@@ -33,6 +34,7 @@ export default function GamePage() {
   const [selectedStop, setSelectedStop] = useState<SatStop | null>(null);
   const [showLeaderboard, setShowLeaderboard] = useState(false);
   const [showInventory, setShowInventory] = useState(false);
+  const [showStats, setShowStats] = useState(false);
   const [showCreateHunt, setShowCreateHunt] = useState(false);
   const [capturedMonster, setCapturedMonster] = useState<Monster | null>(null);
   const [showCaptureSuccess, setShowCaptureSuccess] = useState(false);
@@ -189,6 +191,7 @@ export default function GamePage() {
       <GameHUD
         onOpenLeaderboard={() => setShowLeaderboard(true)}
         onOpenInventory={() => setShowInventory(true)}
+        onOpenStats={() => setShowStats(true)}
       />
 
       {/* Quick Exit Button */}
@@ -220,6 +223,19 @@ export default function GamePage() {
             <DialogTitle className="sr-only">My Captured Creatures</DialogTitle>
           </DialogHeader>
           <CapturedInventory />
+        </DialogContent>
+      </Dialog>
+
+      {/* Stats Dialog */}
+      <Dialog open={showStats} onOpenChange={setShowStats}>
+        <DialogContent className="max-w-md max-h-[85vh] overflow-y-auto bg-card/95 backdrop-blur border-accent/30">
+          <DialogHeader>
+            <DialogTitle className="font-display flex items-center gap-2">
+              <BarChart3 className="w-5 h-5 text-accent" />
+              My Stats
+            </DialogTitle>
+          </DialogHeader>
+          <PlayerStatsView />
         </DialogContent>
       </Dialog>
 

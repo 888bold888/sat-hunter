@@ -181,7 +181,207 @@ function getMonsterType(name: string): string {
   return name.toLowerCase().replace(/\s+/g, '-');
 }
 
-// Generate monsters for a hunt event
+// OSM Element type for Overpass API responses (nodes and ways)
+interface OSMElement {
+  type: 'node' | 'way';
+  id: number;
+  lat?: number;
+  lon?: number;
+  nodes?: number[];
+  tags?: Record<string, string>;
+}
+
+// Fetch streets/roads from Overpass API and return points along them
+async function fetchStreetPointsFromOverpass(
+  geoFence: GeoFence,
+  count: number,
+  retryCount = 0
+): Promise<{ points: GeoLocation[]; success: boolean; error?: string }> {
+  const { bounds, center, radiusMeters } = geoFence;
+  const MAX_RETRIES = 2;
+  const TIMEOUT_MS = 30000;
+
+  // Fetch streets, paths, and footways (public walkable areas)
+  const query = `
+    [out:json][timeout:25];
+    (
+      way["highway"~"residential|tertiary|secondary|primary|footway|path|pedestrian|living_street|service|cycleway|unclassified"](${bounds.south},${bounds.west},${bounds.north},${bounds.east});
+    );
+    out body;
+    >;
+    out skel qt;
+  `;
+
+  try {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), TIMEOUT_MS);
+
+    console.log(`Fetching streets from Overpass API (attempt ${retryCount + 1}/${MAX_RETRIES + 1})...`);
+
+    const response = await fetch('https://overpass-api.de/api/interpreter', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: `data=${encodeURIComponent(query)}`,
+      signal: controller.signal,
+    });
+
+    clearTimeout(timeoutId);
+
+    if (!response.ok) {
+      const errorMsg = `Overpass API returned status ${response.status}`;
+      console.warn(errorMsg);
+
+      if (response.status >= 500 && retryCount < MAX_RETRIES) {
+        console.log(`Retrying street fetch...`);
+        await new Promise(resolve => setTimeout(resolve, 2000));
+        return fetchStreetPointsFromOverpass(geoFence, count, retryCount + 1);
+      }
+
+      return { points: [], success: false, error: errorMsg };
+    }
+
+    const data = await response.json();
+    const elements: OSMElement[] = data.elements || [];
+
+    // Build a map of node IDs to coordinates
+    const nodeCoords = new Map<number, GeoLocation>();
+    elements.forEach(el => {
+      if (el.type === 'node' && el.lat !== undefined && el.lon !== undefined) {
+        nodeCoords.set(el.id, { lat: el.lat, lng: el.lon });
+      }
+    });
+
+    // Collect all street segments as pairs of points
+    const streetSegments: Array<{ start: GeoLocation; end: GeoLocation }> = [];
+    elements.forEach(el => {
+      if (el.type === 'way' && el.nodes) {
+        for (let i = 0; i < el.nodes.length - 1; i++) {
+          const startCoord = nodeCoords.get(el.nodes[i]);
+          const endCoord = nodeCoords.get(el.nodes[i + 1]);
+          if (startCoord && endCoord) {
+            // Only include segments within the circular radius
+            if (
+              calculateDistance(center, startCoord) <= radiusMeters &&
+              calculateDistance(center, endCoord) <= radiusMeters
+            ) {
+              streetSegments.push({ start: startCoord, end: endCoord });
+            }
+          }
+        }
+      }
+    });
+
+    if (streetSegments.length === 0) {
+      console.log('No street segments found within hunt radius');
+      return { points: [], success: true, error: 'No streets found' };
+    }
+
+    console.log(`Found ${streetSegments.length} street segments within hunt radius`);
+
+    // Generate random points along street segments
+    const points: GeoLocation[] = [];
+    for (let i = 0; i < count; i++) {
+      // Pick a random segment
+      const segment = streetSegments[Math.floor(Math.random() * streetSegments.length)];
+      // Pick a random point along the segment
+      const t = Math.random();
+      const point: GeoLocation = {
+        lat: segment.start.lat + t * (segment.end.lat - segment.start.lat),
+        lng: segment.start.lng + t * (segment.end.lng - segment.start.lng),
+      };
+      points.push(point);
+    }
+
+    return { points, success: true };
+  } catch (error) {
+    const errorMsg = error instanceof Error ? error.message : 'Unknown error';
+    console.warn('Failed to fetch streets from Overpass:', errorMsg);
+
+    if (retryCount < MAX_RETRIES) {
+      console.log(`Retrying street fetch after error...`);
+      await new Promise(resolve => setTimeout(resolve, 2000));
+      return fetchStreetPointsFromOverpass(geoFence, count, retryCount + 1);
+    }
+
+    return { points: [], success: false, error: errorMsg };
+  }
+}
+
+// Result type for monster generation
+export interface MonstersResult {
+  monsters: Monster[];
+  usedFallback: boolean;
+  streetPointCount: number;
+  error?: string;
+}
+
+// Generate monsters for a hunt event (async - fetches street locations)
+export async function generateMonstersAsync(config: MonsterGenConfig): Promise<MonstersResult> {
+  const { totalSats, monsterCount, geoFence } = config;
+
+  // ALWAYS spawn exactly 1 mythic creature (Pisatchu)
+  const rarities: MonsterRarity[] = ['mythic'];
+
+  // Generate remaining monsters (excluding the 1 mythic)
+  for (let i = 1; i < monsterCount; i++) {
+    rarities.push(selectRarity());
+  }
+
+  // Shuffle to randomize mythic position
+  for (let i = rarities.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [rarities[i], rarities[j]] = [rarities[j], rarities[i]];
+  }
+
+  // Distribute sats based on rarities
+  const satAmounts = distributeSats(totalSats, monsterCount, rarities);
+
+  // Fetch street points for monster placement
+  const { points: streetPoints, success, error } = await fetchStreetPointsFromOverpass(geoFence, monsterCount);
+
+  const usedFallback = streetPoints.length < monsterCount;
+  if (usedFallback) {
+    console.log(`Only got ${streetPoints.length} street points, need ${monsterCount}. Will use fallback for remaining.`);
+  }
+
+  // Create monsters
+  const monsters: Monster[] = [];
+  const now = Date.now();
+
+  for (let i = 0; i < monsterCount; i++) {
+    const rarity = rarities[i];
+    const name = generateMonsterName(rarity);
+
+    // Use street point if available, otherwise fall back to random (should not happen ideally)
+    const location = i < streetPoints.length
+      ? streetPoints[i]
+      : randomPointInGeoFence(geoFence);
+
+    const monster: Monster = {
+      id: generateId(),
+      name,
+      type: getMonsterType(name),
+      description: generateMonsterDescription(rarity),
+      satAmount: satAmounts[i],
+      rarity,
+      location,
+      emoji: getMonsterEmoji(name),
+      spawnTime: now + Math.random() * 60000, // Spawn within first minute randomly
+      captured: false,
+      invoiceStatus: 'pending',
+    };
+    monsters.push(monster);
+  }
+
+  return {
+    monsters,
+    usedFallback,
+    streetPointCount: streetPoints.length,
+    error: !success ? error : undefined,
+  };
+}
+
+// Sync version for backwards compatibility (uses random locations - NOT RECOMMENDED)
 export function generateMonsters(config: MonsterGenConfig): Monster[] {
   const { totalSats, monsterCount, geoFence } = config;
 
@@ -245,12 +445,17 @@ interface OSMNode {
   };
 }
 
-async function fetchPOIsFromOverpass(geoFence: GeoFence): Promise<Array<{ name: string; lat: number; lng: number; type: string }>> {
+async function fetchPOIsFromOverpass(
+  geoFence: GeoFence,
+  retryCount = 0
+): Promise<{ pois: Array<{ name: string; lat: number; lng: number; type: string }>; success: boolean; error?: string }> {
   const { bounds, center, radiusMeters } = geoFence;
+  const MAX_RETRIES = 2;
+  const TIMEOUT_MS = 30000; // 30 second timeout
 
   // Overpass QL query for all POI types - no limit, fetch everything in the area
   const query = `
-    [out:json][timeout:15];
+    [out:json][timeout:25];
     (
       node["amenity"~"cafe|restaurant|bar|pub|fast_food|bank|pharmacy|hospital|library|theatre|cinema|museum|place_of_worship|community_centre|marketplace|fuel|parking"](${bounds.south},${bounds.west},${bounds.north},${bounds.east});
       node["shop"](${bounds.south},${bounds.west},${bounds.north},${bounds.east});
@@ -265,15 +470,33 @@ async function fetchPOIsFromOverpass(geoFence: GeoFence): Promise<Array<{ name: 
   `;
 
   try {
+    // Create abort controller for timeout
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), TIMEOUT_MS);
+
+    console.log(`Fetching POIs from Overpass API (attempt ${retryCount + 1}/${MAX_RETRIES + 1})...`);
+
     const response = await fetch('https://overpass-api.de/api/interpreter', {
       method: 'POST',
       headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
       body: `data=${encodeURIComponent(query)}`,
+      signal: controller.signal,
     });
 
+    clearTimeout(timeoutId);
+
     if (!response.ok) {
-      console.warn('Overpass API request failed:', response.status);
-      return [];
+      const errorMsg = `Overpass API returned status ${response.status}`;
+      console.warn(errorMsg);
+
+      // Retry on server errors (5xx)
+      if (response.status >= 500 && retryCount < MAX_RETRIES) {
+        console.log(`Retrying Overpass API request...`);
+        await new Promise(resolve => setTimeout(resolve, 2000)); // Wait 2s before retry
+        return fetchPOIsFromOverpass(geoFence, retryCount + 1);
+      }
+
+      return { pois: [], success: false, error: errorMsg };
     }
 
     const data = await response.json();
@@ -294,10 +517,19 @@ async function fetchPOIsFromOverpass(geoFence: GeoFence): Promise<Array<{ name: 
       .filter(poi => calculateDistance(center, { lat: poi.lat, lng: poi.lng }) <= radiusMeters);
 
     console.log(`Found ${pois.length} POIs within hunt radius`);
-    return pois;
+    return { pois, success: true };
   } catch (error) {
-    console.warn('Failed to fetch POIs from Overpass:', error);
-    return [];
+    const errorMsg = error instanceof Error ? error.message : 'Unknown error';
+    console.warn('Failed to fetch POIs from Overpass:', errorMsg);
+
+    // Retry on network errors
+    if (retryCount < MAX_RETRIES) {
+      console.log(`Retrying Overpass API request after error...`);
+      await new Promise(resolve => setTimeout(resolve, 2000)); // Wait 2s before retry
+      return fetchPOIsFromOverpass(geoFence, retryCount + 1);
+    }
+
+    return { pois: [], success: false, error: errorMsg };
   }
 }
 
@@ -316,12 +548,21 @@ function generateSatStopName(poiName: string, _poiType: string): string {
   return `${prefix} ${suffix}`;
 }
 
+// Result type for SatStop generation
+export interface SatStopsResult {
+  stops: SatStop[];
+  usedFallback: boolean;
+  poiCount: number;
+  error?: string;
+}
+
 // Generate sat stops from ALL real POIs within the hunt radius
-export async function generateSatStopsAsync(geoFence: GeoFence): Promise<SatStop[]> {
+export async function generateSatStopsAsync(geoFence: GeoFence): Promise<SatStopsResult> {
   // Fetch all real POIs within the hunt radius
-  const pois = await fetchPOIsFromOverpass(geoFence);
+  const { pois, success, error } = await fetchPOIsFromOverpass(geoFence);
 
   const stops: SatStop[] = [];
+  let usedFallback = false;
 
   // Convert all POIs to SatStops
   for (const poi of pois) {
@@ -337,7 +578,10 @@ export async function generateSatStopsAsync(geoFence: GeoFence): Promise<SatStop
 
   // If no POIs found, add some fallback stops at random locations
   if (stops.length === 0) {
-    console.log('No POIs found, generating fallback SatStops');
+    usedFallback = true;
+    const fallbackReason = !success ? `API error: ${error}` : 'No named POIs found in area';
+    console.log(`Using fallback SatStops: ${fallbackReason}`);
+
     const fallbackNames = [
       'Nakamoto Node', 'Cypherpunk Cache', 'Lightning Lair',
       'Hash Hub', 'Block Beacon', 'Satoshi Shrine',
@@ -356,8 +600,13 @@ export async function generateSatStopsAsync(geoFence: GeoFence): Promise<SatStop
     }
   }
 
-  console.log(`Created ${stops.length} SatStops for hunt`);
-  return stops;
+  console.log(`Created ${stops.length} SatStops for hunt (POIs: ${pois.length}, fallback: ${usedFallback})`);
+  return {
+    stops,
+    usedFallback,
+    poiCount: pois.length,
+    error: usedFallback ? error : undefined,
+  };
 }
 
 // Generate sat stops (sync fallback - uses random locations)

@@ -14,6 +14,7 @@ import {
   Skull,
   Navigation,
   Menu,
+  BarChart3,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import {
@@ -27,9 +28,10 @@ import {
 interface GameHUDProps {
   onOpenLeaderboard: () => void;
   onOpenInventory: () => void;
+  onOpenStats: () => void;
 }
 
-export function GameHUD({ onOpenLeaderboard, onOpenInventory }: GameHUDProps) {
+export function GameHUD({ onOpenLeaderboard, onOpenInventory, onOpenStats }: GameHUDProps) {
   const { state, getAvailableMonsters } = useGame();
   const { activeHunt, playerStats, playerLocation, locationError } = state;
   const [timeRemaining, setTimeRemaining] = useState('');
@@ -51,8 +53,8 @@ export function GameHUD({ onOpenLeaderboard, onOpenInventory }: GameHUDProps) {
 
   const availableMonsters = getAvailableMonsters();
 
-  // Only show monsters within 3 meters (10 feet) visibility range
-  const VISIBILITY_RANGE_METERS = 3;
+  // Only show monsters within 6 meters (~20 feet) visibility range
+  const VISIBILITY_RANGE_METERS = 6;
   const visibleMonsters = playerLocation
     ? availableMonsters.filter(m => calculateDistance(playerLocation, m.location) <= VISIBILITY_RANGE_METERS)
     : [];
@@ -91,19 +93,18 @@ export function GameHUD({ onOpenLeaderboard, onOpenInventory }: GameHUDProps) {
               </Badge>
             </div>
 
-            {/* Progress Bar - player only sees their own progress */}
+            {/* Progress Bar - shows current hunt progress */}
             <div className="space-y-1">
               <div className="flex items-center justify-between text-xs text-muted-foreground">
                 <span className="flex items-center gap-1">
                   <Skull className="w-3 h-3" />
-                  You: {playerStats.totalCaptured} captured
+                  This hunt: {playerStats.currentHuntCaptured} captured
                 </span>
-                <span className="flex items-center gap-1">
-                  <Clock className="w-3 h-3" />
-                  {timeRemaining}
+                <span className="text-primary font-medium">
+                  +{formatSats(playerStats.currentHuntSatsEarned)} sats
                 </span>
               </div>
-              <Progress value={(playerStats.totalCaptured / activeHunt.monsterCount) * 100} className="h-2 bg-muted" />
+              <Progress value={(playerStats.currentHuntCaptured / activeHunt.monsterCount) * 100} className="h-2 bg-muted" />
             </div>
 
             {/* Quick Stats Row */}
@@ -139,6 +140,14 @@ export function GameHUD({ onOpenLeaderboard, onOpenInventory }: GameHUDProps) {
                     <SheetTitle className="font-display text-primary">Menu</SheetTitle>
                   </SheetHeader>
                   <div className="mt-6 space-y-3">
+                    <Button
+                      onClick={onOpenStats}
+                      variant="outline"
+                      className="w-full justify-start border-accent/30"
+                    >
+                      <BarChart3 className="w-4 h-4 mr-2 text-accent" />
+                      My Stats
+                    </Button>
                     <Button
                       onClick={onOpenLeaderboard}
                       variant="outline"
@@ -186,19 +195,19 @@ export function GameHUD({ onOpenLeaderboard, onOpenInventory }: GameHUDProps) {
               </div>
             </div>
 
-            {/* Player Stats */}
-            <div className="flex items-center gap-4">
-              <div className="text-center">
+            {/* Player Stats - Lifetime totals */}
+            <div className="flex items-center gap-3">
+              <div className="text-center border-r border-border pr-3">
                 <p className="font-display font-bold text-lg text-primary text-glow-orange">
-                  {formatSats(playerStats.totalSatsEarned)}
+                  {formatSats(playerStats.lifetimeSatsEarned)}
                 </p>
-                <p className="text-[10px] text-muted-foreground uppercase tracking-wider">Sats Earned</p>
+                <p className="text-[10px] text-muted-foreground uppercase tracking-wider">Lifetime</p>
               </div>
               <div className="text-center">
                 <p className="font-display font-bold text-lg text-accent">
-                  {playerStats.totalCaptured}
+                  {playerStats.lifetimeCaptured}
                 </p>
-                <p className="text-[10px] text-muted-foreground uppercase tracking-wider">Captured</p>
+                <p className="text-[10px] text-muted-foreground uppercase tracking-wider">Total</p>
               </div>
             </div>
           </div>

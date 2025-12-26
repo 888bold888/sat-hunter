@@ -139,8 +139,8 @@ export function HuntMap({
         }).addTo(map);
         circlesRef.current.push(geofenceCircle);
 
-        // Filter visible monsters
-        const VISIBILITY_RANGE = 3;
+        // Filter visible monsters - 6 meters (~20 feet) visibility range
+        const VISIBILITY_RANGE = 6;
         const visibleMonsters = showAllMonsters
           ? monsters
           : playerLocation

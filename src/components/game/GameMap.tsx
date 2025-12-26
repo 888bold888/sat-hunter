@@ -8,6 +8,8 @@ import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { MapPin, Compass, RefreshCw } from 'lucide-react';
 import { useToast } from '@/hooks/useToast';
+import { usePublishCapture } from '@/hooks/usePublishCapture';
+import { useCurrentUser } from '@/hooks/useCurrentUser';
 
 interface GameMapProps {
   selectedMonster: Monster | null;
@@ -21,6 +23,8 @@ export function GameMap({ selectedMonster, selectedStop, onSelectMonster, onSele
   const { state, getAvailableMonsters, getAvailableStops, captureMonster, collectBalls, startLocationTracking } = useGame();
   const { activeHunt, playerLocation, locationError, playerStats } = state;
   const { toast } = useToast();
+  const { user } = useCurrentUser();
+  const publishCapture = usePublishCapture();
 
   // Get available entities
   const availableMonsters = getAvailableMonsters();
@@ -31,6 +35,17 @@ export function GameMap({ selectedMonster, selectedStop, onSelectMonster, onSele
     const success = captureMonster(monster);
     if (success) {
       onSelectMonster(null);
+
+      // Publish capture event to Nostr for host to see
+      if (activeHunt && user?.pubkey) {
+        publishCapture.mutate({
+          huntId: activeHunt.id,
+          huntShareCode: activeHunt.shareCode,
+          monster,
+          playerPubkey: user.pubkey,
+        });
+      }
+
       if (onMonsterCaptured) {
         onMonsterCaptured(monster);
       } else {

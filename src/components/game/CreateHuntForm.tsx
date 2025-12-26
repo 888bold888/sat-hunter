@@ -10,6 +10,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Slider } from '@/components/ui/slider';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Alert, AlertDescription } from '@/components/ui/alert';
+import { useToast } from '@/hooks/useToast';
 import {
   Zap,
   Target,
@@ -29,6 +30,7 @@ interface CreateHuntFormProps {
 export function CreateHuntForm({ onHuntCreated }: CreateHuntFormProps) {
   const { createHunt, startLocationTracking, state } = useGame();
   const { user } = useCurrentUser();
+  const { toast } = useToast();
   const { playerLocation, locationError } = state;
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
@@ -64,8 +66,8 @@ export function CreateHuntForm({ onHuntCreated }: CreateHuntFormProps) {
     setIsCreating(true);
     setError(null);
     try {
-      // Create hunt with pending_payment status (async - fetches real POIs for SatStops)
-      await createHunt({
+      // Create hunt with pending_payment status (async - fetches streets for monsters and POIs for SatStops)
+      const { monstersInfo, satStopsInfo } = await createHunt({
         name: name.trim(),
         description: description.trim(),
         totalSats,
@@ -74,6 +76,40 @@ export function CreateHuntForm({ onHuntCreated }: CreateHuntFormProps) {
         center: playerLocation,
         radiusMeters,
       });
+
+      // Check for issues with creature placement
+      if (monstersInfo.usedFallback) {
+        toast({
+          title: 'Some creatures placed randomly',
+          description: monstersInfo.error
+            ? `Couldn't fetch street data: ${monstersInfo.error}. Some creatures may be off public paths.`
+            : `Only found ${monstersInfo.streetPointCount} street locations for ${monsterCount} creatures.`,
+          variant: 'destructive',
+          duration: 8000,
+        });
+      }
+
+      // Check for issues with SatStop placement
+      if (satStopsInfo.usedFallback) {
+        toast({
+          title: 'SatStops placed randomly',
+          description: satStopsInfo.error
+            ? `Couldn't fetch nearby locations: ${satStopsInfo.error}. SatStops were placed at random positions.`
+            : 'No named places found in this area. SatStops were placed at random positions.',
+          variant: 'destructive',
+          duration: 8000,
+        });
+      }
+
+      // Show success message if both placed correctly
+      if (!monstersInfo.usedFallback && !satStopsInfo.usedFallback) {
+        toast({
+          title: 'Hunt created successfully!',
+          description: `${monsterCount} creatures on streets, ${satStopsInfo.poiCount} SatStops at POIs.`,
+          duration: 4000,
+        });
+      }
+
       // Close the form - GamePage will show PaymentConfirmation
       onHuntCreated();
     } catch (err) {

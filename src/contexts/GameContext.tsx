@@ -6,11 +6,12 @@ import type {
   PlayerStats,
   GeoLocation,
   CapturedMonster,
+  HuntHistoryEntry,
 } from '@/lib/gameTypes';
 import { useLocalStorage } from '@/hooks/useLocalStorage';
 import { useCurrentUser } from '@/hooks/useCurrentUser';
 import {
-  generateMonsters,
+  generateMonstersAsync,
   generateSatStopsAsync,
   createGeoFence,
   isInCaptureRange,
@@ -19,6 +20,7 @@ import {
   generateShareCode,
   generateShareUrl,
 } from '@/lib/gameUtils';
+import type { SatStopsResult, MonstersResult } from '@/lib/gameUtils';
 import type { HuntStatus, HuntParticipant } from '@/lib/gameTypes';
 import { isMockLocationEnabled, getMockLocation } from '@/lib/devMode';
 
@@ -40,20 +42,31 @@ type GameAction =
   | { type: 'SET_LOCATION_ERROR'; error: string | null }
   | { type: 'SET_NEARBY_MONSTERS'; monsters: Monster[] }
   | { type: 'SET_NEARBY_STOPS'; stops: SatStop[] }
-  | { type: 'CAPTURE_MONSTER'; monster: Monster }
+  | { type: 'CAPTURE_MONSTER'; monster: Monster; huntName: string }
   | { type: 'COLLECT_BALLS'; stopId: string; balls: number }
   | { type: 'USE_BALL' }
   | { type: 'SET_CAPTURING'; capturing: boolean }
   | { type: 'SET_WATCH_ID'; watchId: number | null }
   | { type: 'RESET_PLAYER_STATS' }
-  | { type: 'LOAD_PLAYER_STATS'; stats: PlayerStats };
+  | { type: 'LOAD_PLAYER_STATS'; stats: PlayerStats }
+  | { type: 'START_HUNT_SESSION'; huntId: string }
+  | { type: 'END_HUNT_SESSION'; huntEntry: HuntHistoryEntry };
 
 const initialPlayerStats: PlayerStats = {
   pubkey: '',
+  // Current hunt stats
+  currentHuntId: null,
+  currentHuntCaptured: 0,
+  currentHuntSatsEarned: 0,
+  // Lifetime stats
+  lifetimeCaptured: 0,
+  lifetimeSatsEarned: 0,
+  capturedMonsters: [],
+  huntHistory: [],
+  balls: 10, // Start with 10 balls
+  // Legacy fields
   totalCaptured: 0,
   totalSatsEarned: 0,
-  capturedMonsters: [],
-  balls: 10, // Start with 10 balls
 };
 
 const initialState: GameState = {
@@ -85,17 +98,27 @@ function gameReducer(state: GameState, action: GameAction): GameState {
       const capturedMonster: CapturedMonster = {
         monsterId: action.monster.id,
         monsterName: action.monster.name,
+        monsterType: action.monster.type || action.monster.name, // Use type if available, fallback to name
         satAmount: action.monster.satAmount,
         rarity: action.monster.rarity,
         capturedAt: Date.now(),
         huntId: state.activeHunt?.id ?? '',
+        huntName: action.huntName,
       };
       return {
         ...state,
         playerStats: {
           ...state.playerStats,
+          // Update current hunt stats
+          currentHuntCaptured: state.playerStats.currentHuntCaptured + 1,
+          currentHuntSatsEarned: state.playerStats.currentHuntSatsEarned + action.monster.satAmount,
+          // Update lifetime stats
+          lifetimeCaptured: state.playerStats.lifetimeCaptured + 1,
+          lifetimeSatsEarned: state.playerStats.lifetimeSatsEarned + action.monster.satAmount,
+          // Legacy fields (keep in sync)
           totalCaptured: state.playerStats.totalCaptured + 1,
           totalSatsEarned: state.playerStats.totalSatsEarned + action.monster.satAmount,
+          // Add to captured monsters list
           capturedMonsters: [...state.playerStats.capturedMonsters, capturedMonster],
         },
         activeHunt: state.activeHunt
@@ -108,6 +131,39 @@ function gameReducer(state: GameState, action: GameAction): GameState {
               ),
             }
           : null,
+      };
+    }
+    case 'START_HUNT_SESSION': {
+      return {
+        ...state,
+        playerStats: {
+          ...state.playerStats,
+          currentHuntId: action.huntId,
+          currentHuntCaptured: 0,
+          currentHuntSatsEarned: 0,
+        },
+      };
+    }
+    case 'END_HUNT_SESSION': {
+      // Check if this hunt is already in history
+      const existingIndex = state.playerStats.huntHistory.findIndex(
+        h => h.huntId === action.huntEntry.huntId
+      );
+      const updatedHistory = existingIndex >= 0
+        ? state.playerStats.huntHistory.map((h, i) =>
+            i === existingIndex ? action.huntEntry : h
+          )
+        : [...state.playerStats.huntHistory, action.huntEntry];
+
+      return {
+        ...state,
+        playerStats: {
+          ...state.playerStats,
+          currentHuntId: null,
+          currentHuntCaptured: 0,
+          currentHuntSatsEarned: 0,
+          huntHistory: updatedHistory,
+        },
       };
     }
     case 'COLLECT_BALLS':
@@ -147,6 +203,13 @@ function gameReducer(state: GameState, action: GameAction): GameState {
   }
 }
 
+// Create hunt result type - includes info about monster and SatStop generation
+export interface CreateHuntResult {
+  hunt: HuntEvent;
+  monstersInfo: MonstersResult;
+  satStopsInfo: SatStopsResult;
+}
+
 interface GameContextType {
   state: GameState;
   createHunt: (config: {
@@ -157,7 +220,7 @@ interface GameContextType {
     durationMinutes: number;
     center: GeoLocation;
     radiusMeters: number;
-  }) => Promise<HuntEvent>;
+  }) => Promise<CreateHuntResult>;
   confirmPayment: () => void;
   startHunt: () => void;
   joinHunt: (hunt: HuntEvent) => void;
@@ -224,8 +287,8 @@ export function GameProvider({ children }: { children: ReactNode }) {
   // Update nearby entities when location changes
   useEffect(() => {
     if (!state.playerLocation || !state.activeHunt) return;
-    // Monsters only visible within 3 meters (10 feet)
-    const VISIBILITY_RANGE = 3;
+    // Monsters only visible within 6 meters (~20 feet)
+    const VISIBILITY_RANGE = 6;
     const nearbyMonsters = state.activeHunt.monsters.filter(
       (m) => !m.captured && isInCaptureRange(state.playerLocation!, m.location, VISIBILITY_RANGE)
     );
@@ -248,15 +311,19 @@ export function GameProvider({ children }: { children: ReactNode }) {
       durationMinutes: number;
       center: GeoLocation;
       radiusMeters: number;
-    }): Promise<HuntEvent> => {
+    }): Promise<CreateHuntResult> => {
       const geoFence = createGeoFence(config.center, config.radiusMeters);
-      const monsters = generateMonsters({
-        totalSats: config.totalSats,
-        monsterCount: config.monsterCount,
-        geoFence,
-      });
-      // Fetch ALL real POIs within radius for SatStops (no limit)
-      const satStops = await generateSatStopsAsync(geoFence);
+
+      // Fetch street locations for monsters and POIs for SatStops in parallel
+      const [monstersResult, satStopsResult] = await Promise.all([
+        generateMonstersAsync({
+          totalSats: config.totalSats,
+          monsterCount: config.monsterCount,
+          geoFence,
+        }),
+        generateSatStopsAsync(geoFence),
+      ]);
+
       const now = Date.now();
       const shareCode = generateShareCode();
       const hunt: HuntEvent = {
@@ -270,8 +337,8 @@ export function GameProvider({ children }: { children: ReactNode }) {
         startTime: now,
         endTime: now + config.durationMinutes * 60 * 1000,
         createdAt: now,
-        monsters,
-        satStops,
+        monsters: monstersResult.monsters,
+        satStops: satStopsResult.stops,
         status: 'pending_payment', // Requires payment before activation
         paymentStatus: 'pending',
         shareCode,
@@ -279,7 +346,7 @@ export function GameProvider({ children }: { children: ReactNode }) {
         participants: [],
       };
       dispatch({ type: 'SET_ACTIVE_HUNT', hunt });
-      return hunt;
+      return { hunt, monstersInfo: monstersResult, satStopsInfo: satStopsResult };
     },
     [user?.pubkey]
   );
@@ -312,12 +379,34 @@ export function GameProvider({ children }: { children: ReactNode }) {
   // Join an existing hunt
   const joinHunt = useCallback((hunt: HuntEvent) => {
     dispatch({ type: 'SET_ACTIVE_HUNT', hunt });
+    // Start a new hunt session (resets per-hunt stats)
+    dispatch({ type: 'START_HUNT_SESSION', huntId: hunt.id });
   }, []);
 
   // Leave the current hunt
   const leaveHunt = useCallback(() => {
+    // Save hunt to history before leaving (only if player, not host)
+    if (state.activeHunt && user?.pubkey && state.activeHunt.hostPubkey !== user.pubkey) {
+      const huntEntry: HuntHistoryEntry = {
+        huntId: state.activeHunt.id,
+        huntName: state.activeHunt.name,
+        hostPubkey: state.activeHunt.hostPubkey,
+        startTime: state.activeHunt.startTime,
+        endTime: state.activeHunt.endTime,
+        joinedAt: state.playerStats.currentHuntId === state.activeHunt.id
+          ? Date.now() - (state.playerStats.currentHuntCaptured > 0 ? 60000 : 0) // Approximate join time
+          : Date.now(),
+        leftAt: Date.now(),
+        monstersCapt: state.playerStats.currentHuntCaptured,
+        satsEarned: state.playerStats.currentHuntSatsEarned,
+        capturedMonsters: state.playerStats.capturedMonsters.filter(
+          m => m.huntId === state.activeHunt?.id
+        ),
+      };
+      dispatch({ type: 'END_HUNT_SESSION', huntEntry });
+    }
     dispatch({ type: 'SET_ACTIVE_HUNT', hunt: null });
-  }, []);
+  }, [state.activeHunt, state.playerStats, user?.pubkey]);
 
   // Add participant to hunt
   const addParticipant = useCallback((pubkey: string) => {
@@ -365,10 +454,14 @@ export function GameProvider({ children }: { children: ReactNode }) {
       if (!state.playerLocation) return false;
       if (!isInCaptureRange(state.playerLocation, monster.location)) return false;
       dispatch({ type: 'USE_BALL' });
-      dispatch({ type: 'CAPTURE_MONSTER', monster });
+      dispatch({
+        type: 'CAPTURE_MONSTER',
+        monster,
+        huntName: state.activeHunt?.name ?? 'Unknown Hunt',
+      });
       return true;
     },
-    [state.playerStats.balls, state.playerLocation]
+    [state.playerStats.balls, state.playerLocation, state.activeHunt?.name]
   );
 
   // Collect balls from a sat stop
