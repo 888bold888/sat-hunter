@@ -6,13 +6,14 @@ import { useCurrentUser } from '@/hooks/useCurrentUser';
 import { useHuntByCode } from '@/hooks/useHuntByCode';
 import { usePublishJoin } from '@/hooks/useHuntSync';
 import { useAuthor } from '@/hooks/useAuthor';
+import { useNWC } from '@/hooks/useNWCContext';
 import { LoginArea } from '@/components/auth/LoginArea';
 import { QRScanner } from '@/components/game/QRScanner';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Alert, AlertDescription } from '@/components/ui/alert';
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
 import {
   Zap,
@@ -25,7 +26,7 @@ import {
   AlertCircle,
   QrCode,
   CheckCircle,
-  Wallet,
+  Info,
 } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { formatSats, formatTimeRemaining } from '@/lib/gameUtils';
@@ -38,6 +39,7 @@ export default function JoinHuntPage() {
   const { state, joinHunt, addParticipant, startLocationTracking } = useGame();
   const { user } = useCurrentUser();
   const { publishJoin } = usePublishJoin();
+  const { connections } = useNWC();
 
   const [inputCode, setInputCode] = useState(code?.toUpperCase() || '');
   const [searchCode, setSearchCode] = useState(code?.toUpperCase() || '');
@@ -48,9 +50,12 @@ export default function JoinHuntPage() {
   // Fetch user's profile to check for Lightning address
   const { data: userProfile, isLoading: isLoadingProfile } = useAuthor(user?.pubkey);
 
-  // Check if user has a Lightning address configured
+  // Check if user has a Lightning address configured (required to RECEIVE payments)
   const hasLightningAddress = !!(userProfile?.metadata?.lud06 || userProfile?.metadata?.lud16);
   const lightningAddress = userProfile?.metadata?.lud16 || userProfile?.metadata?.lud06;
+
+  // Check if user has NWC connected (used to SEND payments, not receive)
+  const hasNWC = connections.length > 0;
 
   useSeoMeta({
     title: 'Join Hunt | Sat Hunter',
@@ -85,14 +90,15 @@ export default function JoinHuntPage() {
       return;
     }
 
-    // Check for Lightning address - required to receive rewards
+    // Warn if no Lightning address but allow joining
     if (!hasLightningAddress) {
       toast({
-        title: 'Lightning Address Required',
-        description: 'You need a Lightning address in your Nostr profile to receive sats when catching creatures.',
+        title: 'Warning: No Lightning Address',
+        description: 'You can play but won\'t receive sats without a Lightning address (lud16) in your Nostr profile.',
         variant: 'destructive',
+        duration: 6000,
       });
-      return;
+      // Still allow joining - they can play but won't get paid
     }
 
     if (!foundHunt) {
@@ -287,15 +293,31 @@ export default function JoinHuntPage() {
               </Alert>
             )}
 
-            {/* Lightning Address Check */}
+            {/* Lightning Address Check - Warning only, not blocking */}
             {user && !isLoadingProfile && !hasLightningAddress && (
-              <Alert variant="destructive" className="border-destructive/50">
-                <Wallet className="w-4 h-4" />
-                <AlertDescription className="space-y-2">
-                  <p className="font-semibold">Lightning Address Required</p>
-                  <p className="text-xs">
-                    To receive sats when catching creatures, you need a Lightning address in your Nostr profile.
-                    Add a <code className="bg-muted px-1 rounded">lud16</code> field (e.g., yourname@getalby.com) to your profile.
+              <Alert className="border-yellow-500/50 bg-yellow-500/5">
+                <Info className="w-4 h-4 text-yellow-500" />
+                <AlertTitle className="text-yellow-500 text-sm">Lightning Address Recommended</AlertTitle>
+                <AlertDescription className="space-y-2 text-xs">
+                  <p>
+                    To receive sats when catching creatures, add a Lightning address to your Nostr profile.
+                  </p>
+                  <p className="text-muted-foreground">
+                    {hasNWC ? (
+                      <>
+                        <strong>Note:</strong> Your NWC wallet is for <em>sending</em> payments (as a host).
+                        To <em>receive</em> rewards as a player, add a <code className="bg-muted px-1 rounded">lud16</code> field
+                        (e.g., <code className="bg-muted px-1 rounded">yourname@getalby.com</code>) to your Nostr profile.
+                      </>
+                    ) : (
+                      <>
+                        Add a <code className="bg-muted px-1 rounded">lud16</code> field
+                        (e.g., <code className="bg-muted px-1 rounded">yourname@getalby.com</code>) to your Nostr profile.
+                      </>
+                    )}
+                  </p>
+                  <p className="text-muted-foreground italic">
+                    You can still join and play, but won't receive sats until you add a Lightning address.
                   </p>
                 </AlertDescription>
               </Alert>
@@ -314,7 +336,7 @@ export default function JoinHuntPage() {
             {/* Join Button */}
             <Button
               onClick={handleJoin}
-              disabled={!foundHunt || !user || !hasLightningAddress || foundHunt.paymentStatus !== 'paid' || isLoadingProfile}
+              disabled={!foundHunt || !user || foundHunt.paymentStatus !== 'paid' || isLoadingProfile}
               className="w-full h-12 font-display text-lg bg-gradient-to-r from-primary to-orange-600 hover:from-orange-600 hover:to-primary shadow-glow-orange"
             >
               <Target className="w-5 h-5 mr-2" />
@@ -324,9 +346,7 @@ export default function JoinHuntPage() {
                   ? 'Login to Join'
                   : isLoadingProfile
                     ? 'Checking profile...'
-                    : !hasLightningAddress
-                      ? 'Lightning Address Required'
-                      : 'Join Hunt!'}
+                    : 'Join Hunt!'}
             </Button>
           </CardContent>
         </Card>
