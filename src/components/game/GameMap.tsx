@@ -121,32 +121,50 @@ export function GameMap({ selectedMonster, selectedStop, onSelectMonster, onSele
 
       {/* Selected Monster Panel - above map */}
       {selectedMonster && (
-        <div
-          className="absolute bottom-24 left-4 right-4"
-          style={{ zIndex: 30, transform: 'translateZ(0)' }}
-        >
-          <MonsterCard
-            monster={selectedMonster}
-            totalSats={activeHunt.totalSats}
-            onCapture={handleCapture}
-            isInRange={playerLocation ? isInCaptureRange(playerLocation, selectedMonster.location) : false}
-            hasBalls={playerStats.balls > 0}
+        <>
+          {/* Backdrop - tap to dismiss */}
+          <div
+            className="absolute inset-0 bg-black/20"
+            style={{ zIndex: 25 }}
+            onClick={() => onSelectMonster(null)}
           />
-        </div>
+          <div
+            className="absolute bottom-24 left-4 right-4"
+            style={{ zIndex: 30, transform: 'translateZ(0)' }}
+          >
+            <MonsterCard
+              monster={selectedMonster}
+              totalSats={activeHunt.totalSats}
+              onCapture={handleCapture}
+              isInRange={playerLocation ? isInCaptureRange(playerLocation, selectedMonster.location) : false}
+              hasBalls={playerStats.balls > 0}
+              onClose={() => onSelectMonster(null)}
+            />
+          </div>
+        </>
       )}
 
       {/* Selected Stop Panel - above map */}
       {selectedStop && !selectedMonster && (
-        <div
-          className="absolute bottom-24 left-4 right-4"
-          style={{ zIndex: 30, transform: 'translateZ(0)' }}
-        >
-          <SatStopCard
-            stop={selectedStop}
-            onCollect={handleCollect}
-            isInRange={playerLocation ? isAtSatStop(playerLocation, selectedStop.location) : false}
+        <>
+          {/* Backdrop - tap to dismiss */}
+          <div
+            className="absolute inset-0 bg-black/20"
+            style={{ zIndex: 25 }}
+            onClick={() => onSelectStop(null)}
           />
-        </div>
+          <div
+            className="absolute bottom-24 left-4 right-4"
+            style={{ zIndex: 30, transform: 'translateZ(0)' }}
+          >
+            <SatStopCard
+              stop={selectedStop}
+              onCollect={handleCollect}
+              isInRange={playerLocation ? isAtSatStop(playerLocation, selectedStop.location) : false}
+              onClose={() => onSelectStop(null)}
+            />
+          </div>
+        </>
       )}
     </div>
   );

@@ -10,7 +10,7 @@ import {
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { Zap, Target, Sparkles } from 'lucide-react';
+import { Zap, Target, Sparkles, X } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 interface MonsterCardProps {
@@ -20,6 +20,7 @@ interface MonsterCardProps {
   isInRange: boolean;
   hasBalls: boolean;
   isCapturing?: boolean;
+  onClose?: () => void;
 }
 
 export function MonsterCard({
@@ -29,6 +30,7 @@ export function MonsterCard({
   isInRange,
   hasBalls,
   isCapturing,
+  onClose,
 }: MonsterCardProps) {
   const [isCaptured, setIsCaptured] = useState(false);
 
@@ -51,10 +53,21 @@ export function MonsterCard({
         !isCaptured && 'animate-float hover:scale-105'
       )}
     >
+      {/* Close button */}
+      {onClose && (
+        <button
+          onClick={onClose}
+          className="absolute top-2 right-2 z-10 p-1 rounded-full bg-muted/80 hover:bg-muted text-muted-foreground hover:text-foreground transition-colors"
+          aria-label="Close"
+        >
+          <X className="w-4 h-4" />
+        </button>
+      )}
+
       {/* Rarity sparkles for legendary and mythic */}
       {(monster.rarity === 'legendary' || monster.rarity === 'mythic') && (
         <div className="absolute inset-0 pointer-events-none">
-          <Sparkles className="absolute top-2 right-2 w-4 h-4 text-yellow-400 animate-pulse" />
+          <Sparkles className="absolute top-2 right-8 w-4 h-4 text-yellow-400 animate-pulse" />
           <Sparkles className="absolute bottom-2 left-2 w-3 h-3 text-yellow-400 animate-pulse delay-150" />
         </div>
       )}

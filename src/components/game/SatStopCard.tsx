@@ -3,16 +3,17 @@ import type { SatStop } from '@/lib/gameTypes';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { MapPin, Circle, Timer } from 'lucide-react';
+import { MapPin, Circle, Timer, X } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 interface SatStopCardProps {
   stop: SatStop;
   onCollect: (stop: SatStop) => void;
   isInRange: boolean;
+  onClose?: () => void;
 }
 
-export function SatStopCard({ stop, onCollect, isInRange }: SatStopCardProps) {
+export function SatStopCard({ stop, onCollect, isInRange, onClose }: SatStopCardProps) {
   const [cooldownRemaining, setCooldownRemaining] = useState(0);
   const [isCollecting, setIsCollecting] = useState(false);
 
@@ -57,6 +58,17 @@ export function SatStopCard({ stop, onCollect, isInRange }: SatStopCardProps) {
         isOnCooldown && 'opacity-60'
       )}
     >
+      {/* Close button */}
+      {onClose && (
+        <button
+          onClick={onClose}
+          className="absolute top-2 right-2 z-10 p-1 rounded-full bg-muted/80 hover:bg-muted text-muted-foreground hover:text-foreground transition-colors"
+          aria-label="Close"
+        >
+          <X className="w-4 h-4" />
+        </button>
+      )}
+
       <CardContent className="p-4 flex flex-col items-center gap-3">
         {/* Stop Icon */}
         <div className="relative">
