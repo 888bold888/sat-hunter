@@ -233,9 +233,8 @@ const Index = () => {
       {/* Stats Section */}
       <section className="relative py-20 px-4">
         <div className="max-w-4xl mx-auto">
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
+          <div className="grid grid-cols-3 gap-6">
             {[
-              { icon: Zap, value: '21M', label: 'Sats Available', color: 'primary' },
               { icon: Skull, value: '11', label: 'Creature Types', color: 'accent' },
               { icon: Users, value: 'P2P', label: 'Decentralized', color: 'secondary' },
               { icon: Clock, value: '⚡', label: 'Instant Payouts', color: 'primary' },
