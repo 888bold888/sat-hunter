@@ -249,7 +249,11 @@ export function GameProvider({ children }: { children: ReactNode }) {
   // Load saved stats on mount only
   useEffect(() => {
     if (savedStats && user?.pubkey) {
-      dispatch({ type: 'LOAD_PLAYER_STATS', stats: { ...savedStats, pubkey: user.pubkey } });
+      // Merge with initialPlayerStats to ensure new fields have defaults
+      dispatch({
+        type: 'LOAD_PLAYER_STATS',
+        stats: { ...initialPlayerStats, ...savedStats, pubkey: user.pubkey },
+      });
     } else if (user?.pubkey) {
       dispatch({
         type: 'LOAD_PLAYER_STATS',

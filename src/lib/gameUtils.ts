@@ -660,8 +660,8 @@ export function formatTimeRemaining(endTime: number): string {
 }
 
 // Format sats with commas
-export function formatSats(sats: number): string {
-  return sats.toLocaleString();
+export function formatSats(sats: number | undefined | null): string {
+  return (sats ?? 0).toLocaleString();
 }
 
 // Get rarity color class
