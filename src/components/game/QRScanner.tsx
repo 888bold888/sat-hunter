@@ -25,6 +25,156 @@ export function QRScanner({ onCodeScanned }: QRScannerProps) {
   const scannerRef = useRef<Html5Qrcode | null>(null);
   const qrCodeRegionId = 'qr-reader';
 
+  // Define stopScanner FIRST since startScanner depends on it
+  const stopScanner = useCallback(() => {
+    if (scannerRef.current) {
+      scannerRef.current
+        .stop()
+        .then(() => {
+          scannerRef.current = null;
+          setIsScanning(false);
+        })
+        .catch((err) => {
+          console.error('Error stopping scanner:', err);
+          scannerRef.current = null;
+          setIsScanning(false);
+        });
+    }
+  }, []);
+
+  const startScanner = useCallback(async () => {
+    // Ensure the DOM element exists
+    const element = document.getElementById(qrCodeRegionId);
+    if (!element) {
+      console.error('QR reader element not found, retrying...');
+      setTimeout(startScanner, 100);
+      return;
+    }
+
+    // If scanner is already running, don't start again
+    if (scannerRef.current) {
+      console.log('Scanner already running');
+      return;
+    }
+
+    try {
+      setError(null);
+      setIsScanning(true);
+
+      const html5QrCode = new Html5Qrcode(qrCodeRegionId, { verbose: false });
+      scannerRef.current = html5QrCode;
+
+      // Try to get cameras, but don't fail if we can't
+      let cameraConfig: { facingMode: string } | { deviceId: string } = { facingMode: 'environment' };
+
+      try {
+        const cameras = await Html5Qrcode.getCameras();
+        console.log('Available cameras:', cameras);
+
+        if (cameras.length > 0) {
+          // Prefer back/rear camera
+          const backCamera = cameras.find(c =>
+            c.label.toLowerCase().includes('back') ||
+            c.label.toLowerCase().includes('rear') ||
+            c.label.toLowerCase().includes('environment')
+          );
+          if (backCamera) {
+            cameraConfig = { deviceId: backCamera.id };
+          } else {
+            cameraConfig = { deviceId: cameras[0].id };
+          }
+        }
+      } catch (camErr) {
+        console.log('Could not enumerate cameras, using facingMode:', camErr);
+      }
+
+      console.log('Starting scanner with config:', cameraConfig);
+
+      await html5QrCode.start(
+        cameraConfig,
+        {
+          fps: 10,
+          qrbox: { width: 250, height: 250 },
+          aspectRatio: 1.0,
+        },
+        (decodedText) => {
+          console.log('QR Code scanned:', decodedText);
+
+          // Extract code from various formats
+          let code = decodedText.trim();
+
+          // Try to extract from URL patterns
+          // Matches: /join/CODE, ?code=CODE, #CODE, or just CODE at end of URL
+          const urlPatterns = [
+            /\/join\/([A-Z0-9]{6})/i,
+            /[?&]code=([A-Z0-9]{6})/i,
+            /#([A-Z0-9]{6})$/i,
+            /\/([A-Z0-9]{6})$/i,
+          ];
+
+          for (const pattern of urlPatterns) {
+            const match = decodedText.match(pattern);
+            if (match) {
+              code = match[1];
+              break;
+            }
+          }
+
+          // Clean up the code - remove any non-alphanumeric characters
+          code = code.replace(/[^A-Z0-9]/gi, '');
+
+          // If code is longer than 6 chars, try to find a 6-char sequence
+          if (code.length > 6) {
+            // Take the last 6 characters (most likely to be the code)
+            code = code.slice(-6);
+          }
+
+          console.log('Extracted code:', code);
+
+          // Validate code format (6 alphanumeric characters)
+          if (/^[A-Z0-9]{6}$/i.test(code)) {
+            console.log('Valid code found, closing scanner');
+            // Stop scanner first, then close dialog, then notify parent
+            html5QrCode.stop().then(() => {
+              scannerRef.current = null;
+              setIsScanning(false);
+              setIsOpen(false);
+              onCodeScanned(code.toUpperCase());
+            }).catch((err) => {
+              console.error('Error stopping scanner:', err);
+              scannerRef.current = null;
+              setIsScanning(false);
+              setIsOpen(false);
+              onCodeScanned(code.toUpperCase());
+            });
+          } else {
+            console.log('Invalid code format:', code);
+          }
+        },
+        () => {
+          // Silently ignore scan errors - this happens every frame without a QR
+        }
+      );
+
+      console.log('Scanner started successfully');
+    } catch (err) {
+      console.error('QR Scanner error:', err);
+      setIsScanning(false);
+      scannerRef.current = null;
+
+      if (err instanceof Error) {
+        if (err.message.includes('NotAllowedError') || err.message.includes('Permission')) {
+          setError('Camera permission denied. Please enable camera access in your browser settings.');
+          setHasPermission(false);
+        } else if (err.message.includes('NotFoundError')) {
+          setError('No camera found on your device.');
+        } else {
+          setError(`Failed to start camera: ${err.message}`);
+        }
+      }
+    }
+  }, [onCodeScanned]);
+
   // Request camera permission explicitly (iOS Safari requires user gesture)
   const requestCameraPermission = useCallback(async () => {
     setIsRequesting(true);
@@ -67,137 +217,7 @@ export function QRScanner({ onCodeScanned }: QRScannerProps) {
         setError('Failed to access camera. Please try again.');
       }
     }
-  }, []);
-
-  const startScanner = async () => {
-    // Ensure the DOM element exists
-    const element = document.getElementById(qrCodeRegionId);
-    if (!element) {
-      console.error('QR reader element not found');
-      setTimeout(startScanner, 100);
-      return;
-    }
-
-    // If scanner is already running, don't start again
-    if (scannerRef.current) {
-      console.log('Scanner already running');
-      return;
-    }
-
-    try {
-      setError(null);
-      setIsScanning(true);
-
-      const html5QrCode = new Html5Qrcode(qrCodeRegionId, { verbose: false });
-      scannerRef.current = html5QrCode;
-
-      // Get available cameras to pick the best one
-      const cameras = await Html5Qrcode.getCameras();
-      console.log('Available cameras:', cameras);
-
-      // Prefer back camera, fall back to first available
-      const cameraConfig = cameras.length > 0
-        ? { deviceId: cameras.find(c => c.label.toLowerCase().includes('back'))?.id || cameras[0].id }
-        : { facingMode: 'environment' };
-
-      await html5QrCode.start(
-        cameraConfig,
-        {
-          fps: 10,
-          qrbox: (viewfinderWidth, viewfinderHeight) => {
-            // Make QR box 70% of the smaller dimension
-            const minDimension = Math.min(viewfinderWidth, viewfinderHeight);
-            const qrboxSize = Math.floor(minDimension * 0.7);
-            return { width: qrboxSize, height: qrboxSize };
-          },
-          aspectRatio: 1,
-        },
-        (decodedText) => {
-          console.log('QR Code scanned:', decodedText);
-
-          // Extract code from various formats
-          let code = decodedText.trim();
-
-          // Try to extract from URL patterns
-          // Matches: /join/CODE, ?code=CODE, #CODE, or just CODE at end of URL
-          const urlPatterns = [
-            /\/join\/([A-Z0-9]{6})/i,
-            /[?&]code=([A-Z0-9]{6})/i,
-            /#([A-Z0-9]{6})$/i,
-            /\/([A-Z0-9]{6})$/i,
-          ];
-
-          for (const pattern of urlPatterns) {
-            const match = decodedText.match(pattern);
-            if (match) {
-              code = match[1];
-              break;
-            }
-          }
-
-          // Clean up the code - remove any non-alphanumeric characters
-          code = code.replace(/[^A-Z0-9]/gi, '');
-
-          // If code is longer than 6 chars, try to find a 6-char sequence
-          if (code.length > 6) {
-            // Take the last 6 characters (most likely to be the code)
-            code = code.slice(-6);
-          }
-
-          console.log('Extracted code:', code);
-
-          // Validate code format (6 alphanumeric characters)
-          if (/^[A-Z0-9]{6}$/i.test(code)) {
-            console.log('Valid code found, closing scanner');
-            onCodeScanned(code.toUpperCase());
-            stopScanner();
-            setIsOpen(false);
-          } else {
-            console.log('Invalid code format:', code);
-          }
-        },
-        (errorMessage) => {
-          // Silently ignore "No QR code found" errors
-          if (!errorMessage.includes('No QR code found')) {
-            console.log('Scan error:', errorMessage);
-          }
-        }
-      );
-
-      console.log('Scanner started successfully');
-    } catch (err) {
-      console.error('QR Scanner error:', err);
-      setIsScanning(false);
-      scannerRef.current = null;
-
-      if (err instanceof Error) {
-        if (err.message.includes('NotAllowedError') || err.message.includes('Permission')) {
-          setError('Camera permission denied. Please enable camera access in your browser settings.');
-          setHasPermission(false);
-        } else if (err.message.includes('NotFoundError')) {
-          setError('No camera found on your device.');
-        } else {
-          setError(`Failed to start camera: ${err.message}`);
-        }
-      }
-    }
-  };
-
-  const stopScanner = useCallback(() => {
-    if (scannerRef.current) {
-      scannerRef.current
-        .stop()
-        .then(() => {
-          scannerRef.current = null;
-          setIsScanning(false);
-        })
-        .catch((err) => {
-          console.error('Error stopping scanner:', err);
-          scannerRef.current = null;
-          setIsScanning(false);
-        });
-    }
-  }, []);
+  }, [startScanner]);
 
   // Cleanup on unmount or dialog close
   useEffect(() => {
