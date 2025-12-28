@@ -184,7 +184,7 @@ const Index = () => {
             Cypherpunk <span className="text-accent">Creatures</span>
           </h2>
           <p className="text-muted-foreground mb-12 max-w-md mx-auto">
-            From common Bit Blobs to the legendary Satoshi Nakamoto, each creature holds real Bitcoin value
+            From common Ratasats to the mythic Pisatchu, each creature holds real Bitcoin value
           </p>
 
           <div className="flex flex-wrap justify-center gap-4">
