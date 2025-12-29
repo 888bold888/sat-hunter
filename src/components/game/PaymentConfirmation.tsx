@@ -109,8 +109,9 @@ export function PaymentConfirmation() {
       };
       const signedEvent = await publishHunt(paidHunt) as NostrEvent;
       // Critical: Update local hunt ID to match Nostr event ID for sync
+      // Pass status to avoid race condition with confirmPayment
       if (signedEvent?.id) {
-        updateHuntId(signedEvent.id);
+        updateHuntId(signedEvent.id, { status: 'ready', paymentStatus: 'paid' });
       }
     } catch (error) {
       setPaymentError(error instanceof Error ? error.message : 'Failed to activate hunt');
@@ -144,8 +145,9 @@ export function PaymentConfirmation() {
       };
       const signedEvent = await publishHunt(paidHunt) as NostrEvent;
       // Critical: Update local hunt ID to match Nostr event ID for sync
+      // Pass status to avoid race condition with confirmPayment
       if (signedEvent?.id) {
-        updateHuntId(signedEvent.id);
+        updateHuntId(signedEvent.id, { status: 'ready', paymentStatus: 'paid' });
       }
     } catch (error) {
       setPaymentError(error instanceof Error ? error.message : 'Payment failed');
@@ -170,8 +172,9 @@ export function PaymentConfirmation() {
       };
       const signedEvent = await publishHunt(paidHunt) as NostrEvent;
       // Critical: Update local hunt ID to match Nostr event ID for sync
+      // Pass status to avoid race condition with confirmPayment
       if (signedEvent?.id) {
-        updateHuntId(signedEvent.id);
+        updateHuntId(signedEvent.id, { status: 'ready', paymentStatus: 'paid' });
       }
     } catch (error) {
       setPaymentError(error instanceof Error ? error.message : 'Failed to activate hunt');

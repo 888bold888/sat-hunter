@@ -235,7 +235,7 @@ interface GameContextType {
   getAvailableMonsters: () => Monster[];
   getAvailableStops: () => SatStop[];
   refundUnclaimed: () => void; // Added for refunds
-  updateHuntId: (newId: string) => void; // Update hunt ID after Nostr publish
+  updateHuntId: (newId: string, preserveStatus?: { status: HuntEvent['status']; paymentStatus: HuntEvent['paymentStatus'] }) => void; // Update hunt ID after Nostr publish
 }
 
 const GameContext = createContext<GameContextType | null>(null);
@@ -382,14 +382,17 @@ export function GameProvider({ children }: { children: ReactNode }) {
   }, [state.activeHunt]);
 
   // Update hunt ID after publishing to Nostr (critical for sync)
-  const updateHuntId = useCallback((newId: string) => {
+  // preserveStatus is needed to avoid race condition - state.activeHunt may not have updated yet
+  const updateHuntId = useCallback((newId: string, preserveStatus?: { status: HuntEvent['status']; paymentStatus: HuntEvent['paymentStatus'] }) => {
     if (!state.activeHunt) return;
     const updatedHunt: HuntEvent = {
       ...state.activeHunt,
       id: newId,
+      // Use preserved status if provided (to avoid race condition with confirmPayment)
+      ...(preserveStatus && { status: preserveStatus.status, paymentStatus: preserveStatus.paymentStatus }),
     };
     dispatch({ type: 'UPDATE_HUNT', hunt: updatedHunt });
-    console.log('Hunt ID updated to Nostr event ID:', newId);
+    console.log('Hunt ID updated to Nostr event ID:', newId, 'status:', updatedHunt.status, 'paymentStatus:', updatedHunt.paymentStatus);
   }, [state.activeHunt]);
 
   // Join an existing hunt
