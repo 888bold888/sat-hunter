@@ -1,6 +1,7 @@
-import { useEffect, useRef, useState } from 'react';
-import { Html5QrcodeScanner, Html5QrcodeScanType } from 'html5-qrcode';
+import { useEffect, useRef, useState, useCallback } from 'react';
+import { Html5Qrcode } from 'html5-qrcode';
 import { Button } from '@/components/ui/button';
+import { Card, CardContent } from '@/components/ui/card';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import {
   Dialog,
@@ -8,8 +9,9 @@ import {
   DialogHeader,
   DialogTitle,
   DialogTrigger,
+  DialogDescription,
 } from '@/components/ui/dialog';
-import { QrCode, Camera } from 'lucide-react';
+import { QrCode, Camera, AlertCircle, Loader2 } from 'lucide-react';
 
 interface QRScannerProps {
   onCodeScanned: (code: string) => void;
@@ -17,12 +19,15 @@ interface QRScannerProps {
 
 export function QRScanner({ onCodeScanned }: QRScannerProps) {
   const [isOpen, setIsOpen] = useState(false);
-  const scannerRef = useRef<Html5QrcodeScanner | null>(null);
-  const qrCodeRegionId = 'qr-reader';
-  const hasInitialized = useRef(false);
+  const [isStarting, setIsStarting] = useState(false);
+  const [isScanning, setIsScanning] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const scannerRef = useRef<Html5Qrcode | null>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
+  const qrCodeRegionId = 'qr-reader-region';
 
   // Extract hunt code from various QR formats
-  const extractCode = (decodedText: string): string | null => {
+  const extractCode = useCallback((decodedText: string): string | null => {
     let code = decodedText.trim();
 
     // Try to extract from URL patterns
@@ -49,90 +54,134 @@ export function QRScanner({ onCodeScanned }: QRScannerProps) {
       code = code.slice(-6);
     }
 
-    // Validate format
+    // Validate format (6 alphanumeric characters)
     if (/^[A-Z0-9]{6}$/i.test(code)) {
       return code.toUpperCase();
     }
 
     return null;
-  };
+  }, []);
 
-  useEffect(() => {
-    if (!isOpen) {
-      // Cleanup when dialog closes
-      if (scannerRef.current) {
-        scannerRef.current.clear().catch(console.error);
-        scannerRef.current = null;
+  // Stop and cleanup scanner
+  const stopScanner = useCallback(async () => {
+    if (scannerRef.current) {
+      try {
+        const state = scannerRef.current.getState();
+        if (state === 2) { // Html5QrcodeScannerState.SCANNING
+          await scannerRef.current.stop();
+        }
+      } catch (err) {
+        console.error('Error stopping scanner:', err);
       }
-      hasInitialized.current = false;
+      scannerRef.current = null;
+    }
+    setIsScanning(false);
+    setIsStarting(false);
+  }, []);
+
+  // Start the scanner
+  const startScanner = useCallback(async () => {
+    // Ensure DOM element exists
+    const element = document.getElementById(qrCodeRegionId);
+    if (!element) {
+      console.error('QR reader element not found');
+      setError('Scanner initialization failed. Please try again.');
       return;
     }
 
-    // Wait for DOM to be ready
-    const initScanner = () => {
-      const element = document.getElementById(qrCodeRegionId);
-      if (!element || hasInitialized.current) {
-        return;
-      }
+    // Don't start if already running
+    if (scannerRef.current) {
+      return;
+    }
 
-      hasInitialized.current = true;
+    setIsStarting(true);
+    setError(null);
 
-      const scanner = new Html5QrcodeScanner(
-        qrCodeRegionId,
+    try {
+      const html5Qrcode = new Html5Qrcode(qrCodeRegionId);
+      scannerRef.current = html5Qrcode;
+
+      // Calculate qrbox size based on container
+      const containerWidth = element.clientWidth || 280;
+      const qrboxSize = Math.min(containerWidth - 40, 250);
+
+      await html5Qrcode.start(
+        { facingMode: 'environment' }, // Back camera only
         {
           fps: 10,
-          qrbox: { width: 200, height: 200 },
-          rememberLastUsedCamera: true,
-          supportedScanTypes: [Html5QrcodeScanType.SCAN_TYPE_CAMERA],
-          showTorchButtonIfSupported: true,
+          qrbox: { width: qrboxSize, height: qrboxSize },
         },
-        false // verbose
-      );
-
-      scannerRef.current = scanner;
-
-      scanner.render(
         (decodedText) => {
-          console.log('QR scanned:', decodedText);
+          console.log('QR Code detected:', decodedText);
           const code = extractCode(decodedText);
+
           if (code) {
-            console.log('Valid code:', code);
-            scanner.clear().then(() => {
+            console.log('Valid hunt code found:', code);
+            // Stop scanner and close dialog
+            html5Qrcode.stop().then(() => {
               scannerRef.current = null;
-              hasInitialized.current = false;
+              setIsScanning(false);
               setIsOpen(false);
               onCodeScanned(code);
             }).catch((err) => {
-              console.error('Error clearing scanner:', err);
+              console.error('Error stopping after scan:', err);
+              scannerRef.current = null;
+              setIsScanning(false);
               setIsOpen(false);
               onCodeScanned(code);
             });
           }
         },
-        (errorMessage) => {
-          // Ignore scan errors - happens every frame without QR
-          if (errorMessage.includes('No QR code found')) return;
-          console.log('Scan error:', errorMessage);
+        // Error callback - called on every frame without a QR code
+        () => {
+          // Silently ignore - this is normal behavior
         }
       );
-    };
 
-    // Small delay to ensure dialog content is rendered
-    const timeoutId = setTimeout(initScanner, 100);
+      setIsScanning(true);
+      setIsStarting(false);
+      console.log('Scanner started successfully');
+    } catch (err) {
+      console.error('Failed to start scanner:', err);
+      scannerRef.current = null;
+      setIsStarting(false);
 
-    return () => {
-      clearTimeout(timeoutId);
-    };
-  }, [isOpen, onCodeScanned]);
+      if (err instanceof Error) {
+        if (err.message.includes('Permission') || err.name === 'NotAllowedError') {
+          setError('Camera permission denied. Please allow camera access and try again.');
+        } else if (err.message.includes('NotFound') || err.name === 'NotFoundError') {
+          setError('No camera found on your device.');
+        } else if (err.message.includes('NotReadable') || err.name === 'NotReadableError') {
+          setError('Camera is in use by another app. Please close other apps using the camera.');
+        } else {
+          setError(`Camera error: ${err.message}`);
+        }
+      } else {
+        setError('Failed to start camera. Please try again.');
+      }
+    }
+  }, [extractCode, onCodeScanned]);
+
+  // Handle dialog open/close
+  useEffect(() => {
+    if (isOpen) {
+      // Small delay to ensure DOM is ready
+      const timeoutId = setTimeout(() => {
+        startScanner();
+      }, 200);
+      return () => clearTimeout(timeoutId);
+    } else {
+      stopScanner();
+      setError(null);
+    }
+  }, [isOpen, startScanner, stopScanner]);
 
   // Cleanup on unmount
   useEffect(() => {
     return () => {
-      if (scannerRef.current) {
-        scannerRef.current.clear().catch(console.error);
-      }
+      stopScanner();
     };
-  }, []);
+  }, [stopScanner]);
 
   return (
     <Dialog open={isOpen} onOpenChange={setIsOpen}>
@@ -151,27 +200,73 @@ export function QRScanner({ onCodeScanned }: QRScannerProps) {
             <QrCode className="w-5 h-5 text-secondary" />
             Scan Hunt QR Code
           </DialogTitle>
+          <DialogDescription className="text-xs text-muted-foreground">
+            Point your camera at the QR code to join the hunt
+          </DialogDescription>
         </DialogHeader>
 
         <div className="space-y-4">
-          {/* Scanner Region - html5-qrcode-scanner handles the UI */}
-          <div
-            id={qrCodeRegionId}
-            className="w-full"
-            style={{ minHeight: '300px' }}
-          />
+          {/* Scanner Region */}
+          <Card className="border-secondary/30 overflow-hidden">
+            <CardContent className="p-0 relative" ref={containerRef}>
+              {/* Camera preview container */}
+              <div
+                id={qrCodeRegionId}
+                className="w-full bg-black"
+                style={{ minHeight: '280px' }}
+              />
+
+              {/* Loading overlay */}
+              {isStarting && (
+                <div className="absolute inset-0 flex flex-col items-center justify-center bg-muted/80">
+                  <Loader2 className="w-10 h-10 text-secondary animate-spin mb-2" />
+                  <p className="text-sm text-muted-foreground">Starting camera...</p>
+                </div>
+              )}
+
+              {/* Scanning indicator */}
+              {isScanning && (
+                <div className="absolute bottom-2 left-1/2 -translate-x-1/2 bg-secondary/90 text-secondary-foreground px-3 py-1 rounded-full text-xs font-medium">
+                  Scanning...
+                </div>
+              )}
+            </CardContent>
+          </Card>
+
+          {/* Error Message */}
+          {error && (
+            <Alert variant="destructive">
+              <AlertCircle className="w-4 h-4" />
+              <AlertDescription className="text-sm">{error}</AlertDescription>
+            </Alert>
+          )}
+
+          {/* Retry button if error */}
+          {error && (
+            <Button
+              onClick={() => {
+                setError(null);
+                startScanner();
+              }}
+              variant="outline"
+              className="w-full"
+            >
+              <Camera className="w-4 h-4 mr-2" />
+              Try Again
+            </Button>
+          )}
 
           {/* Instructions */}
           <Alert className="border-secondary/30 bg-secondary/5">
             <QrCode className="w-4 h-4 text-secondary" />
             <AlertDescription className="text-xs">
-              Point your camera at a hunt QR code. The code will be detected automatically.
+              Position the QR code within the frame. It will be detected automatically.
             </AlertDescription>
           </Alert>
 
           {/* Manual Entry Option */}
           <p className="text-xs text-center text-muted-foreground">
-            Or manually enter the 6-character code below
+            Or close this and manually enter the 6-character code
           </p>
         </div>
       </DialogContent>
