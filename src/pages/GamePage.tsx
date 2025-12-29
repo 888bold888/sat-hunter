@@ -19,6 +19,7 @@ import {
   DialogContent,
   DialogHeader,
   DialogTitle,
+  DialogDescription,
 } from '@/components/ui/dialog';
 import { Card, CardContent } from '@/components/ui/card';
 import { Target, ArrowLeft, LogOut, Sparkles, QrCode, BarChart3 } from 'lucide-react';
@@ -115,6 +116,7 @@ export default function GamePage() {
           <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto bg-card/95 backdrop-blur border-primary/30">
             <DialogHeader>
               <DialogTitle className="sr-only">Create a New Hunt</DialogTitle>
+              <DialogDescription className="sr-only">Configure and deploy a new hunt</DialogDescription>
             </DialogHeader>
             <CreateHuntForm onHuntCreated={() => setShowCreateHunt(false)} />
           </DialogContent>
@@ -211,6 +213,7 @@ export default function GamePage() {
         <DialogContent className="max-w-md bg-card/95 backdrop-blur border-primary/30">
           <DialogHeader>
             <DialogTitle className="sr-only">Hunt Leaderboard</DialogTitle>
+            <DialogDescription className="sr-only">View rankings and scores for this hunt</DialogDescription>
           </DialogHeader>
           <Leaderboard currentUserPubkey={user?.pubkey} />
         </DialogContent>
@@ -221,6 +224,7 @@ export default function GamePage() {
         <DialogContent className="max-w-md bg-card/95 backdrop-blur border-secondary/30">
           <DialogHeader>
             <DialogTitle className="sr-only">My Captured Creatures</DialogTitle>
+            <DialogDescription className="sr-only">View all creatures you have captured</DialogDescription>
           </DialogHeader>
           <CapturedInventory />
         </DialogContent>
@@ -234,6 +238,7 @@ export default function GamePage() {
               <BarChart3 className="w-5 h-5 text-accent" />
               My Stats
             </DialogTitle>
+            <DialogDescription className="sr-only">View your hunting statistics and achievements</DialogDescription>
           </DialogHeader>
           <PlayerStatsView />
         </DialogContent>

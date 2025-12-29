@@ -267,11 +267,13 @@ export function GameProvider({ children }: { children: ReactNode }) {
   // Load saved hunt on mount only (not when savedHunt changes to avoid circular updates)
   useEffect(() => {
     if (savedHunt && !state.activeHunt) {
-      // Check if hunt is still active
-      if (savedHunt.endTime > Date.now()) {
-        dispatch({ type: 'SET_ACTIVE_HUNT', hunt: { ...savedHunt, status: 'active' } });
-      } else {
+      // Check if hunt has ended
+      if (savedHunt.endTime <= Date.now()) {
         dispatch({ type: 'SET_ACTIVE_HUNT', hunt: { ...savedHunt, status: 'ended' } });
+      } else {
+        // Preserve the original status and paymentStatus exactly as saved
+        // Don't force any status changes - let the saved state be authoritative
+        dispatch({ type: 'SET_ACTIVE_HUNT', hunt: savedHunt });
       }
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
