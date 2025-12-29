@@ -4,6 +4,7 @@ import { usePublishHunt } from '@/hooks/usePublishHunt';
 import { useWallet } from '@/hooks/useWallet';
 import { useNWC } from '@/hooks/useNWCContext';
 import { formatSats } from '@/lib/gameUtils';
+import type { NostrEvent } from '@nostrify/nostrify';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Alert, AlertDescription } from '@/components/ui/alert';
@@ -25,7 +26,7 @@ import QRCode from 'qrcode';
 const DEMO_INVOICE_PREFIX = 'lnbc';
 
 export function PaymentConfirmation() {
-  const { state, confirmPayment } = useGame();
+  const { state, confirmPayment, updateHuntId } = useGame();
   const { activeHunt } = state;
   const { mutateAsync: publishHunt } = usePublishHunt();
   const wallet = useWallet();
@@ -106,7 +107,11 @@ export function PaymentConfirmation() {
         status: 'ready' as const,
         paymentStatus: 'paid' as const,
       };
-      await publishHunt(paidHunt);
+      const signedEvent = await publishHunt(paidHunt) as NostrEvent;
+      // Critical: Update local hunt ID to match Nostr event ID for sync
+      if (signedEvent?.id) {
+        updateHuntId(signedEvent.id);
+      }
     } catch (error) {
       setPaymentError(error instanceof Error ? error.message : 'Failed to activate hunt');
       setIsPaying(false);
@@ -137,7 +142,11 @@ export function PaymentConfirmation() {
         status: 'ready' as const,
         paymentStatus: 'paid' as const,
       };
-      await publishHunt(paidHunt);
+      const signedEvent = await publishHunt(paidHunt) as NostrEvent;
+      // Critical: Update local hunt ID to match Nostr event ID for sync
+      if (signedEvent?.id) {
+        updateHuntId(signedEvent.id);
+      }
     } catch (error) {
       setPaymentError(error instanceof Error ? error.message : 'Payment failed');
       setIsPaying(false);
@@ -159,7 +168,11 @@ export function PaymentConfirmation() {
         status: 'ready' as const,
         paymentStatus: 'paid' as const,
       };
-      await publishHunt(paidHunt);
+      const signedEvent = await publishHunt(paidHunt) as NostrEvent;
+      // Critical: Update local hunt ID to match Nostr event ID for sync
+      if (signedEvent?.id) {
+        updateHuntId(signedEvent.id);
+      }
     } catch (error) {
       setPaymentError(error instanceof Error ? error.message : 'Failed to activate hunt');
       setIsPaying(false);

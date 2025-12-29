@@ -235,6 +235,7 @@ interface GameContextType {
   getAvailableMonsters: () => Monster[];
   getAvailableStops: () => SatStop[];
   refundUnclaimed: () => void; // Added for refunds
+  updateHuntId: (newId: string) => void; // Update hunt ID after Nostr publish
 }
 
 const GameContext = createContext<GameContextType | null>(null);
@@ -378,6 +379,17 @@ export function GameProvider({ children }: { children: ReactNode }) {
       endTime: Date.now() + (state.activeHunt.endTime - state.activeHunt.startTime),
     };
     dispatch({ type: 'UPDATE_HUNT', hunt: activeHunt });
+  }, [state.activeHunt]);
+
+  // Update hunt ID after publishing to Nostr (critical for sync)
+  const updateHuntId = useCallback((newId: string) => {
+    if (!state.activeHunt) return;
+    const updatedHunt: HuntEvent = {
+      ...state.activeHunt,
+      id: newId,
+    };
+    dispatch({ type: 'UPDATE_HUNT', hunt: updatedHunt });
+    console.log('Hunt ID updated to Nostr event ID:', newId);
   }, [state.activeHunt]);
 
   // Join an existing hunt
@@ -611,6 +623,7 @@ export function GameProvider({ children }: { children: ReactNode }) {
         getAvailableMonsters,
         getAvailableStops,
         refundUnclaimed,
+        updateHuntId,
       }}
     >
       {children}
