@@ -215,14 +215,24 @@ export default function JoinHuntPage() {
               </div>
             </div>
 
+            {/* Loading/Searching State */}
+            {isSearching && searchCode && (
+              <Alert className="border-blue-500/30 bg-blue-500/5">
+                <Loader2 className="w-4 h-4 text-blue-500 animate-spin" />
+                <AlertDescription className="text-sm">
+                  Searching for hunt across Nostr relays... This may take a few seconds.
+                </AlertDescription>
+              </Alert>
+            )}
+
             {/* Search Error */}
-            {searchError && (
+            {searchError && !isSearching && (
               <Alert variant="destructive">
                 <AlertCircle className="w-4 h-4" />
                 <AlertDescription className="flex flex-col gap-2">
                   <span>
                     {searchError instanceof Error && searchError.message === 'Hunt not found'
-                      ? 'Hunt not found. The hunt may still be syncing across relays.'
+                      ? 'Hunt not found. The hunt may still be syncing across relays, or the code may be incorrect.'
                       : searchError instanceof Error
                         ? searchError.message
                         : 'Hunt not found. Please check the code.'}
