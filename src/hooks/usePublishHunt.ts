@@ -1,19 +1,9 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useNostr } from '@nostrify/react';
-import type { NostrEvent } from '@nostrify/nostrify';
 import type { HuntEvent } from '@/lib/gameTypes';
 import { useToast } from '@/hooks/useToast';
+import { useCurrentUser } from './useCurrentUser';
 import ngeohash from 'ngeohash';
-
-// NIP-07 window.nostr type declaration
-declare global {
-  interface Window {
-    nostr?: {
-      getPublicKey: () => Promise<string>;
-      signEvent: (event: object) => Promise<NostrEvent>;
-    };
-  }
-}
 
 const HUNT_EVENT_KIND = 32959;
 
@@ -21,12 +11,12 @@ export function usePublishHunt() {
   const { nostr } = useNostr();
   const queryClient = useQueryClient();
   const { toast } = useToast();
+  const { user } = useCurrentUser();
 
   return useMutation({
     mutationFn: async (hunt: HuntEvent) => {
-      // Check for NIP-07 signer
-      if (!window.nostr?.signEvent) {
-        throw new Error('No Nostr signer available. Please install a Nostr extension.');
+      if (!user?.signer) {
+        throw new Error('No Nostr signer available. Please log in first.');
       }
 
       // Create geohash for the hunt center
@@ -50,8 +40,8 @@ export function usePublishHunt() {
         satStops: hunt.satStops,
       });
 
-      // Create unsigned event template
-      const eventTemplate = {
+      // Sign event using user's signer (works for all login types)
+      const signedEvent = await user.signer.signEvent({
         kind: HUNT_EVENT_KIND,
         created_at: Math.floor(Date.now() / 1000),
         content,
@@ -69,10 +59,7 @@ export function usePublishHunt() {
           ...(hunt.lightningInvoice ? [['bolt11', hunt.lightningInvoice]] : []),
           ...(hunt.paymentHash ? [['payment_hash', hunt.paymentHash]] : []),
         ],
-      };
-
-      // Sign event using NIP-07
-      const signedEvent = await window.nostr.signEvent(eventTemplate) as NostrEvent;
+      });
 
       // Publish to relays
       await nostr.event(signedEvent);

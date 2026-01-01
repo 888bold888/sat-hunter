@@ -1,6 +1,7 @@
 import { useEffect, useCallback, useRef } from 'react';
 import { useNostr } from '@nostrify/react';
 import type { HuntEvent } from '@/lib/gameTypes';
+import { useCurrentUser } from './useCurrentUser';
 
 const CLAIM_EVENT_KIND = 32960;
 const JOIN_EVENT_KIND = 32961;
@@ -117,15 +118,16 @@ export function useHuntSync(
 // Hook for players to publish join event
 export function usePublishJoin() {
   const { nostr } = useNostr();
+  const { user } = useCurrentUser();
 
   const publishJoin = useCallback(async (huntId: string, huntShareCode: string) => {
-    if (!window.nostr?.signEvent) {
+    if (!user?.signer) {
       console.warn('No Nostr signer available for join event');
       return null;
     }
 
     try {
-      const eventTemplate = {
+      const signedEvent = await user.signer.signEvent({
         kind: JOIN_EVENT_KIND,
         created_at: Math.floor(Date.now() / 1000),
         content: JSON.stringify({ joinedAt: Date.now() }),
@@ -134,9 +136,8 @@ export function usePublishJoin() {
           ['d', `${huntShareCode}-join`],
           ['hunt_code', huntShareCode],
         ],
-      };
+      });
 
-      const signedEvent = await window.nostr.signEvent(eventTemplate);
       await nostr.event(signedEvent);
       console.log('Join event published:', signedEvent.id);
       return signedEvent;
@@ -144,7 +145,7 @@ export function usePublishJoin() {
       console.error('Failed to publish join event:', err);
       return null;
     }
-  }, [nostr]);
+  }, [nostr, user]);
 
   return { publishJoin };
 }

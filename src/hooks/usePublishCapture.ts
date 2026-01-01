@@ -1,17 +1,7 @@
 import { useMutation } from '@tanstack/react-query';
 import { useNostr } from '@nostrify/react';
-import type { NostrEvent } from '@nostrify/nostrify';
 import type { Monster } from '@/lib/gameTypes';
-
-// NIP-07 window.nostr type declaration
-declare global {
-  interface Window {
-    nostr?: {
-      getPublicKey: () => Promise<string>;
-      signEvent: (event: object) => Promise<NostrEvent>;
-    };
-  }
-}
+import { useCurrentUser } from './useCurrentUser';
 
 const CLAIM_EVENT_KIND = 32960;
 
@@ -24,11 +14,11 @@ interface CaptureEventData {
 
 export function usePublishCapture() {
   const { nostr } = useNostr();
+  const { user } = useCurrentUser();
 
   return useMutation({
     mutationFn: async (data: CaptureEventData) => {
-      // Check for NIP-07 signer
-      if (!window.nostr?.signEvent) {
+      if (!user?.signer) {
         console.warn('No Nostr signer available for capture event');
         return null;
       }
@@ -42,8 +32,8 @@ export function usePublishCapture() {
         capturedAt: Date.now(),
       });
 
-      // Create unsigned event template
-      const eventTemplate = {
+      // Sign event using user's signer (works for all login types)
+      const signedEvent = await user.signer.signEvent({
         kind: CLAIM_EVENT_KIND,
         created_at: Math.floor(Date.now() / 1000),
         content,
@@ -55,10 +45,7 @@ export function usePublishCapture() {
           ['sat_amount', data.monster.satAmount.toString()],
           ['hunt_code', data.huntShareCode],
         ],
-      };
-
-      // Sign event using NIP-07
-      const signedEvent = await window.nostr.signEvent(eventTemplate) as NostrEvent;
+      });
 
       // Publish to relays
       await nostr.event(signedEvent);
