@@ -70,8 +70,7 @@ The app wraps in this order: AppProvider > QueryClientProvider > NostrLoginProvi
 - Sats distributed proportionally to rarity multipliers
 
 ### Key Constants (`src/lib/gameTypes.ts`)
-- Visibility range: 12 meters (creatures only appear within this distance)
-- Capture range: 6 meters (minimum for GPS accuracy)
+- Visibility/Capture range: 15 meters (creatures appear and can be caught within this distance)
 - SatStop range: 10 meters
 - SatStop cooldown: 5 minutes
 

@@ -53,8 +53,8 @@ export function GameHUD({ onOpenLeaderboard, onOpenInventory, onOpenStats }: Gam
 
   const availableMonsters = getAvailableMonsters();
 
-  // Only show monsters within 12 meters (~40 feet) visibility range
-  const VISIBILITY_RANGE_METERS = 12;
+  // Only show monsters within 15 meters (~50 feet) visibility range
+  const VISIBILITY_RANGE_METERS = 15;
   const visibleMonsters = playerLocation
     ? availableMonsters.filter(m => calculateDistance(playerLocation, m.location) <= VISIBILITY_RANGE_METERS)
     : [];

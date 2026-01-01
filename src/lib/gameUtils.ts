@@ -736,12 +736,11 @@ export function calculateLeaderboard(
   }));
 }
 
-// Check if monster is within capture range (6 meters = ~20 feet)
-// Note: GPS accuracy on mobile is typically 5-10m, so 6m is the minimum realistic range
+// Check if monster is within capture range (15 meters = ~50 feet)
 export function isInCaptureRange(
   playerLocation: GeoLocation,
   monsterLocation: GeoLocation,
-  rangeMeters: number = 6
+  rangeMeters: number = 15
 ): boolean {
   return calculateDistance(playerLocation, monsterLocation) <= rangeMeters;
 }

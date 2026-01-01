@@ -139,8 +139,8 @@ export function HuntMap({
         }).addTo(map);
         circlesRef.current.push(geofenceCircle);
 
-        // Filter visible monsters - 12 meters (~40 feet) visibility range
-        const VISIBILITY_RANGE = 12;
+        // Filter visible monsters - 15 meters (~50 feet) visibility range
+        const VISIBILITY_RANGE = 15;
         const visibleMonsters = showAllMonsters
           ? monsters
           : playerLocation
@@ -239,25 +239,14 @@ export function HuntMap({
 
           markersRef.current.push(playerMarker);
 
-          // Add visibility circle for players (12m - green, outer ring)
+          // Add capture/visibility range circle (15m - orange)
           if (!showAllMonsters) {
-            const visibilityCircle = L.circle([playerLocation.lat, playerLocation.lng], {
-              radius: VISIBILITY_RANGE,
-              color: '#22c55e',
-              fillColor: '#22c55e',
-              fillOpacity: 0.1,
-              weight: 2,
-              dashArray: '5, 5',
-            }).addTo(map);
-            circlesRef.current.push(visibilityCircle);
-
-            // Add capture range circle (6m - orange, inner ring)
-            const CAPTURE_RANGE = 6;
+            const CAPTURE_RANGE = 15;
             const captureCircle = L.circle([playerLocation.lat, playerLocation.lng], {
               radius: CAPTURE_RANGE,
               color: '#f97316',
               fillColor: '#f97316',
-              fillOpacity: 0.2,
+              fillOpacity: 0.15,
               weight: 2,
             }).addTo(map);
             circlesRef.current.push(captureCircle);

@@ -294,8 +294,8 @@ export function GameProvider({ children }: { children: ReactNode }) {
   // Update nearby entities when location changes
   useEffect(() => {
     if (!state.playerLocation || !state.activeHunt) return;
-    // Monsters only visible within 12 meters (~40 feet)
-    const VISIBILITY_RANGE = 12;
+    // Monsters only visible within 15 meters (~50 feet)
+    const VISIBILITY_RANGE = 15;
     const nearbyMonsters = state.activeHunt.monsters.filter(
       (m) => !m.captured && isInCaptureRange(state.playerLocation!, m.location, VISIBILITY_RANGE)
     );
