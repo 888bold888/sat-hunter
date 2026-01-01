@@ -203,6 +203,8 @@ export function useNWCInternal() {
           throw new Error('Insufficient balance in connected wallet.');
         } else if (error.message.includes('invalid')) {
           throw new Error('Invalid invoice or connection. Please check your wallet.');
+        } else if (error.message.includes('13194') || error.message.includes('info event')) {
+          throw new Error('Wallet connection expired or relay unavailable. Please reconnect your NWC wallet in settings.');
         } else {
           throw new Error(`Payment failed: ${error.message}`);
         }
