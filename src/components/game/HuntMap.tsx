@@ -239,16 +239,28 @@ export function HuntMap({
 
           markersRef.current.push(playerMarker);
 
-          // Add visibility circle for players
+          // Add visibility circle for players (12m - green, outer ring)
           if (!showAllMonsters) {
             const visibilityCircle = L.circle([playerLocation.lat, playerLocation.lng], {
               radius: VISIBILITY_RANGE,
               color: '#22c55e',
               fillColor: '#22c55e',
-              fillOpacity: 0.15,
+              fillOpacity: 0.1,
               weight: 2,
+              dashArray: '5, 5',
             }).addTo(map);
             circlesRef.current.push(visibilityCircle);
+
+            // Add capture range circle (6m - orange, inner ring)
+            const CAPTURE_RANGE = 6;
+            const captureCircle = L.circle([playerLocation.lat, playerLocation.lng], {
+              radius: CAPTURE_RANGE,
+              color: '#f97316',
+              fillColor: '#f97316',
+              fillOpacity: 0.2,
+              weight: 2,
+            }).addTo(map);
+            circlesRef.current.push(captureCircle);
           }
 
           // Center map on player (with safety check)
