@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { useGame } from '@/contexts/GameContext';
 import { usePublishHunt } from '@/hooks/usePublishHunt';
 import { useWallet } from '@/hooks/useWallet';
@@ -9,21 +9,12 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/com
 import { Button } from '@/components/ui/button';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Separator } from '@/components/ui/separator';
-import { Input } from '@/components/ui/input';
 import {
   Zap,
   Wallet,
   Loader2,
   AlertCircle,
-  QrCode,
-  Copy,
-  Check,
-  ExternalLink,
 } from 'lucide-react';
-import QRCode from 'qrcode';
-
-// Demo invoice prefix - in production this would come from a real Lightning service
-const DEMO_INVOICE_PREFIX = 'lnbc';
 
 export function PaymentConfirmation() {
   const { state, confirmPayment, updateHuntId } = useGame();
@@ -33,91 +24,8 @@ export function PaymentConfirmation() {
   const { getActiveConnection } = useNWC();
   const [isPaying, setIsPaying] = useState(false);
   const [paymentError, setPaymentError] = useState<string | null>(null);
-  const [showInvoice, setShowInvoice] = useState(false);
-  const [invoice, setInvoice] = useState<string | null>(null);
-  const [qrCodeUrl, setQrCodeUrl] = useState<string>('');
-  const [copied, setCopied] = useState(false);
-  const [isGeneratingInvoice, setIsGeneratingInvoice] = useState(false);
-
-  // Generate demo invoice when requested
-  useEffect(() => {
-    if (!showInvoice || !activeHunt) return;
-
-    const generateDemoInvoice = async () => {
-      setIsGeneratingInvoice(true);
-
-      // Create a demo invoice string (in production, this would come from a Lightning service)
-      // Format: lnbc[amount][multiplier]...
-      const amountInSats = activeHunt.totalSats;
-      const timestamp = Math.floor(Date.now() / 1000);
-      const randomSuffix = Math.random().toString(36).substring(2, 15);
-
-      // This is a demo invoice format - not a real BOLT11 invoice
-      // In production, you'd call your Lightning service API to get a real invoice
-      const demoInvoice = `${DEMO_INVOICE_PREFIX}${amountInSats}n1p${timestamp}${randomSuffix}`;
-
-      setInvoice(demoInvoice);
-
-      // Generate QR code
-      try {
-        const url = await QRCode.toDataURL(demoInvoice.toUpperCase(), {
-          width: 300,
-          margin: 2,
-          color: { dark: '#000000', light: '#FFFFFF' },
-        });
-        setQrCodeUrl(url);
-      } catch (err) {
-        console.error('Failed to generate QR code:', err);
-      }
-
-      setIsGeneratingInvoice(false);
-    };
-
-    generateDemoInvoice();
-  }, [showInvoice, activeHunt]);
 
   if (!activeHunt || activeHunt.paymentStatus === 'paid') return null;
-
-  // Copy invoice to clipboard
-  const handleCopy = async () => {
-    if (invoice) {
-      await navigator.clipboard.writeText(invoice);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
-    }
-  };
-
-  // Open in external Lightning wallet
-  const openInWallet = () => {
-    if (invoice) {
-      window.open(`lightning:${invoice}`, '_blank');
-    }
-  };
-
-  // Handle "I've Paid" confirmation for invoice payment
-  const handleInvoicePaid = async () => {
-    setIsPaying(true);
-    setPaymentError(null);
-
-    try {
-      confirmPayment();
-
-      const paidHunt = {
-        ...activeHunt,
-        status: 'ready' as const,
-        paymentStatus: 'paid' as const,
-      };
-      const signedEvent = await publishHunt(paidHunt) as NostrEvent;
-      // Critical: Update local hunt ID to match Nostr event ID for sync
-      // Pass status to avoid race condition with confirmPayment
-      if (signedEvent?.id) {
-        updateHuntId(signedEvent.id, { status: 'ready', paymentStatus: 'paid' });
-      }
-    } catch (error) {
-      setPaymentError(error instanceof Error ? error.message : 'Failed to activate hunt');
-      setIsPaying(false);
-    }
-  };
 
   // Activate hunt with connected wallet (verifies wallet connection)
   const handleActivateWithWallet = async () => {
@@ -130,10 +38,6 @@ export function PaymentConfirmation() {
     setPaymentError(null);
 
     try {
-      // For now, just activate the hunt since there's no payment backend
-      // In production, this would send sats to an escrow/custodian
-      await new Promise(resolve => setTimeout(resolve, 500));
-
       // Update hunt status first, then publish with updated status
       confirmPayment();
 
@@ -187,10 +91,10 @@ export function PaymentConfirmation() {
       <CardHeader>
         <CardTitle className="font-display flex items-center gap-2">
           <Wallet className="w-5 h-5 text-primary" />
-          Confirm Payment
+          Activate Hunt
         </CardTitle>
         <CardDescription>
-          Pay {formatSats(activeHunt.totalSats)} sats to activate your hunt. Sats will be split into creature invoices based on rarity.
+          Connect your NWC wallet to pay players when they capture creatures.
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-6">
@@ -208,147 +112,32 @@ export function PaymentConfirmation() {
 
         {/* Payment Options */}
         <div className="space-y-3">
-          <h4 className="font-display font-semibold text-sm">Payment Method</h4>
-
-          {/* Lightning Invoice QR Code */}
-          {showInvoice ? (
-            <div className="space-y-4">
-              {/* QR Code Display */}
-              <div className="flex justify-center">
-                <Card className="p-3 bg-white">
-                  <CardContent className="p-0">
-                    {isGeneratingInvoice ? (
-                      <div className="w-[200px] h-[200px] flex items-center justify-center">
-                        <Loader2 className="w-8 h-8 animate-spin text-primary" />
-                      </div>
-                    ) : qrCodeUrl ? (
-                      <img
-                        src={qrCodeUrl}
-                        alt="Lightning Invoice QR Code"
-                        className="w-[200px] h-[200px]"
-                      />
-                    ) : (
-                      <div className="w-[200px] h-[200px] bg-muted animate-pulse rounded" />
-                    )}
-                  </CardContent>
-                </Card>
-              </div>
-
-              {/* Invoice String */}
-              {invoice && (
-                <div className="space-y-2">
-                  <div className="flex gap-2">
-                    <Input
-                      value={invoice}
-                      readOnly
-                      className="font-mono text-xs"
-                      onClick={(e) => e.currentTarget.select()}
-                    />
-                    <Button
-                      variant="outline"
-                      size="icon"
-                      onClick={handleCopy}
-                      className="shrink-0"
-                    >
-                      {copied ? (
-                        <Check className="h-4 w-4 text-green-600" />
-                      ) : (
-                        <Copy className="h-4 w-4" />
-                      )}
-                    </Button>
-                  </div>
-
-                  {/* Open in Wallet */}
-                  <Button
-                    variant="outline"
-                    onClick={openInWallet}
-                    className="w-full"
-                  >
-                    <ExternalLink className="w-4 h-4 mr-2" />
-                    Open in Lightning Wallet
-                  </Button>
-
-                  {/* Confirm Payment */}
-                  <Button
-                    onClick={handleInvoicePaid}
-                    disabled={isPaying}
-                    className="w-full h-12 bg-gradient-to-r from-primary to-orange-600 hover:from-orange-600 hover:to-primary shadow-glow-orange"
-                  >
-                    {isPaying ? (
-                      <>
-                        <Loader2 className="w-5 h-5 mr-2 animate-spin" />
-                        Activating Hunt...
-                      </>
-                    ) : (
-                      <>
-                        <Check className="w-5 h-5 mr-2" />
-                        I've Paid - Activate Hunt
-                      </>
-                    )}
-                  </Button>
-
-                  {/* Back button */}
-                  <Button
-                    variant="ghost"
-                    onClick={() => {
-                      setShowInvoice(false);
-                      setInvoice(null);
-                      setQrCodeUrl('');
-                    }}
-                    className="w-full"
-                  >
-                    ← Back to payment options
-                  </Button>
-                </div>
-              )}
-
-              <Alert className="border-yellow-500/30 bg-yellow-500/5">
-                <AlertCircle className="w-4 h-4 text-yellow-500" />
-                <AlertDescription className="text-xs">
-                  Demo Mode: This is a simulated invoice. In production, this would be a real Lightning invoice from the escrow service.
-                </AlertDescription>
-              </Alert>
-            </div>
-          ) : (
-            <>
-              {/* Lightning Invoice Option */}
-              <Button
-                onClick={() => setShowInvoice(true)}
-                variant="outline"
-                className="w-full h-12 border-primary/50 hover:bg-primary/10"
-              >
-                <QrCode className="w-5 h-5 mr-2" />
-                Pay with Lightning Invoice (QR Code)
-              </Button>
-
-              {/* NWC Payment */}
-              {wallet.hasNWC ? (
-                <Button
-                  onClick={handleActivateWithWallet}
-                  disabled={isPaying}
-                  className="w-full h-12 bg-gradient-to-r from-secondary to-green-600 hover:from-green-600 hover:to-secondary shadow-glow-green"
-                >
-                  {isPaying ? (
-                    <>
-                      <Loader2 className="w-5 h-5 mr-2 animate-spin" />
-                      Processing Payment...
-                    </>
-                  ) : (
-                    <>
-                      <Wallet className="w-5 h-5 mr-2" />
-                      Pay with Connected Wallet (NWC)
-                    </>
-                  )}
-                </Button>
+          {/* NWC Payment */}
+          {wallet.hasNWC ? (
+            <Button
+              onClick={handleActivateWithWallet}
+              disabled={isPaying}
+              className="w-full h-12 bg-gradient-to-r from-secondary to-green-600 hover:from-green-600 hover:to-secondary shadow-glow-green"
+            >
+              {isPaying ? (
+                <>
+                  <Loader2 className="w-5 h-5 mr-2 animate-spin" />
+                  Activating Hunt...
+                </>
               ) : (
-                <Alert className="border-blue-500/30 bg-blue-500/5">
-                  <Wallet className="w-4 h-4 text-blue-500" />
-                  <AlertDescription className="text-xs">
-                    Connect NWC in settings for one-click wallet payments.
-                  </AlertDescription>
-                </Alert>
+                <>
+                  <Wallet className="w-5 h-5 mr-2" />
+                  Activate with Connected Wallet
+                </>
               )}
-            </>
+            </Button>
+          ) : (
+            <Alert className="border-blue-500/30 bg-blue-500/5">
+              <Wallet className="w-4 h-4 text-blue-500" />
+              <AlertDescription className="text-sm">
+                <strong>NWC wallet required.</strong> Connect your Nostr Wallet Connect (NWC) in settings to pay players automatically when they catch creatures.
+              </AlertDescription>
+            </Alert>
           )}
         </div>
 
@@ -360,7 +149,7 @@ export function PaymentConfirmation() {
           </Alert>
         )}
 
-        {/* Demo/Skip Payment - always available for now */}
+        {/* Demo/Skip Payment */}
         <Separator />
         <Button
           onClick={handleSkipPayment}
@@ -376,7 +165,7 @@ export function PaymentConfirmation() {
           ) : (
             <>
               <Zap className="w-4 h-4 mr-2" />
-              Activate Hunt (Demo Mode)
+              Activate Hunt (Demo Mode - No Payments)
             </>
           )}
         </Button>
@@ -385,7 +174,7 @@ export function PaymentConfirmation() {
         <Alert className="border-primary/30 bg-primary/5">
           <Zap className="w-4 h-4 text-primary" />
           <AlertDescription className="text-xs">
-            Your hunt will be published to Nostr and activated only after payment confirmation. Unclaimed creature sats refund to you at end.
+            When players catch creatures, your connected wallet will automatically pay them the reward sats via their Lightning address.
           </AlertDescription>
         </Alert>
       </CardContent>
