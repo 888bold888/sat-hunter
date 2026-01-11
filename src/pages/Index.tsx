@@ -270,15 +270,6 @@ const Index = () => {
             <span>Built on Nostr</span>
             <span>•</span>
             <span>Powered by Lightning</span>
-            <span>•</span>
-            <a
-              href="https://shakespeare.diy"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="hover:text-primary transition-colors"
-            >
-              Vibed with Shakespeare
-            </a>
           </div>
           <div className="mt-6 text-xl animate-float">🐸⚡🔥</div>
         </div>
