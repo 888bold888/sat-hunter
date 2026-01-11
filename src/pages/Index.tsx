@@ -10,7 +10,6 @@ import {
   Target,
   MapPin,
   Trophy,
-  Skull,
   Shield,
   Play,
   Users,
@@ -233,9 +232,8 @@ const Index = () => {
       {/* Stats Section */}
       <section className="relative py-20 px-4">
         <div className="max-w-4xl mx-auto">
-          <div className="grid grid-cols-3 gap-6">
+          <div className="grid grid-cols-2 gap-6 max-w-md mx-auto">
             {[
-              { icon: Skull, value: '11', label: 'Creature Types', color: 'accent' },
               { icon: Users, value: 'P2P', label: 'Decentralized', color: 'secondary' },
               { icon: Clock, value: '⚡', label: 'Instant Payouts', color: 'primary' },
             ].map((stat) => (
