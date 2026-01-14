@@ -1,7 +1,8 @@
 import { useMutation } from '@tanstack/react-query';
 import { useNostr } from '@nostrify/react';
-import type { Monster } from '@/lib/gameTypes';
+import type { Monster, GeoLocation } from '@/lib/gameTypes';
 import { useCurrentUser } from './useCurrentUser';
+import { encodeCoarseGeohash } from '@/lib/antiCheat';
 
 const CLAIM_EVENT_KIND = 32960;
 
@@ -10,6 +11,10 @@ interface CaptureEventData {
   huntShareCode: string;
   monster: Monster;
   playerPubkey: string;
+  // Anti-cheat data
+  playerLocation?: GeoLocation;
+  trustScore?: number;
+  trustFlags?: string[];
 }
 
 export function usePublishCapture() {
@@ -23,28 +28,48 @@ export function usePublishCapture() {
         return null;
       }
 
-      // Prepare content
+      // Generate coarse geohash for privacy (5 chars = ~5km cell)
+      const geohash = data.playerLocation
+        ? encodeCoarseGeohash(data.playerLocation)
+        : undefined;
+
+      // Prepare content with anti-cheat data
       const content = JSON.stringify({
         monsterId: data.monster.id,
         monsterName: data.monster.name,
         satAmount: data.monster.satAmount,
         rarity: data.monster.rarity,
         capturedAt: Date.now(),
+        // Anti-cheat fields (coarse location for privacy)
+        geohash,
+        trustScore: data.trustScore,
+        trustFlags: data.trustFlags,
       });
+
+      // Build tags
+      const tags: string[][] = [
+        ['e', data.huntId], // Reference to hunt event
+        ['d', `${data.huntShareCode}-${data.monster.id}`], // Unique identifier
+        ['p', data.playerPubkey], // Player who captured
+        ['monster_id', data.monster.id],
+        ['sat_amount', data.monster.satAmount.toString()],
+        ['hunt_code', data.huntShareCode],
+      ];
+
+      // Add anti-cheat tags
+      if (geohash) {
+        tags.push(['g', geohash]); // Standard geohash tag
+      }
+      if (data.trustScore !== undefined) {
+        tags.push(['trust_score', data.trustScore.toString()]);
+      }
 
       // Sign event using user's signer (works for all login types)
       const signedEvent = await user.signer.signEvent({
         kind: CLAIM_EVENT_KIND,
         created_at: Math.floor(Date.now() / 1000),
         content,
-        tags: [
-          ['e', data.huntId], // Reference to hunt event
-          ['d', `${data.huntShareCode}-${data.monster.id}`], // Unique identifier
-          ['p', data.playerPubkey], // Player who captured
-          ['monster_id', data.monster.id],
-          ['sat_amount', data.monster.satAmount.toString()],
-          ['hunt_code', data.huntShareCode],
-        ],
+        tags,
       });
 
       // Publish to relays

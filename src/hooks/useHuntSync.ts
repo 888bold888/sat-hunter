@@ -6,8 +6,20 @@ import { useCurrentUser } from './useCurrentUser';
 const CLAIM_EVENT_KIND = 32960;
 const JOIN_EVENT_KIND = 32961;
 
+// Anti-cheat data included in capture events
+interface CaptureAntiCheatData {
+  trustScore?: number;
+  trustFlags?: string[];
+  geohash?: string;
+}
+
 interface HuntSyncCallbacks {
-  onMonsterCaptured: (monsterId: string, playerPubkey: string, satAmount: number) => void;
+  onMonsterCaptured: (
+    monsterId: string,
+    playerPubkey: string,
+    satAmount: number,
+    antiCheat?: CaptureAntiCheatData
+  ) => void;
   onPlayerJoined: (playerPubkey: string) => void;
 }
 
@@ -17,6 +29,10 @@ interface ClaimEventContent {
   satAmount: number;
   rarity: string;
   capturedAt: number;
+  // Anti-cheat fields
+  trustScore?: number;
+  trustFlags?: string[];
+  geohash?: string;
 }
 
 export function useHuntSync(
@@ -54,10 +70,21 @@ export function useHuntSync(
           const content: ClaimEventContent = JSON.parse(event.content);
           const playerPubkey = event.pubkey;
 
+          // Extract anti-cheat data from capture event
+          const antiCheat: CaptureAntiCheatData | undefined =
+            content.trustScore !== undefined
+              ? {
+                  trustScore: content.trustScore,
+                  trustFlags: content.trustFlags,
+                  geohash: content.geohash,
+                }
+              : undefined;
+
           callbacks.onMonsterCaptured(
             content.monsterId,
             playerPubkey,
-            content.satAmount
+            content.satAmount,
+            antiCheat
           );
         } catch (err) {
           console.error('Failed to parse capture event:', err);

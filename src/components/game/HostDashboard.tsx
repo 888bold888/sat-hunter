@@ -20,11 +20,20 @@ import {
   Check,
   Navigation,
   RefreshCw,
+  ShieldAlert,
 } from 'lucide-react';
 import QRCode from 'qrcode';
 import { useHuntSync } from '@/hooks/useHuntSync';
 import { usePayPlayer } from '@/hooks/usePayPlayer';
 import { useToast } from '@/hooks/useToast';
+import { ANTI_CHEAT_CONFIG } from '@/lib/antiCheat';
+
+// Anti-cheat data from capture events
+interface CaptureAntiCheat {
+  trustScore?: number;
+  trustFlags?: string[];
+  geohash?: string;
+}
 
 export function HostDashboard() {
   const { state, startHunt, isHost, addParticipant } = useGame();
@@ -32,24 +41,50 @@ export function HostDashboard() {
   const [timeRemaining, setTimeRemaining] = useState('');
   const [copied, setCopied] = useState(false);
   const [qrCodeUrl, setQrCodeUrl] = useState<string | null>(null);
-  const [syncedCaptures, setSyncedCaptures] = useState<Map<string, { playerPubkey: string; satAmount: number }>>(new Map());
+  const [syncedCaptures, setSyncedCaptures] = useState<Map<string, {
+    playerPubkey: string;
+    satAmount: number;
+    antiCheat?: CaptureAntiCheat;
+  }>>(new Map());
   const [syncedPlayers, setSyncedPlayers] = useState<Set<string>>(new Set());
   const [paidCaptures, setPaidCaptures] = useState<Set<string>>(new Set());
   const [payingCaptures, setPayingCaptures] = useState<Set<string>>(new Set());
+  const [rejectedCaptures, setRejectedCaptures] = useState<Map<string, string>>(new Map()); // monsterId -> reason
 
   const { payPlayer } = usePayPlayer();
   const { toast } = useToast();
 
-  // Pay player when a capture is detected
+  // Pay player when a capture is detected (with anti-cheat validation)
   const processPayment = useCallback(async (
     monsterId: string,
     playerPubkey: string,
     satAmount: number,
-    monsterName: string
+    monsterName: string,
+    antiCheat?: CaptureAntiCheat
   ) => {
-    // Skip if already paid or currently paying
-    if (paidCaptures.has(monsterId) || payingCaptures.has(monsterId)) {
+    // Skip if already paid, paying, or rejected
+    if (paidCaptures.has(monsterId) || payingCaptures.has(monsterId) || rejectedCaptures.has(monsterId)) {
       return;
+    }
+
+    // Anti-cheat validation: check trust score
+    if (antiCheat?.trustScore !== undefined) {
+      if (antiCheat.trustScore < ANTI_CHEAT_CONFIG.MIN_TRUST_SCORE) {
+        const reason = `Trust score ${antiCheat.trustScore} below threshold ${ANTI_CHEAT_CONFIG.MIN_TRUST_SCORE}`;
+        console.warn(`[AntiCheat] Rejecting capture: ${reason}`, antiCheat.trustFlags);
+        setRejectedCaptures(prev => new Map(prev).set(monsterId, reason));
+        toast({
+          title: 'Suspicious capture detected',
+          description: `Payment blocked: ${reason}`,
+          variant: 'destructive',
+        });
+        return;
+      }
+
+      // Log any flags for monitoring (payment still proceeds if score is OK)
+      if (antiCheat.trustFlags && antiCheat.trustFlags.length > 0) {
+        console.log(`[AntiCheat] Capture flags for ${monsterName}:`, antiCheat.trustFlags);
+      }
     }
 
     setPayingCaptures(prev => new Set(prev).add(monsterId));
@@ -75,13 +110,18 @@ export function HostDashboard() {
       next.delete(monsterId);
       return next;
     });
-  }, [payPlayer, paidCaptures, payingCaptures, toast]);
+  }, [payPlayer, paidCaptures, payingCaptures, rejectedCaptures, toast]);
 
   // Callbacks for hunt sync
-  const onMonsterCaptured = useCallback((monsterId: string, playerPubkey: string, satAmount: number) => {
+  const onMonsterCaptured = useCallback((
+    monsterId: string,
+    playerPubkey: string,
+    satAmount: number,
+    antiCheat?: CaptureAntiCheat
+  ) => {
     setSyncedCaptures(prev => {
       const next = new Map(prev);
-      next.set(monsterId, { playerPubkey, satAmount });
+      next.set(monsterId, { playerPubkey, satAmount, antiCheat });
       return next;
     });
     // Also track player if not already in participants
@@ -91,11 +131,11 @@ export function HostDashboard() {
       return next;
     });
 
-    // Find the monster name and trigger payment
+    // Find the monster name and trigger payment (with anti-cheat validation)
     if (activeHunt) {
       const monster = activeHunt.monsters.find(m => m.id === monsterId);
       if (monster && !paidCaptures.has(monsterId)) {
-        processPayment(monsterId, playerPubkey, satAmount, monster.name);
+        processPayment(monsterId, playerPubkey, satAmount, monster.name, antiCheat);
       }
     }
   }, [activeHunt, paidCaptures, processPayment]);
@@ -207,6 +247,20 @@ export function HostDashboard() {
             </p>
           </CardContent>
         </Card>
+        {/* Rejected captures indicator (anti-cheat) */}
+        {rejectedCaptures.size > 0 && (
+          <Card className="col-span-3 border-red-500/30 bg-red-500/10">
+            <CardContent className="p-3 flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <ShieldAlert className="w-5 h-5 text-red-500" />
+                <span className="text-sm text-red-400">
+                  {rejectedCaptures.size} suspicious capture{rejectedCaptures.size !== 1 ? 's' : ''} blocked
+                </span>
+              </div>
+              <Badge variant="destructive" className="text-xs">Anti-Cheat</Badge>
+            </CardContent>
+          </Card>
+        )}
       </div>
 
       {/* Event Status */}

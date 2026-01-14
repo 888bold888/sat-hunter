@@ -23,11 +23,20 @@ import {
 import type { SatStopsResult, MonstersResult } from '@/lib/gameUtils';
 import type { HuntStatus, HuntParticipant } from '@/lib/gameTypes';
 import { isMockLocationEnabled, getMockLocation } from '@/lib/devMode';
+import {
+  checkLocationIntegrity,
+  updateCooldownState,
+  clearCooldownState,
+  clearLocationHistory,
+  type LocationIntegrityResult,
+} from '@/lib/antiCheat';
 
 interface GameState {
   activeHunt: HuntEvent | null;
   playerStats: PlayerStats;
   playerLocation: GeoLocation | null;
+  playerPosition: GeolocationPosition | null; // Full position for anti-cheat
+  lastIntegrityCheck: LocationIntegrityResult | null; // Anti-cheat result
   locationError: string | null;
   nearbyMonsters: Monster[];
   nearbySatStops: SatStop[];
@@ -39,6 +48,7 @@ type GameAction =
   | { type: 'SET_ACTIVE_HUNT'; hunt: HuntEvent | null }
   | { type: 'UPDATE_HUNT'; hunt: HuntEvent }
   | { type: 'SET_PLAYER_LOCATION'; location: GeoLocation }
+  | { type: 'SET_PLAYER_POSITION'; position: GeolocationPosition; integrityCheck: LocationIntegrityResult }
   | { type: 'SET_LOCATION_ERROR'; error: string | null }
   | { type: 'SET_NEARBY_MONSTERS'; monsters: Monster[] }
   | { type: 'SET_NEARBY_STOPS'; stops: SatStop[] }
@@ -73,6 +83,8 @@ const initialState: GameState = {
   activeHunt: null,
   playerStats: initialPlayerStats,
   playerLocation: null,
+  playerPosition: null,
+  lastIntegrityCheck: null,
   locationError: null,
   nearbyMonsters: [],
   nearbySatStops: [],
@@ -88,6 +100,17 @@ function gameReducer(state: GameState, action: GameAction): GameState {
       return { ...state, activeHunt: action.hunt };
     case 'SET_PLAYER_LOCATION':
       return { ...state, playerLocation: action.location, locationError: null };
+    case 'SET_PLAYER_POSITION':
+      return {
+        ...state,
+        playerLocation: {
+          lat: action.position.coords.latitude,
+          lng: action.position.coords.longitude,
+        },
+        playerPosition: action.position,
+        lastIntegrityCheck: action.integrityCheck,
+        locationError: null,
+      };
     case 'SET_LOCATION_ERROR':
       return { ...state, locationError: action.error };
     case 'SET_NEARBY_MONSTERS':
@@ -426,6 +449,9 @@ export function GameProvider({ children }: { children: ReactNode }) {
       };
       dispatch({ type: 'END_HUNT_SESSION', huntEntry });
     }
+    // Clear anti-cheat state when leaving hunt
+    clearCooldownState();
+    clearLocationHistory();
     dispatch({ type: 'SET_ACTIVE_HUNT', hunt: null });
   }, [state.activeHunt, state.playerStats, user?.pubkey]);
 
@@ -474,6 +500,17 @@ export function GameProvider({ children }: { children: ReactNode }) {
       if (monster.captured) return false;
       if (!state.playerLocation) return false;
       if (!isInCaptureRange(state.playerLocation, monster.location)) return false;
+
+      // Anti-cheat check: verify location integrity
+      if (state.lastIntegrityCheck) {
+        if (!state.lastIntegrityCheck.canCapture) {
+          console.warn('[AntiCheat] Capture blocked:', state.lastIntegrityCheck.reason);
+          return false;
+        }
+        // Record capture for cooldown tracking
+        updateCooldownState(state.playerLocation);
+      }
+
       dispatch({ type: 'USE_BALL' });
       dispatch({
         type: 'CAPTURE_MONSTER',
@@ -482,7 +519,7 @@ export function GameProvider({ children }: { children: ReactNode }) {
       });
       return true;
     },
-    [state.playerStats.balls, state.playerLocation, state.activeHunt?.name]
+    [state.playerStats.balls, state.playerLocation, state.activeHunt?.name, state.lastIntegrityCheck]
   );
 
   // Collect balls from a sat stop
@@ -551,12 +588,12 @@ export function GameProvider({ children }: { children: ReactNode }) {
     }
     const watchId = navigator.geolocation.watchPosition(
       (position) => {
+        // Perform anti-cheat integrity check on every location update
+        const integrityCheck = checkLocationIntegrity(position);
         dispatch({
-          type: 'SET_PLAYER_LOCATION',
-          location: {
-            lat: position.coords.latitude,
-            lng: position.coords.longitude,
-          },
+          type: 'SET_PLAYER_POSITION',
+          position,
+          integrityCheck,
         });
       },
       (error) => {
