@@ -3,12 +3,14 @@ import { useNostr } from '@nostrify/react';
 import type { HuntEvent } from '@/lib/gameTypes';
 import { useCurrentUser } from './useCurrentUser';
 
+const HUNT_EVENT_KIND = 32959;
 const CLAIM_EVENT_KIND = 32960;
 const JOIN_EVENT_KIND = 32961;
 
 interface HuntSyncCallbacks {
   onMonsterCaptured: (monsterId: string, playerPubkey: string, satAmount: number) => void;
   onPlayerJoined: (playerPubkey: string) => void;
+  onHuntEnded?: () => void;
 }
 
 interface ClaimEventContent {
@@ -80,6 +82,28 @@ export function useHuntSync(
         if (processedEventsRef.current.has(event.id)) continue;
         processedEventsRef.current.add(event.id);
         callbacks.onPlayerJoined(event.pubkey);
+      }
+
+      // Check for hunt status updates (host may have ended the hunt)
+      if (callbacks.onHuntEnded) {
+        const huntEvents = await nostr.query(
+          [
+            {
+              kinds: [HUNT_EVENT_KIND],
+              '#d': [hunt.shareCode],
+              limit: 1,
+            },
+          ],
+          { signal: AbortSignal.timeout(10000) }
+        );
+
+        if (huntEvents.length > 0) {
+          const latestHuntEvent = huntEvents[0];
+          const statusTag = latestHuntEvent.tags.find(([t]) => t === 'status');
+          if (statusTag && statusTag[1] === 'ended') {
+            callbacks.onHuntEnded();
+          }
+        }
       }
     } catch (err) {
       console.error('Hunt sync error:', err);

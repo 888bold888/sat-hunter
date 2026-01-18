@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { useGame } from '@/contexts/GameContext';
 import type { Monster, SatStop } from '@/lib/gameTypes';
 import { GameHUD } from '@/components/game/GameHUD';
@@ -13,6 +13,8 @@ import { PaymentConfirmation } from '@/components/game/PaymentConfirmation';
 import { PlayerStatsView } from '@/components/game/PlayerStatsView';
 import { DevTools } from '@/components/game/DevTools';
 import { useCurrentUser } from '@/hooks/useCurrentUser';
+import { usePublishHuntEnd } from '@/hooks/usePublishHuntEnd';
+import { useHuntSync } from '@/hooks/useHuntSync';
 import { useSeoMeta } from '@unhead/react';
 import { Button } from '@/components/ui/button';
 import {
@@ -44,6 +46,39 @@ export default function GamePage() {
   const huntEndedShownRef = useRef(false);
 
   const userIsHost = isHost();
+  const { mutateAsync: publishHuntEnd } = usePublishHuntEnd();
+
+  // Handle hunt ended callback from sync (for players)
+  const handleHuntEndedFromSync = useCallback(() => {
+    if (!huntEndedShownRef.current) {
+      huntEndedShownRef.current = true;
+      setShowHuntEnded(true);
+    }
+  }, []);
+
+  // Sync hook for players to detect when host ends the hunt
+  useHuntSync(
+    !userIsHost ? activeHunt : null, // Only use for players
+    {
+      onMonsterCaptured: () => {}, // Players don't need to handle this
+      onPlayerJoined: () => {}, // Players don't need to handle this
+      onHuntEnded: handleHuntEndedFromSync,
+    }
+  );
+
+  // Handle host ending the hunt
+  const handleEndHunt = useCallback(async () => {
+    if (activeHunt && activeHunt.paymentStatus === 'paid') {
+      // Publish end event to Nostr so players get notified
+      try {
+        await publishHuntEnd(activeHunt);
+      } catch (err) {
+        console.error('Failed to publish hunt end:', err);
+        // Continue with leaving even if publish fails
+      }
+    }
+    leaveHunt();
+  }, [activeHunt, publishHuntEnd, leaveHunt]);
 
   useSeoMeta({
     title: activeHunt ? `${activeHunt.name} | Sat Hunter` : 'Sat Hunter',
@@ -177,7 +212,7 @@ export default function GamePage() {
               variant="outline"
               size="sm"
               className="border-destructive/30 text-destructive hover:bg-destructive hover:text-destructive-foreground"
-              onClick={leaveHunt}
+              onClick={needsPayment ? leaveHunt : handleEndHunt}
             >
               <LogOut className="w-4 h-4 mr-1" />
               {needsPayment ? 'Cancel' : 'End'}
