@@ -275,6 +275,8 @@ export function HostDashboard() {
               monsters={activeHunt.monsters}
               satStops={activeHunt.satStops}
               showAllMonsters={true}
+              boundaryType={activeHunt.geoFence.boundaryType}
+              polygon={activeHunt.geoFence.polygon}
             />
           </div>
         </CardContent>

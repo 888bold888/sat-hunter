@@ -99,6 +99,8 @@ export function GameMap({ selectedMonster, selectedStop, onSelectMonster, onSele
           onStopClick={onSelectStop}
           showAllMonsters={false}
           className="w-full h-full"
+          boundaryType={activeHunt.geoFence.boundaryType}
+          polygon={activeHunt.geoFence.polygon}
         />
       ) : (
         <div className="w-full h-full bg-cyber-grid bg-matrix flex items-center justify-center">

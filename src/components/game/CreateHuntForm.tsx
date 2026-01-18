@@ -3,6 +3,7 @@ import { useGame } from '@/contexts/GameContext';
 import { useCurrentUser } from '@/hooks/useCurrentUser';
 import { validateHuntConfig, formatSats } from '@/lib/gameUtils';
 import { LocationPermissionPrompt } from './LocationPermissionPrompt';
+import { PolygonDrawMap } from './PolygonDrawMap';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -11,6 +12,7 @@ import { Slider } from '@/components/ui/slider';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { useToast } from '@/hooks/useToast';
+import type { GeoLocation, BoundaryType, SpawnMode } from '@/lib/gameTypes';
 import {
   Zap,
   Target,
@@ -21,6 +23,12 @@ import {
   AlertCircle,
   Navigation,
   Loader2,
+  Circle,
+  Pentagon,
+  Layers,
+  Shuffle,
+  RefreshCw,
+  Users,
 } from 'lucide-react';
 
 interface CreateHuntFormProps {
@@ -38,6 +46,10 @@ export function CreateHuntForm({ onHuntCreated }: CreateHuntFormProps) {
   const [monsterCount, setMonsterCount] = useState(50);
   const [durationMinutes, setDurationMinutes] = useState(60);
   const [radiusMeters, setRadiusMeters] = useState(500);
+  const [boundaryType, setBoundaryType] = useState<BoundaryType>('circle');
+  const [polygonPoints, setPolygonPoints] = useState<GeoLocation[] | null>(null);
+  const [spawnMode, setSpawnMode] = useState<SpawnMode>('all_at_once');
+  const [maxConcurrentMonsters, setMaxConcurrentMonsters] = useState(20);
   const [isCreating, setIsCreating] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -58,6 +70,11 @@ export function CreateHuntForm({ onHuntCreated }: CreateHuntFormProps) {
       setError('Please enter a hunt name');
       return;
     }
+    // Validate polygon if using custom boundary
+    if (boundaryType === 'polygon' && (!polygonPoints || polygonPoints.length < 3)) {
+      setError('Please draw a hunt boundary with at least 3 points');
+      return;
+    }
     const validation = validateHuntConfig(totalSats, monsterCount, durationMinutes);
     if (!validation.valid) {
       setError(validation.error ?? 'Invalid configuration');
@@ -75,6 +92,10 @@ export function CreateHuntForm({ onHuntCreated }: CreateHuntFormProps) {
         durationMinutes,
         center: playerLocation,
         radiusMeters,
+        boundaryType,
+        polygon: boundaryType === 'polygon' ? polygonPoints ?? undefined : undefined,
+        spawnMode,
+        maxConcurrentMonsters: spawnMode === 'scattered_replacement' ? maxConcurrentMonsters : undefined,
       });
 
       // Check for issues with creature placement
@@ -244,27 +265,143 @@ export function CreateHuntForm({ onHuntCreated }: CreateHuntFormProps) {
                 <span>8 hours</span>
               </div>
             </div>
+
+            {/* Spawn Mode Selection */}
             <div className="space-y-3">
-              <div className="flex items-center justify-between">
-                <Label className="font-display flex items-center gap-2">
-                  <MapPin className="w-4 h-4 text-blue-400" />
-                  Hunt Radius
-                </Label>
-                <span className="font-mono text-blue-400">{radiusMeters}m</span>
+              <Label className="font-display flex items-center gap-2">
+                <Shuffle className="w-4 h-4 text-purple-400" />
+                Spawn Mode
+              </Label>
+              <div className="grid grid-cols-3 gap-2">
+                <Button
+                  type="button"
+                  variant={spawnMode === 'all_at_once' ? 'default' : 'outline'}
+                  className={`flex flex-col h-auto py-2 px-2 ${spawnMode === 'all_at_once' ? 'bg-purple-600 hover:bg-purple-700' : ''}`}
+                  onClick={() => setSpawnMode('all_at_once')}
+                >
+                  <Layers className="w-4 h-4 mb-1" />
+                  <span className="text-xs">All at Once</span>
+                </Button>
+                <Button
+                  type="button"
+                  variant={spawnMode === 'scattered' ? 'default' : 'outline'}
+                  className={`flex flex-col h-auto py-2 px-2 ${spawnMode === 'scattered' ? 'bg-purple-600 hover:bg-purple-700' : ''}`}
+                  onClick={() => setSpawnMode('scattered')}
+                >
+                  <Shuffle className="w-4 h-4 mb-1" />
+                  <span className="text-xs">Scattered</span>
+                </Button>
+                <Button
+                  type="button"
+                  variant={spawnMode === 'scattered_replacement' ? 'default' : 'outline'}
+                  className={`flex flex-col h-auto py-2 px-2 ${spawnMode === 'scattered_replacement' ? 'bg-purple-600 hover:bg-purple-700' : ''}`}
+                  onClick={() => setSpawnMode('scattered_replacement')}
+                >
+                  <RefreshCw className="w-4 h-4 mb-1" />
+                  <span className="text-xs">Replacement</span>
+                </Button>
               </div>
-              <Slider
-                value={[radiusMeters]}
-                onValueChange={([value]) => setRadiusMeters(value)}
-                min={100}
-                max={2000}
-                step={50}
-                className="py-2"
-              />
-              <div className="flex justify-between text-xs text-muted-foreground">
-                <span>100m</span>
-                <span>2km</span>
+              <p className="text-xs text-muted-foreground">
+                {spawnMode === 'all_at_once' && 'All creatures spawn at the start of the hunt.'}
+                {spawnMode === 'scattered' && 'Creatures spawn gradually throughout the hunt duration.'}
+                {spawnMode === 'scattered_replacement' && 'Keep a fixed number active. When one is caught, another spawns.'}
+              </p>
+            </div>
+
+            {/* Max Concurrent Monsters (only for replacement mode) */}
+            {spawnMode === 'scattered_replacement' && (
+              <div className="space-y-3">
+                <div className="flex items-center justify-between">
+                  <Label className="font-display text-sm text-muted-foreground flex items-center gap-2">
+                    <Users className="w-4 h-4 text-purple-400" />
+                    Active Creatures
+                  </Label>
+                  <span className="font-mono text-purple-400">{maxConcurrentMonsters}</span>
+                </div>
+                <Slider
+                  value={[maxConcurrentMonsters]}
+                  onValueChange={([value]) => setMaxConcurrentMonsters(value)}
+                  min={5}
+                  max={Math.min(100, monsterCount)}
+                  step={5}
+                  className="py-2"
+                />
+                <div className="flex justify-between text-xs text-muted-foreground">
+                  <span>5</span>
+                  <span>{Math.min(100, monsterCount)}</span>
+                </div>
+              </div>
+            )}
+
+            {/* Boundary Type Toggle */}
+            <div className="space-y-3">
+              <Label className="font-display flex items-center gap-2">
+                <MapPin className="w-4 h-4 text-blue-400" />
+                Hunt Boundary
+              </Label>
+              <div className="grid grid-cols-2 gap-2">
+                <Button
+                  type="button"
+                  variant={boundaryType === 'circle' ? 'default' : 'outline'}
+                  className={boundaryType === 'circle' ? 'bg-blue-600 hover:bg-blue-700' : ''}
+                  onClick={() => setBoundaryType('circle')}
+                >
+                  <Circle className="w-4 h-4 mr-2" />
+                  Circle Radius
+                </Button>
+                <Button
+                  type="button"
+                  variant={boundaryType === 'polygon' ? 'default' : 'outline'}
+                  className={boundaryType === 'polygon' ? 'bg-blue-600 hover:bg-blue-700' : ''}
+                  onClick={() => setBoundaryType('polygon')}
+                >
+                  <Pentagon className="w-4 h-4 mr-2" />
+                  Custom Area
+                </Button>
               </div>
             </div>
+
+            {/* Circle Radius Slider (shown when circle mode) */}
+            {boundaryType === 'circle' && (
+              <div className="space-y-3">
+                <div className="flex items-center justify-between">
+                  <Label className="font-display text-sm text-muted-foreground">
+                    Hunt Radius
+                  </Label>
+                  <span className="font-mono text-blue-400">{radiusMeters}m</span>
+                </div>
+                <Slider
+                  value={[radiusMeters]}
+                  onValueChange={([value]) => setRadiusMeters(value)}
+                  min={100}
+                  max={2000}
+                  step={50}
+                  className="py-2"
+                />
+                <div className="flex justify-between text-xs text-muted-foreground">
+                  <span>100m</span>
+                  <span>2km</span>
+                </div>
+              </div>
+            )}
+
+            {/* Polygon Draw Map (shown when polygon mode) */}
+            {boundaryType === 'polygon' && playerLocation && (
+              <div className="space-y-2">
+                <PolygonDrawMap
+                  center={playerLocation}
+                  polygon={polygonPoints ?? undefined}
+                  onPolygonComplete={(points) => setPolygonPoints(points)}
+                  onPolygonClear={() => setPolygonPoints(null)}
+                  className="h-72 rounded-lg border border-primary/30"
+                />
+                {polygonPoints && polygonPoints.length >= 3 && (
+                  <p className="text-xs text-green-500 text-center">
+                    Boundary set. Use the edit/trash icons (top-right) to modify.
+                  </p>
+                )}
+              </div>
+            )}
             <Card className="bg-muted/50 border-dashed">
               <CardContent className="p-4 grid grid-cols-2 gap-4 text-center">
                 <div>

@@ -12,10 +12,14 @@ export interface GeoBounds {
   west: number;
 }
 
+export type BoundaryType = 'circle' | 'polygon';
+
 export interface GeoFence {
   center: GeoLocation;
   bounds: GeoBounds;
   radiusMeters: number;
+  boundaryType: BoundaryType;
+  polygon?: GeoLocation[];
 }
 
 export type MonsterRarity = 'common' | 'uncommon' | 'rare' | 'legendary' | 'mythic';
@@ -51,6 +55,7 @@ export interface SatStop {
 
 export type PaymentStatus = 'pending' | 'paid' | 'failed' | 'expired';
 export type HuntStatus = 'draft' | 'pending_payment' | 'ready' | 'active' | 'ended';
+export type SpawnMode = 'all_at_once' | 'scattered' | 'scattered_replacement';
 
 export interface HuntEvent {
   id: string;
@@ -75,6 +80,9 @@ export interface HuntEvent {
   shareUrl?: string;
   // Player tracking (for host dashboard)
   participants: HuntParticipant[];
+  // Spawn mode configuration
+  spawnMode: SpawnMode;
+  maxConcurrentMonsters?: number; // Only for 'scattered_replacement' mode
 }
 
 export interface HuntParticipant {
@@ -154,6 +162,9 @@ export interface MonsterGenConfig {
   totalSats: number;
   monsterCount: number;
   geoFence: GeoFence;
+  spawnMode?: SpawnMode;
+  huntDurationMs?: number;
+  maxConcurrentMonsters?: number;
 }
 
 // Rarity weights for distribution (percentage of total spawns)

@@ -14,12 +14,14 @@ import {
   generateMonstersAsync,
   generateSatStopsAsync,
   createGeoFence,
+  createPolygonGeoFence,
   isInCaptureRange,
   isAtSatStop,
   generateId,
   generateShareCode,
   generateShareUrl,
 } from '@/lib/gameUtils';
+import type { BoundaryType, SpawnMode } from '@/lib/gameTypes';
 import type { SatStopsResult, MonstersResult } from '@/lib/gameUtils';
 import type { HuntStatus, HuntParticipant } from '@/lib/gameTypes';
 import { isMockLocationEnabled, getMockLocation } from '@/lib/devMode';
@@ -105,6 +107,28 @@ function gameReducer(state: GameState, action: GameAction): GameState {
         huntId: state.activeHunt?.id ?? '',
         huntName: action.huntName,
       };
+
+      // Mark the captured monster
+      let updatedMonsters = state.activeHunt?.monsters.map((m) =>
+        m.id === action.monster.id
+          ? { ...m, captured: true, capturedBy: state.playerStats.pubkey, capturedAt: Date.now() }
+          : m
+      ) ?? [];
+
+      // For scattered_replacement mode: activate the next unspawned monster
+      if (state.activeHunt?.spawnMode === 'scattered_replacement') {
+        const unspawnedIndex = updatedMonsters.findIndex(
+          m => !m.captured && m.spawnTime === Number.MAX_SAFE_INTEGER
+        );
+        if (unspawnedIndex !== -1) {
+          updatedMonsters = updatedMonsters.map((m, i) =>
+            i === unspawnedIndex
+              ? { ...m, spawnTime: Date.now() + Math.random() * 5000 } // Spawn within 5s
+              : m
+          );
+        }
+      }
+
       return {
         ...state,
         playerStats: {
@@ -124,11 +148,7 @@ function gameReducer(state: GameState, action: GameAction): GameState {
         activeHunt: state.activeHunt
           ? {
               ...state.activeHunt,
-              monsters: state.activeHunt.monsters.map((m) =>
-                m.id === action.monster.id
-                  ? { ...m, captured: true, capturedBy: state.playerStats.pubkey, capturedAt: Date.now() }
-                  : m
-              ),
+              monsters: updatedMonsters,
             }
           : null,
       };
@@ -220,6 +240,10 @@ interface GameContextType {
     durationMinutes: number;
     center: GeoLocation;
     radiusMeters: number;
+    boundaryType?: BoundaryType;
+    polygon?: GeoLocation[];
+    spawnMode?: SpawnMode;
+    maxConcurrentMonsters?: number;
   }) => Promise<CreateHuntResult>;
   confirmPayment: () => void;
   startHunt: () => void;
@@ -318,8 +342,17 @@ export function GameProvider({ children }: { children: ReactNode }) {
       durationMinutes: number;
       center: GeoLocation;
       radiusMeters: number;
+      boundaryType?: BoundaryType;
+      polygon?: GeoLocation[];
+      spawnMode?: SpawnMode;
+      maxConcurrentMonsters?: number;
     }): Promise<CreateHuntResult> => {
-      const geoFence = createGeoFence(config.center, config.radiusMeters);
+      // Create geofence based on boundary type
+      const geoFence = config.boundaryType === 'polygon' && config.polygon
+        ? createPolygonGeoFence(config.polygon)
+        : createGeoFence(config.center, config.radiusMeters);
+
+      const huntDurationMs = config.durationMinutes * 60 * 1000;
 
       // Fetch street locations for monsters and POIs for SatStops in parallel
       const [monstersResult, satStopsResult] = await Promise.all([
@@ -327,6 +360,9 @@ export function GameProvider({ children }: { children: ReactNode }) {
           totalSats: config.totalSats,
           monsterCount: config.monsterCount,
           geoFence,
+          spawnMode: config.spawnMode,
+          huntDurationMs,
+          maxConcurrentMonsters: config.maxConcurrentMonsters,
         }),
         generateSatStopsAsync(geoFence),
       ]);
@@ -342,7 +378,7 @@ export function GameProvider({ children }: { children: ReactNode }) {
         monsterCount: config.monsterCount,
         geoFence,
         startTime: now,
-        endTime: now + config.durationMinutes * 60 * 1000,
+        endTime: now + huntDurationMs,
         createdAt: now,
         monsters: monstersResult.monsters,
         satStops: satStopsResult.stops,
@@ -351,6 +387,8 @@ export function GameProvider({ children }: { children: ReactNode }) {
         shareCode,
         shareUrl: generateShareUrl(shareCode),
         participants: [],
+        spawnMode: config.spawnMode || 'all_at_once',
+        maxConcurrentMonsters: config.maxConcurrentMonsters,
       };
       dispatch({ type: 'SET_ACTIVE_HUNT', hunt });
       return { hunt, monstersInfo: monstersResult, satStopsInfo: satStopsResult };

@@ -55,6 +55,8 @@ export function useHuntByCode(shareCode: string | undefined) {
         shareCode: getTag('d') || shareCode.toUpperCase(),
         shareUrl: `${window.location.origin}/join/${getTag('d') || shareCode}`,
         participants: [],
+        spawnMode: (contentData.spawnMode as HuntEvent['spawnMode']) || 'all_at_once',
+        maxConcurrentMonsters: contentData.maxConcurrentMonsters,
       };
       
       // Validate payment status before allowing join

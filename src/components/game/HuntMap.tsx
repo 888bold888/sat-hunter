@@ -1,5 +1,5 @@
 import { useEffect, useRef, useCallback } from 'react';
-import type { Monster, SatStop, GeoLocation } from '@/lib/gameTypes';
+import type { Monster, SatStop, GeoLocation, BoundaryType } from '@/lib/gameTypes';
 import { calculateDistance, formatSats } from '@/lib/gameUtils';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
@@ -34,6 +34,8 @@ interface HuntMapProps {
   onStopClick?: (stop: SatStop) => void;
   showAllMonsters?: boolean;
   className?: string;
+  boundaryType?: BoundaryType;
+  polygon?: GeoLocation[];
 }
 
 export function HuntMap({
@@ -46,16 +48,19 @@ export function HuntMap({
   onStopClick,
   showAllMonsters = false,
   className,
+  boundaryType = 'circle',
+  polygon,
 }: HuntMapProps) {
   const mapRef = useRef<HTMLDivElement>(null);
   const mapInstanceRef = useRef<L.Map | null>(null);
   const markersRef = useRef<L.Marker[]>([]);
   const circlesRef = useRef<L.Circle[]>([]);
+  const polygonsRef = useRef<L.Polygon[]>([]);
   const isMountedRef = useRef(true);
   const initialCenterRef = useRef(center);
   const updateTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // Cleanup function for markers and circles
+  // Cleanup function for markers, circles, and polygons
   const clearMapLayers = useCallback(() => {
     markersRef.current.forEach(marker => {
       try { marker.remove(); } catch { /* ignore */ }
@@ -63,8 +68,12 @@ export function HuntMap({
     circlesRef.current.forEach(circle => {
       try { circle.remove(); } catch { /* ignore */ }
     });
+    polygonsRef.current.forEach(poly => {
+      try { poly.remove(); } catch { /* ignore */ }
+    });
     markersRef.current = [];
     circlesRef.current = [];
+    polygonsRef.current = [];
   }, []);
 
   // Memoize stable references for callbacks to prevent unnecessary re-renders
@@ -128,16 +137,29 @@ export function HuntMap({
         // Clear existing markers safely
         clearMapLayers();
 
-        // Add geofence circle
-        const geofenceCircle = L.circle([center.lat, center.lng], {
-          radius: radiusMeters,
-          color: '#f97316',
-          fillColor: '#f97316',
-          fillOpacity: 0.1,
-          weight: 3,
-          dashArray: '10, 10',
-        }).addTo(map);
-        circlesRef.current.push(geofenceCircle);
+        // Add geofence boundary (circle or polygon)
+        if (boundaryType === 'polygon' && polygon && polygon.length >= 3) {
+          const latLngs = polygon.map(p => L.latLng(p.lat, p.lng));
+          const geofencePolygon = L.polygon(latLngs, {
+            color: '#f97316',
+            fillColor: '#f97316',
+            fillOpacity: 0.1,
+            weight: 3,
+            dashArray: '10, 10',
+          }).addTo(map);
+          polygonsRef.current.push(geofencePolygon);
+        } else {
+          // Default to circle
+          const geofenceCircle = L.circle([center.lat, center.lng], {
+            radius: radiusMeters,
+            color: '#f97316',
+            fillColor: '#f97316',
+            fillOpacity: 0.1,
+            weight: 3,
+            dashArray: '10, 10',
+          }).addTo(map);
+          circlesRef.current.push(geofenceCircle);
+        }
 
         // Filter visible monsters - 15 meters (~50 feet) visibility range
         const VISIBILITY_RANGE = 15;
@@ -267,7 +289,7 @@ export function HuntMap({
         clearTimeout(updateTimeoutRef.current);
       }
     };
-  }, [center, radiusMeters, playerLocation, monsters, satStops, showAllMonsters, clearMapLayers]);
+  }, [center, radiusMeters, playerLocation, monsters, satStops, showAllMonsters, clearMapLayers, boundaryType, polygon]);
 
   return (
     <>

@@ -18,6 +18,11 @@ import {
   MONSTER_DESCRIPTIONS,
 } from './gameTypes';
 
+// Turf.js for polygon operations
+import booleanPointInPolygon from '@turf/boolean-point-in-polygon';
+import { polygon as turfPolygon, point as turfPoint } from '@turf/helpers';
+import bbox from '@turf/bbox';
+
 // Generate a random ID
 export function generateId(): string {
   return Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15);
@@ -55,8 +60,25 @@ export function calculateDistance(point1: GeoLocation, point2: GeoLocation): num
   return R * c;
 }
 
-// Check if a point is inside a geofence
+// Check if a point is inside a polygon using Turf.js
+export function isInsidePolygon(point: GeoLocation, polygon: GeoLocation[]): boolean {
+  if (polygon.length < 3) return false;
+
+  const turfPt = turfPoint([point.lng, point.lat]);
+  // Close the polygon by adding the first point at the end
+  const coords = [...polygon.map(p => [p.lng, p.lat]), [polygon[0].lng, polygon[0].lat]];
+  const turfPoly = turfPolygon([coords]);
+  return booleanPointInPolygon(turfPt, turfPoly);
+}
+
+// Check if a point is inside a geofence (supports both circle and polygon)
 export function isInsideGeoFence(point: GeoLocation, geoFence: GeoFence): boolean {
+  // Handle polygon boundaries
+  if (geoFence.boundaryType === 'polygon' && geoFence.polygon) {
+    return isInsidePolygon(point, geoFence.polygon);
+  }
+
+  // Default to bounding box check for circle boundaries
   const { bounds } = geoFence;
   return (
     point.lat >= bounds.south &&
@@ -66,8 +88,37 @@ export function isInsideGeoFence(point: GeoLocation, geoFence: GeoFence): boolea
   );
 }
 
-// Generate random point within geofence (circular area)
+// Generate random point within polygon using rejection sampling
+function randomPointInPolygon(geoFence: GeoFence, maxAttempts = 100): GeoLocation {
+  const { bounds, polygon, center } = geoFence;
+
+  if (!polygon || polygon.length < 3) {
+    console.warn('randomPointInPolygon: invalid polygon, returning center');
+    return center;
+  }
+
+  for (let i = 0; i < maxAttempts; i++) {
+    const lat = bounds.south + Math.random() * (bounds.north - bounds.south);
+    const lng = bounds.west + Math.random() * (bounds.east - bounds.west);
+    const point = { lat, lng };
+
+    if (isInsidePolygon(point, polygon)) {
+      return point;
+    }
+  }
+
+  console.warn('randomPointInPolygon: max attempts reached, returning center');
+  return center;
+}
+
+// Generate random point within geofence (supports both circle and polygon)
 export function randomPointInGeoFence(geoFence: GeoFence): GeoLocation {
+  // Handle polygon boundaries with rejection sampling
+  if (geoFence.boundaryType === 'polygon' && geoFence.polygon) {
+    return randomPointInPolygon(geoFence);
+  }
+
+  // Default to circular distribution
   const { center, radiusMeters } = geoFence;
 
   // Generate random point within circle using polar coordinates
@@ -89,7 +140,7 @@ export function randomPointInGeoFence(geoFence: GeoFence): GeoLocation {
   };
 }
 
-// Create geofence from center point and radius
+// Create geofence from center point and radius (circle boundary)
 export function createGeoFence(center: GeoLocation, radiusMeters: number): GeoFence {
   // Approximate degrees per meter at given latitude
   const latDegPerMeter = 1 / 111320;
@@ -109,6 +160,41 @@ export function createGeoFence(center: GeoLocation, radiusMeters: number): GeoFe
     center,
     bounds,
     radiusMeters,
+    boundaryType: 'circle',
+  };
+}
+
+// Create geofence from polygon vertices
+export function createPolygonGeoFence(polygonPoints: GeoLocation[]): GeoFence {
+  if (polygonPoints.length < 3) {
+    throw new Error('Polygon must have at least 3 points');
+  }
+
+  // Calculate bounding box using Turf.js
+  const coords = [...polygonPoints.map(p => [p.lng, p.lat]), [polygonPoints[0].lng, polygonPoints[0].lat]];
+  const turfPoly = turfPolygon([coords]);
+  const [west, south, east, north] = bbox(turfPoly);
+
+  const bounds: GeoBounds = { north, south, east, west };
+
+  // Calculate center as centroid of bounding box
+  const center: GeoLocation = {
+    lat: (north + south) / 2,
+    lng: (east + west) / 2,
+  };
+
+  // Calculate approximate radius (half of diagonal) for fallback/display purposes
+  const diagonalMeters = calculateDistance(
+    { lat: south, lng: west },
+    { lat: north, lng: east }
+  );
+
+  return {
+    center,
+    bounds,
+    radiusMeters: diagonalMeters / 2,
+    boundaryType: 'polygon',
+    polygon: polygonPoints,
   };
 }
 
@@ -251,6 +337,14 @@ async function fetchStreetPointsFromOverpass(
       }
     });
 
+    // Helper to check if a point is within the boundary (polygon or circle)
+    const isInBoundary = (point: GeoLocation): boolean => {
+      if (geoFence.boundaryType === 'polygon' && geoFence.polygon) {
+        return isInsidePolygon(point, geoFence.polygon);
+      }
+      return calculateDistance(center, point) <= radiusMeters;
+    };
+
     // Collect all street segments as pairs of points
     const streetSegments: Array<{ start: GeoLocation; end: GeoLocation }> = [];
     elements.forEach(el => {
@@ -259,11 +353,8 @@ async function fetchStreetPointsFromOverpass(
           const startCoord = nodeCoords.get(el.nodes[i]);
           const endCoord = nodeCoords.get(el.nodes[i + 1]);
           if (startCoord && endCoord) {
-            // Only include segments within the circular radius
-            if (
-              calculateDistance(center, startCoord) <= radiusMeters &&
-              calculateDistance(center, endCoord) <= radiusMeters
-            ) {
+            // Only include segments within the boundary (polygon or circle)
+            if (isInBoundary(startCoord) && isInBoundary(endCoord)) {
               streetSegments.push({ start: startCoord, end: endCoord });
             }
           }
@@ -315,9 +406,42 @@ export interface MonstersResult {
   error?: string;
 }
 
+// Calculate spawn time based on spawn mode
+function calculateSpawnTime(
+  index: number,
+  now: number,
+  spawnMode: string | undefined,
+  huntDurationMs: number | undefined,
+  maxConcurrentMonsters: number | undefined
+): number {
+  const mode = spawnMode || 'all_at_once';
+
+  switch (mode) {
+    case 'scattered': {
+      // Spread spawn times across 90% of hunt duration
+      const spawnWindow = (huntDurationMs || 60000) * 0.9;
+      return now + Math.random() * spawnWindow;
+    }
+
+    case 'scattered_replacement': {
+      // First N monsters spawn within first minute, rest are held back
+      const maxConcurrent = maxConcurrentMonsters || 20;
+      if (index < maxConcurrent) {
+        return now + Math.random() * 60000; // Spawn within first minute
+      }
+      return Number.MAX_SAFE_INTEGER; // Not spawned yet - activated on capture
+    }
+
+    case 'all_at_once':
+    default:
+      // Current behavior: all spawn within first minute
+      return now + Math.random() * 60000;
+  }
+}
+
 // Generate monsters for a hunt event (async - fetches street locations)
 export async function generateMonstersAsync(config: MonsterGenConfig): Promise<MonstersResult> {
-  const { totalSats, monsterCount, geoFence } = config;
+  const { totalSats, monsterCount, geoFence, spawnMode, huntDurationMs, maxConcurrentMonsters } = config;
 
   // ALWAYS spawn exactly 1 mythic creature (Pisatchu)
   const rarities: MonsterRarity[] = ['mythic'];
@@ -366,7 +490,7 @@ export async function generateMonstersAsync(config: MonsterGenConfig): Promise<M
       rarity,
       location,
       emoji: getMonsterEmoji(name),
-      spawnTime: now + Math.random() * 60000, // Spawn within first minute randomly
+      spawnTime: calculateSpawnTime(i, now, spawnMode, huntDurationMs, maxConcurrentMonsters),
       captured: false,
       invoiceStatus: 'pending',
     };
@@ -502,7 +626,15 @@ async function fetchPOIsFromOverpass(
     const data = await response.json();
     const nodes: OSMNode[] = data.elements || [];
 
-    // Filter nodes with names, within circular radius, and map to our format
+    // Helper to check if a point is within the boundary (polygon or circle)
+    const isInBoundary = (point: GeoLocation): boolean => {
+      if (geoFence.boundaryType === 'polygon' && geoFence.polygon) {
+        return isInsidePolygon(point, geoFence.polygon);
+      }
+      return calculateDistance(center, point) <= radiusMeters;
+    };
+
+    // Filter nodes with names, within boundary, and map to our format
     const pois = nodes
       .filter((node): node is OSMNode & { tags: { name: string } } =>
         node.type === 'node' && !!node.tags?.name
@@ -513,8 +645,8 @@ async function fetchPOIsFromOverpass(
         lng: node.lon,
         type: node.tags.amenity || node.tags.shop || node.tags.tourism || node.tags.leisure || node.tags.historic || 'place',
       }))
-      // Filter to only POIs within the circular radius (not just bounding box)
-      .filter(poi => calculateDistance(center, { lat: poi.lat, lng: poi.lng }) <= radiusMeters);
+      // Filter to only POIs within the boundary (polygon or circle)
+      .filter(poi => isInBoundary({ lat: poi.lat, lng: poi.lng }));
 
     console.log(`Found ${pois.length} POIs within hunt radius`);
     return { pois, success: true };
