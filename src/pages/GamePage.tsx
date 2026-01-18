@@ -15,6 +15,7 @@ import { DevTools } from '@/components/game/DevTools';
 import { useCurrentUser } from '@/hooks/useCurrentUser';
 import { usePublishHuntEnd } from '@/hooks/usePublishHuntEnd';
 import { useHuntSync } from '@/hooks/useHuntSync';
+import { useMyHunts } from '@/hooks/useMyHunts';
 import { useSeoMeta } from '@unhead/react';
 import { Button } from '@/components/ui/button';
 import {
@@ -25,14 +26,18 @@ import {
   DialogDescription,
 } from '@/components/ui/dialog';
 import { Card, CardContent } from '@/components/ui/card';
-import { Target, ArrowLeft, LogOut, Sparkles, QrCode, BarChart3 } from 'lucide-react';
+import { Badge } from '@/components/ui/badge';
+import { Alert, AlertDescription } from '@/components/ui/alert';
+import { Target, ArrowLeft, LogOut, Sparkles, QrCode, BarChart3, Zap, Clock, RefreshCw, Radio, Loader2 } from 'lucide-react';
+import { formatSats, formatTimeRemaining } from '@/lib/gameUtils';
 import { Link, useNavigate } from 'react-router-dom';
 
 export default function GamePage() {
-  const { state, leaveHunt, startLocationTracking, stopLocationTracking, isHost } = useGame();
+  const { state, leaveHunt, joinHunt, startLocationTracking, stopLocationTracking, isHost } = useGame();
   const { activeHunt } = state;
   const { user } = useCurrentUser();
   const navigate = useNavigate();
+  const { data: myHunts, isLoading: isLoadingMyHunts, refetch: refetchMyHunts } = useMyHunts();
 
   const [selectedMonster, setSelectedMonster] = useState<Monster | null>(null);
   const [selectedStop, setSelectedStop] = useState<SatStop | null>(null);
@@ -167,6 +172,107 @@ export default function GamePage() {
               </div>
             </CardContent>
           </Card>
+
+          {/* My Hunts - Recovery Section */}
+          {user && (
+            <div className="space-y-3">
+              <div className="flex items-center justify-between">
+                <h2 className="font-display text-lg font-bold flex items-center gap-2">
+                  <Radio className="w-5 h-5 text-primary" />
+                  My Hunts
+                </h2>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => refetchMyHunts()}
+                  disabled={isLoadingMyHunts}
+                >
+                  <RefreshCw className={`w-4 h-4 ${isLoadingMyHunts ? 'animate-spin' : ''}`} />
+                </Button>
+              </div>
+
+              {isLoadingMyHunts && (
+                <Alert className="border-blue-500/30 bg-blue-500/5">
+                  <Loader2 className="w-4 h-4 text-blue-500 animate-spin" />
+                  <AlertDescription>
+                    Searching for your hunts on Nostr...
+                  </AlertDescription>
+                </Alert>
+              )}
+
+              {!isLoadingMyHunts && myHunts && myHunts.length > 0 && (
+                <div className="space-y-2">
+                  {myHunts.filter(h => h.isActive).length > 0 && (
+                    <>
+                      <p className="text-xs text-muted-foreground">Active hunts you're hosting:</p>
+                      {myHunts.filter(h => h.isActive).map((hunt) => (
+                        <Card
+                          key={hunt.id}
+                          className="bg-card/80 backdrop-blur border-primary/30 hover:border-primary/60 transition-colors cursor-pointer"
+                          onClick={() => joinHunt(hunt.fullHunt)}
+                        >
+                          <CardContent className="p-4">
+                            <div className="flex items-center justify-between mb-2">
+                              <div className="flex items-center gap-2">
+                                <h3 className="font-display font-bold">{hunt.name}</h3>
+                                <Badge className="bg-green-500/20 text-green-400 border-green-500/30">
+                                  ACTIVE
+                                </Badge>
+                              </div>
+                              <Badge variant="outline" className="font-mono">
+                                {hunt.shareCode}
+                              </Badge>
+                            </div>
+                            <div className="grid grid-cols-3 gap-2 text-xs text-muted-foreground">
+                              <div className="flex items-center gap-1">
+                                <Zap className="w-3 h-3 text-primary" />
+                                <span>{formatSats(hunt.totalSats)}</span>
+                              </div>
+                              <div className="flex items-center gap-1">
+                                <Target className="w-3 h-3 text-accent" />
+                                <span>{hunt.monsterCount} creatures</span>
+                              </div>
+                              <div className="flex items-center gap-1">
+                                <Clock className="w-3 h-3 text-secondary" />
+                                <span>{formatTimeRemaining(hunt.endTime)}</span>
+                              </div>
+                            </div>
+                          </CardContent>
+                        </Card>
+                      ))}
+                    </>
+                  )}
+
+                  {myHunts.filter(h => !h.isActive).length > 0 && (
+                    <>
+                      <p className="text-xs text-muted-foreground mt-4">Past hunts:</p>
+                      {myHunts.filter(h => !h.isActive).slice(0, 3).map((hunt) => (
+                        <Card
+                          key={hunt.id}
+                          className="bg-card/50 backdrop-blur border-border/50 opacity-60"
+                        >
+                          <CardContent className="p-3">
+                            <div className="flex items-center justify-between">
+                              <span className="font-display text-sm">{hunt.name}</span>
+                              <Badge variant="outline" className="text-xs">
+                                {hunt.status === 'ended' ? 'Ended' : hunt.paymentStatus !== 'paid' ? 'Unpaid' : 'Expired'}
+                              </Badge>
+                            </div>
+                          </CardContent>
+                        </Card>
+                      ))}
+                    </>
+                  )}
+                </div>
+              )}
+
+              {!isLoadingMyHunts && (!myHunts || myHunts.length === 0) && (
+                <p className="text-sm text-muted-foreground text-center py-2">
+                  No hunts found. Create your first hunt above!
+                </p>
+              )}
+            </div>
+          )}
         </div>
 
         {/* Create Hunt Dialog */}
