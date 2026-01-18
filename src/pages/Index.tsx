@@ -2,6 +2,7 @@ import { useSeoMeta } from '@unhead/react';
 import { Link } from 'react-router-dom';
 import { LoginArea } from '@/components/auth/LoginArea';
 import { useCurrentUser } from '@/hooks/useCurrentUser';
+import { useGame } from '@/contexts/GameContext';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -16,11 +17,18 @@ import {
   Clock,
   ChevronRight,
   Bitcoin,
+  Radio,
+  ArrowRight,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 const Index = () => {
   const { user } = useCurrentUser();
+  const { state, isHost } = useGame();
+  const { activeHunt } = state;
+
+  // Check if current user is hosting an active hunt
+  const hasActiveHostHunt = activeHunt && isHost() && activeHunt.status !== 'ended';
 
   useSeoMeta({
     title: 'Sat Hunter - Hunt Bitcoin in the Real World',
@@ -46,6 +54,46 @@ const Index = () => {
           </div>
           <LoginArea className="max-w-48" />
         </header>
+
+        {/* Active Hunt Banner - Shows when host has an active hunt */}
+        {hasActiveHostHunt && (
+          <div className="relative z-20 px-4 pb-2">
+            <Link to="/play">
+              <Card className="bg-gradient-to-r from-primary/20 to-orange-600/20 border-primary/50 hover:border-primary transition-colors cursor-pointer">
+                <CardContent className="p-4 flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 rounded-full bg-primary/20 flex items-center justify-center">
+                      <Radio className="w-5 h-5 text-primary animate-pulse" />
+                    </div>
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <span className="font-display font-bold text-sm">Active Hunt</span>
+                        <Badge
+                          variant="outline"
+                          className={cn(
+                            "text-[10px]",
+                            activeHunt.status === 'active' && "bg-green-500/20 text-green-400 border-green-500/30",
+                            activeHunt.status === 'ready' && "bg-yellow-500/20 text-yellow-400 border-yellow-500/30",
+                            activeHunt.status === 'pending_payment' && "bg-orange-500/20 text-orange-400 border-orange-500/30"
+                          )}
+                        >
+                          {activeHunt.status === 'active' ? 'LIVE' : activeHunt.status === 'ready' ? 'READY' : 'PENDING'}
+                        </Badge>
+                      </div>
+                      <p className="text-xs text-muted-foreground truncate max-w-[200px]">
+                        {activeHunt.name}
+                      </p>
+                    </div>
+                  </div>
+                  <Button size="sm" className="bg-primary hover:bg-primary/90">
+                    <span className="hidden sm:inline mr-1">Go to</span> Dashboard
+                    <ArrowRight className="w-4 h-4 ml-1" />
+                  </Button>
+                </CardContent>
+              </Card>
+            </Link>
+          </div>
+        )}
 
         {/* Hero Content */}
         <div className="flex-1 flex flex-col items-center justify-center px-4 pb-20 text-center">
