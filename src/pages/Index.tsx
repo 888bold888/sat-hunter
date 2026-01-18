@@ -10,7 +10,6 @@ import {
   Zap,
   Target,
   MapPin,
-  Trophy,
   Shield,
   Play,
   Users,
@@ -130,7 +129,7 @@ const Index = () => {
             Catch cypherpunk creatures containing real satoshis. Powered by Lightning ⚡
           </p>
 
-          {/* CTA Buttons */}
+          {/* CTA Button */}
           <div className="flex flex-col sm:flex-row gap-4 w-full max-w-md px-4">
             <Link to="/play" className="flex-1">
               <Button
@@ -140,16 +139,6 @@ const Index = () => {
                 <Play className="w-5 h-5 mr-2 group-hover:scale-110 transition-transform" />
                 Start Hunting
                 <ChevronRight className="w-5 h-5 ml-1 group-hover:translate-x-1 transition-transform" />
-              </Button>
-            </Link>
-            <Link to="/leaderboard" className="flex-1">
-              <Button
-                variant="outline"
-                size="lg"
-                className="w-full h-14 font-display text-lg border-secondary/50 hover:bg-secondary/10 hover:border-secondary"
-              >
-                <Trophy className="w-5 h-5 mr-2 text-yellow-400" />
-                Leaderboard
               </Button>
             </Link>
           </div>
