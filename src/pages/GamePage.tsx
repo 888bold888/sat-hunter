@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useGame } from '@/contexts/GameContext';
 import type { Monster, SatStop } from '@/lib/gameTypes';
 import { GameHUD } from '@/components/game/GameHUD';
@@ -7,6 +7,7 @@ import { Leaderboard } from '@/components/game/Leaderboard';
 import { CapturedInventory } from '@/components/game/CapturedInventory';
 import { CreateHuntForm } from '@/components/game/CreateHuntForm';
 import { CaptureSuccessDialog } from '@/components/game/CaptureSuccessDialog';
+import { HuntEndedDialog } from '@/components/game/HuntEndedDialog';
 import { HostDashboard } from '@/components/game/HostDashboard';
 import { PaymentConfirmation } from '@/components/game/PaymentConfirmation';
 import { PlayerStatsView } from '@/components/game/PlayerStatsView';
@@ -39,6 +40,8 @@ export default function GamePage() {
   const [showCreateHunt, setShowCreateHunt] = useState(false);
   const [capturedMonster, setCapturedMonster] = useState<Monster | null>(null);
   const [showCaptureSuccess, setShowCaptureSuccess] = useState(false);
+  const [showHuntEnded, setShowHuntEnded] = useState(false);
+  const huntEndedShownRef = useRef(false);
 
   const userIsHost = isHost();
 
@@ -52,6 +55,26 @@ export default function GamePage() {
     startLocationTracking();
     return () => stopLocationTracking();
   }, [startLocationTracking, stopLocationTracking]);
+
+  // Detect hunt end for players and show notification
+  useEffect(() => {
+    if (!activeHunt || userIsHost) return;
+
+    // Check if hunt has ended (either by status or by time)
+    const huntEnded = activeHunt.status === 'ended' || Date.now() > activeHunt.endTime;
+
+    if (huntEnded && !huntEndedShownRef.current) {
+      huntEndedShownRef.current = true;
+      setShowHuntEnded(true);
+    }
+  }, [activeHunt, userIsHost]);
+
+  // Reset the hunt ended ref when hunt changes
+  useEffect(() => {
+    if (!activeHunt) {
+      huntEndedShownRef.current = false;
+    }
+  }, [activeHunt]);
 
   // If no active hunt, show create/join options
   if (!activeHunt) {
@@ -252,6 +275,12 @@ export default function GamePage() {
           setShowCaptureSuccess(false);
           setCapturedMonster(null);
         }}
+      />
+
+      {/* Hunt Ended Dialog */}
+      <HuntEndedDialog
+        open={showHuntEnded}
+        onClose={() => setShowHuntEnded(false)}
       />
 
       {/* Dev Tools (only in development) */}
