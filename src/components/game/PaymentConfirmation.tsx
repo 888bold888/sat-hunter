@@ -149,26 +149,30 @@ export function PaymentConfirmation() {
           </Alert>
         )}
 
-        {/* Demo/Skip Payment */}
-        <Separator />
-        <Button
-          onClick={handleSkipPayment}
-          variant="outline"
-          className="w-full border-purple-500/50 text-purple-400 hover:bg-purple-500/10"
-          disabled={isPaying}
-        >
-          {isPaying ? (
-            <>
-              <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-              Activating...
-            </>
-          ) : (
-            <>
-              <Zap className="w-4 h-4 mr-2" />
-              Activate Hunt (Demo Mode - No Payments)
-            </>
-          )}
-        </Button>
+        {/* Demo/Skip Payment - Only visible in development */}
+        {import.meta.env.DEV && (
+          <>
+            <Separator />
+            <Button
+              onClick={handleSkipPayment}
+              variant="outline"
+              className="w-full border-purple-500/50 text-purple-400 hover:bg-purple-500/10"
+              disabled={isPaying}
+            >
+              {isPaying ? (
+                <>
+                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                  Activating...
+                </>
+              ) : (
+                <>
+                  <Zap className="w-4 h-4 mr-2" />
+                  Activate Hunt (Demo Mode - No Payments)
+                </>
+              )}
+            </Button>
+          </>
+        )}
 
         {/* Info */}
         <Alert className="border-primary/30 bg-primary/5">
