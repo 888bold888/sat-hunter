@@ -28,7 +28,7 @@ import {
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Alert, AlertDescription } from '@/components/ui/alert';
-import { Target, ArrowLeft, LogOut, Sparkles, QrCode, BarChart3, Zap, Clock, RefreshCw, Radio, Loader2 } from 'lucide-react';
+import { Target, ArrowLeft, LogOut, Sparkles, QrCode, BarChart3, Zap, Clock, RefreshCw, Radio, Loader2, X, Trash2 } from 'lucide-react';
 import { formatSats, formatTimeRemaining } from '@/lib/gameUtils';
 import { Link, useNavigate } from 'react-router-dom';
 
@@ -49,6 +49,34 @@ export default function GamePage() {
   const [showCaptureSuccess, setShowCaptureSuccess] = useState(false);
   const [showHuntEnded, setShowHuntEnded] = useState(false);
   const huntEndedShownRef = useRef(false);
+
+  // Dismissed past hunts (stored in localStorage)
+  const [dismissedHuntIds, setDismissedHuntIds] = useState<string[]>(() => {
+    try {
+      const stored = localStorage.getItem('dismissedHuntIds');
+      return stored ? JSON.parse(stored) : [];
+    } catch {
+      return [];
+    }
+  });
+
+  const dismissHunt = useCallback((huntId: string) => {
+    setDismissedHuntIds(prev => {
+      const updated = [...prev, huntId];
+      localStorage.setItem('dismissedHuntIds', JSON.stringify(updated));
+      return updated;
+    });
+  }, []);
+
+  const clearAllPastHunts = useCallback(() => {
+    if (!myHunts) return;
+    const pastHuntIds = myHunts.filter(h => !h.isActive).map(h => h.id);
+    setDismissedHuntIds(prev => {
+      const updated = [...new Set([...prev, ...pastHuntIds])];
+      localStorage.setItem('dismissedHuntIds', JSON.stringify(updated));
+      return updated;
+    });
+  }, [myHunts]);
 
   const userIsHost = isHost();
   const { mutateAsync: publishHuntEnd } = usePublishHuntEnd();
@@ -243,20 +271,39 @@ export default function GamePage() {
                     </>
                   )}
 
-                  {myHunts.filter(h => !h.isActive).length > 0 && (
+                  {myHunts.filter(h => !h.isActive && !dismissedHuntIds.includes(h.id)).length > 0 && (
                     <>
-                      <p className="text-xs text-muted-foreground mt-4">Past hunts:</p>
-                      {myHunts.filter(h => !h.isActive).slice(0, 3).map((hunt) => (
+                      <div className="flex items-center justify-between mt-4">
+                        <p className="text-xs text-muted-foreground">Past hunts:</p>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={clearAllPastHunts}
+                          className="h-6 px-2 text-xs text-muted-foreground hover:text-destructive"
+                        >
+                          <Trash2 className="w-3 h-3 mr-1" />
+                          Clear all
+                        </Button>
+                      </div>
+                      {myHunts.filter(h => !h.isActive && !dismissedHuntIds.includes(h.id)).slice(0, 5).map((hunt) => (
                         <Card
                           key={hunt.id}
                           className="bg-card/50 backdrop-blur border-border/50 opacity-60"
                         >
                           <CardContent className="p-3">
-                            <div className="flex items-center justify-between">
-                              <span className="font-display text-sm">{hunt.name}</span>
-                              <Badge variant="outline" className="text-xs">
+                            <div className="flex items-center justify-between gap-2">
+                              <span className="font-display text-sm truncate flex-1">{hunt.name}</span>
+                              <Badge variant="outline" className="text-xs flex-shrink-0">
                                 {hunt.status === 'ended' ? 'Ended' : hunt.paymentStatus !== 'paid' ? 'Unpaid' : 'Expired'}
                               </Badge>
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => dismissHunt(hunt.id)}
+                                className="h-6 w-6 p-0 text-muted-foreground hover:text-destructive flex-shrink-0"
+                              >
+                                <X className="w-3.5 h-3.5" />
+                              </Button>
                             </div>
                           </CardContent>
                         </Card>

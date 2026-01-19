@@ -48,6 +48,7 @@ export function HuntEndedDialog({ open, onClose }: HuntEndedDialogProps) {
         className="max-w-sm bg-card/95 backdrop-blur border-primary/50 shadow-glow-orange"
         onPointerDownOutside={(e) => e.preventDefault()}
         onEscapeKeyDown={(e) => e.preventDefault()}
+        hideCloseButton
       >
         <DialogHeader>
           <DialogTitle className="sr-only">Hunt Ended</DialogTitle>
