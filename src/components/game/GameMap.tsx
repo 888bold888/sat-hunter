@@ -21,7 +21,7 @@ interface GameMapProps {
 
 export function GameMap({ selectedMonster, selectedStop, onSelectMonster, onSelectStop, onMonsterCaptured }: GameMapProps) {
   const { state, getAvailableMonsters, getAvailableStops, captureMonster, collectBalls, startLocationTracking } = useGame();
-  const { activeHunt, playerLocation, locationError, playerStats } = state;
+  const { activeHunt, playerLocation, locationError, playerStats, lastIntegrityCheck } = state;
   const { toast } = useToast();
   const { user } = useCurrentUser();
   const publishCapture = usePublishCapture();
@@ -36,13 +36,17 @@ export function GameMap({ selectedMonster, selectedStop, onSelectMonster, onSele
     if (success) {
       onSelectMonster(null);
 
-      // Publish capture event to Nostr for host to see
+      // Publish capture event to Nostr for host to see (includes anti-cheat data)
       if (activeHunt && user?.pubkey) {
         publishCapture.mutate({
           huntId: activeHunt.id,
           huntShareCode: activeHunt.shareCode,
           monster,
           playerPubkey: user.pubkey,
+          // Anti-cheat data
+          playerLocation: playerLocation ?? undefined,
+          trustScore: lastIntegrityCheck?.trustScore.composite,
+          trustFlags: lastIntegrityCheck?.trustScore.flags,
         });
       }
 
