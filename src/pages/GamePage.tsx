@@ -48,6 +48,7 @@ export default function GamePage() {
   const [capturedMonster, setCapturedMonster] = useState<Monster | null>(null);
   const [showCaptureSuccess, setShowCaptureSuccess] = useState(false);
   const [showHuntEnded, setShowHuntEnded] = useState(false);
+  const [isEndingHunt, setIsEndingHunt] = useState(false);
   const huntEndedShownRef = useRef(false);
 
   // Dismissed past hunts (stored in localStorage)
@@ -102,6 +103,8 @@ export default function GamePage() {
   // Handle host ending the hunt
   const handleEndHunt = useCallback(async () => {
     if (activeHunt && activeHunt.paymentStatus === 'paid') {
+      setIsEndingHunt(true);
+
       // Dismiss this hunt from "My Hunts" list immediately to prevent re-joining
       dismissHunt(activeHunt.id);
 
@@ -115,6 +118,7 @@ export default function GamePage() {
 
       // Refetch my hunts to get updated status from Nostr
       refetchMyHunts();
+      setIsEndingHunt(false);
     }
     leaveHunt();
   }, [activeHunt, publishHuntEnd, leaveHunt, dismissHunt, refetchMyHunts]);
@@ -372,9 +376,19 @@ export default function GamePage() {
               size="sm"
               className="border-destructive/30 text-destructive hover:bg-destructive hover:text-destructive-foreground"
               onClick={needsPayment ? leaveHunt : handleEndHunt}
+              disabled={isEndingHunt}
             >
-              <LogOut className="w-4 h-4 mr-1" />
-              {needsPayment ? 'Cancel' : 'End'}
+              {isEndingHunt ? (
+                <>
+                  <Loader2 className="w-4 h-4 mr-1 animate-spin" />
+                  Ending...
+                </>
+              ) : (
+                <>
+                  <LogOut className="w-4 h-4 mr-1" />
+                  {needsPayment ? 'Cancel' : 'End'}
+                </>
+              )}
             </Button>
           </div>
 
