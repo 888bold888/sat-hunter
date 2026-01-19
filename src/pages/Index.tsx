@@ -44,14 +44,14 @@ const Index = () => {
       {/* Hero Section */}
       <section className="relative min-h-screen flex flex-col">
         {/* Header */}
-        <header className="relative z-20 p-4 flex items-center justify-between">
-          <div className="flex items-center gap-2">
+        <header className="relative z-20 p-4 flex items-center justify-between gap-4">
+          <div className="flex items-center gap-2 flex-shrink-0">
             <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-primary to-orange-600 flex items-center justify-center shadow-glow-orange">
               <Zap className="w-6 h-6 text-white" />
             </div>
-            <span className="font-display font-bold text-xl">SAT HUNTER</span>
+            <span className="font-display font-bold text-xl hidden sm:inline">SAT HUNTER</span>
           </div>
-          <LoginArea className="max-w-48" />
+          <LoginArea />
         </header>
 
         {/* Active Hunt Banner - Shows when host has an active hunt */}

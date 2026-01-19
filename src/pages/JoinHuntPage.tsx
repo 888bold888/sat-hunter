@@ -143,22 +143,22 @@ export default function JoinHuntPage() {
     <div className="min-h-screen bg-background bg-cyber-grid">
       <div className="container max-w-lg mx-auto p-4 py-8 space-y-6">
         {/* Header */}
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-4">
-            <Link to="/">
+        <div className="flex items-center justify-between gap-3">
+          <div className="flex items-center gap-2 sm:gap-4 min-w-0">
+            <Link to="/" className="flex-shrink-0">
               <Button variant="ghost" size="icon">
                 <ArrowLeft className="w-5 h-5" />
               </Button>
             </Link>
-            <div>
-              <h1 className="font-display text-2xl font-bold flex items-center gap-2">
-                <QrCode className="w-6 h-6 text-primary" />
-                Join Hunt
+            <div className="min-w-0">
+              <h1 className="font-display text-xl sm:text-2xl font-bold flex items-center gap-2">
+                <QrCode className="w-5 h-5 sm:w-6 sm:h-6 text-primary flex-shrink-0" />
+                <span className="truncate">Join Hunt</span>
               </h1>
-              <p className="text-sm text-muted-foreground">Enter a hunt code to join</p>
+              <p className="text-xs sm:text-sm text-muted-foreground truncate">Enter a hunt code to join</p>
             </div>
           </div>
-          <LoginArea className="max-w-32" />
+          <LoginArea />
         </div>
 
         {/* Join Form */}

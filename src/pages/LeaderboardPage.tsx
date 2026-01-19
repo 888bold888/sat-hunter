@@ -19,22 +19,22 @@ export default function LeaderboardPage() {
     <div className="min-h-screen bg-background bg-cyber-grid">
       <div className="container max-w-lg mx-auto p-4 py-8 space-y-6">
         {/* Header */}
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-4">
-            <Link to="/">
+        <div className="flex items-center justify-between gap-3">
+          <div className="flex items-center gap-2 sm:gap-4 min-w-0">
+            <Link to="/" className="flex-shrink-0">
               <Button variant="ghost" size="icon">
                 <ArrowLeft className="w-5 h-5" />
               </Button>
             </Link>
-            <div>
-              <h1 className="font-display text-2xl font-bold flex items-center gap-2">
-                <Trophy className="w-6 h-6 text-yellow-400" />
-                Leaderboard
+            <div className="min-w-0">
+              <h1 className="font-display text-xl sm:text-2xl font-bold flex items-center gap-2">
+                <Trophy className="w-5 h-5 sm:w-6 sm:h-6 text-yellow-400 flex-shrink-0" />
+                <span className="truncate">Leaderboard</span>
               </h1>
-              <p className="text-sm text-muted-foreground">Top hunters this session</p>
+              <p className="text-xs sm:text-sm text-muted-foreground truncate">Top hunters this session</p>
             </div>
           </div>
-          <LoginArea className="max-w-32" />
+          <LoginArea />
         </div>
 
         {/* Leaderboard Component */}
