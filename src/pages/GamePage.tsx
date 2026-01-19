@@ -102,6 +102,9 @@ export default function GamePage() {
   // Handle host ending the hunt
   const handleEndHunt = useCallback(async () => {
     if (activeHunt && activeHunt.paymentStatus === 'paid') {
+      // Dismiss this hunt from "My Hunts" list immediately to prevent re-joining
+      dismissHunt(activeHunt.id);
+
       // Publish end event to Nostr so players get notified
       try {
         await publishHuntEnd(activeHunt);
@@ -109,9 +112,12 @@ export default function GamePage() {
         console.error('Failed to publish hunt end:', err);
         // Continue with leaving even if publish fails
       }
+
+      // Refetch my hunts to get updated status from Nostr
+      refetchMyHunts();
     }
     leaveHunt();
-  }, [activeHunt, publishHuntEnd, leaveHunt]);
+  }, [activeHunt, publishHuntEnd, leaveHunt, dismissHunt, refetchMyHunts]);
 
   useSeoMeta({
     title: activeHunt ? `${activeHunt.name} | Sat Hunter` : 'Sat Hunter',
