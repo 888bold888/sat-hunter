@@ -28,13 +28,19 @@ export function useHuntByCode(shareCode: string | undefined) {
         throw new Error('Hunt not found');
       }
       const event = events[0]; // Take the first (latest/relevant)
-      
+
       // Parse content
       const contentData = JSON.parse(event.content);
-      
+
       // Extract tags
       const getTag = (name: string) => event.tags.find(([n]) => n === name)?.[1];
-      
+
+      // Check if this hunt uses P2P for location data (privacy mode)
+      const isP2P = getTag('p2p') === 'required' || contentData.p2pRequired === true;
+
+      // For P2P hunts, location data (geoFence, monsters, satStops) comes via P2P
+      // not from the relay. We create placeholder structures that will be filled
+      // when the player connects to the host via WebRTC.
       const hunt: HuntEvent = {
         id: event.id,
         name: getTag('title') || 'Unnamed Hunt',
@@ -42,7 +48,12 @@ export function useHuntByCode(shareCode: string | undefined) {
         hostPubkey: event.pubkey,
         totalSats: parseInt(getTag('total_sats') || '0'),
         monsterCount: parseInt(getTag('monster_count') || '0'),
-        geoFence: contentData.geoFence,
+        // For P2P hunts, geoFence/monsters/satStops are empty until P2P transfer
+        geoFence: contentData.geoFence || {
+          center: { lat: 0, lng: 0 },
+          bounds: { north: 0, south: 0, east: 0, west: 0 },
+          radiusMeters: contentData.radiusMeters || 500,
+        },
         startTime: parseInt(getTag('start_time') || '0') * 1000,
         endTime: parseInt(getTag('end_time') || '0') * 1000,
         createdAt: event.created_at * 1000,
@@ -92,10 +103,12 @@ export function useHuntByCode(shareCode: string | undefined) {
         ...hunt,
         unclaimedSats,
         claimedMonsters,
+        // Flag indicating location data needs to be fetched via P2P
+        requiresP2P: isP2P,
         preview: {
           name: hunt.name,
           sats: hunt.totalSats,
-          creatures: hunt.monsters.length, // Or hunt.monsterCount
+          creatures: hunt.monsterCount, // Use tag value, not array length (empty for P2P)
           time: ((hunt.endTime - hunt.startTime) / 1000 / 60).toFixed(0) + ' minutes', // Simple duration
         }
       };

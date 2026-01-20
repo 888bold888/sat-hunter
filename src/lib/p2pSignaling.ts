@@ -1,0 +1,303 @@
+/**
+ * P2P Signaling for Hunt Data Transfer
+ *
+ * Uses WebRTC for direct host-to-player data transfer.
+ * Nostr is used only for signaling (connection negotiation).
+ * Hunt location data never touches Nostr relays.
+ */
+
+import type { GeoFence, Monster, SatStop } from './gameTypes';
+
+// Nostr event kinds for P2P signaling
+export const P2P_OFFER_KIND = 29001;  // Ephemeral: Host publishes WebRTC offer
+export const P2P_ANSWER_KIND = 29002; // Ephemeral: Player responds with answer
+
+// ICE servers for NAT traversal (using public STUN servers)
+const ICE_SERVERS: RTCIceServer[] = [
+  { urls: 'stun:stun.l.google.com:19302' },
+  { urls: 'stun:stun1.l.google.com:19302' },
+  { urls: 'stun:stun2.l.google.com:19302' },
+];
+
+// Data sent from host to player via P2P
+export interface HuntLocationData {
+  geoFence: GeoFence;
+  monsters: Monster[];
+  satStops: SatStop[];
+}
+
+// Signaling message types
+export interface SignalOffer {
+  type: 'offer';
+  huntId: string;
+  shareCode: string;
+  sdp: string;
+  hostPubkey: string;
+}
+
+export interface SignalAnswer {
+  type: 'answer';
+  huntId: string;
+  sdp: string;
+  playerPubkey: string;
+}
+
+export interface SignalCandidate {
+  type: 'candidate';
+  huntId: string;
+  candidate: string;
+}
+
+/**
+ * Create a WebRTC peer connection with standard config
+ */
+export function createPeerConnection(): RTCPeerConnection {
+  return new RTCPeerConnection({
+    iceServers: ICE_SERVERS,
+  });
+}
+
+/**
+ * Host: Create offer and data channel for sending hunt data
+ */
+export async function createHostConnection(): Promise<{
+  peerConnection: RTCPeerConnection;
+  dataChannel: RTCDataChannel;
+  offer: RTCSessionDescriptionInit;
+}> {
+  const peerConnection = createPeerConnection();
+
+  // Create data channel for sending hunt data
+  const dataChannel = peerConnection.createDataChannel('hunt-data', {
+    ordered: true,
+  });
+
+  // Create offer
+  const offer = await peerConnection.createOffer();
+  await peerConnection.setLocalDescription(offer);
+
+  // Wait for ICE gathering to complete (or timeout)
+  await waitForIceGathering(peerConnection);
+
+  return {
+    peerConnection,
+    dataChannel,
+    offer: peerConnection.localDescription!,
+  };
+}
+
+/**
+ * Player: Connect to host using their offer
+ */
+export async function createPlayerConnection(
+  offer: RTCSessionDescriptionInit
+): Promise<{
+  peerConnection: RTCPeerConnection;
+  answer: RTCSessionDescriptionInit;
+}> {
+  const peerConnection = createPeerConnection();
+
+  // Set remote description (host's offer)
+  await peerConnection.setRemoteDescription(offer);
+
+  // Create answer
+  const answer = await peerConnection.createAnswer();
+  await peerConnection.setLocalDescription(answer);
+
+  // Wait for ICE gathering
+  await waitForIceGathering(peerConnection);
+
+  return {
+    peerConnection,
+    answer: peerConnection.localDescription!,
+  };
+}
+
+/**
+ * Host: Apply player's answer to complete connection
+ */
+export async function applyAnswer(
+  peerConnection: RTCPeerConnection,
+  answer: RTCSessionDescriptionInit
+): Promise<void> {
+  await peerConnection.setRemoteDescription(answer);
+}
+
+/**
+ * Send hunt location data over data channel
+ */
+export function sendHuntData(
+  dataChannel: RTCDataChannel,
+  data: HuntLocationData
+): void {
+  if (dataChannel.readyState !== 'open') {
+    throw new Error('Data channel not open');
+  }
+  dataChannel.send(JSON.stringify(data));
+}
+
+/**
+ * Wait for data channel message (player side)
+ */
+export function waitForHuntData(
+  peerConnection: RTCPeerConnection,
+  timeoutMs: number = 30000
+): Promise<HuntLocationData> {
+  return new Promise((resolve, reject) => {
+    const timeout = setTimeout(() => {
+      reject(new Error('Timeout waiting for hunt data'));
+    }, timeoutMs);
+
+    peerConnection.ondatachannel = (event) => {
+      const channel = event.channel;
+
+      channel.onmessage = (msgEvent) => {
+        clearTimeout(timeout);
+        try {
+          const data = JSON.parse(msgEvent.data) as HuntLocationData;
+          resolve(data);
+        } catch {
+          reject(new Error('Invalid hunt data received'));
+        }
+      };
+
+      channel.onerror = (err) => {
+        clearTimeout(timeout);
+        reject(err);
+      };
+    };
+  });
+}
+
+/**
+ * Wait for ICE gathering to complete
+ */
+function waitForIceGathering(
+  peerConnection: RTCPeerConnection,
+  timeoutMs: number = 5000
+): Promise<void> {
+  return new Promise((resolve) => {
+    if (peerConnection.iceGatheringState === 'complete') {
+      resolve();
+      return;
+    }
+
+    const timeout = setTimeout(() => {
+      resolve(); // Resolve anyway after timeout, we'll use what we have
+    }, timeoutMs);
+
+    peerConnection.onicegatheringstatechange = () => {
+      if (peerConnection.iceGatheringState === 'complete') {
+        clearTimeout(timeout);
+        resolve();
+      }
+    };
+  });
+}
+
+/**
+ * Build Nostr event for signaling offer
+ */
+export function buildOfferEvent(
+  huntId: string,
+  shareCode: string,
+  offer: RTCSessionDescriptionInit,
+  hostPubkey: string
+): {
+  kind: number;
+  content: string;
+  tags: string[][];
+} {
+  return {
+    kind: P2P_OFFER_KIND,
+    content: JSON.stringify({
+      type: 'offer',
+      sdp: offer.sdp,
+    }),
+    tags: [
+      ['d', `p2p-${shareCode}`],
+      ['h', huntId],
+      ['p', hostPubkey], // So players can filter by host
+    ],
+  };
+}
+
+/**
+ * Build Nostr event for signaling answer
+ */
+export function buildAnswerEvent(
+  huntId: string,
+  shareCode: string,
+  answer: RTCSessionDescriptionInit,
+  hostPubkey: string,
+  playerPubkey: string
+): {
+  kind: number;
+  content: string;
+  tags: string[][];
+} {
+  return {
+    kind: P2P_ANSWER_KIND,
+    content: JSON.stringify({
+      type: 'answer',
+      sdp: answer.sdp,
+    }),
+    tags: [
+      ['d', `p2p-answer-${shareCode}-${playerPubkey.slice(0, 8)}`],
+      ['h', huntId],
+      ['p', hostPubkey], // Tag host so they receive it
+      ['player', playerPubkey],
+    ],
+  };
+}
+
+/**
+ * Parse offer from Nostr event
+ */
+export function parseOfferFromEvent(event: { content: string; pubkey: string }): {
+  sdp: string;
+  hostPubkey: string;
+} {
+  const parsed = JSON.parse(event.content);
+  return {
+    sdp: parsed.sdp,
+    hostPubkey: event.pubkey,
+  };
+}
+
+/**
+ * Parse answer from Nostr event
+ */
+export function parseAnswerFromEvent(event: { content: string; tags: string[][] }): {
+  sdp: string;
+  playerPubkey: string;
+} {
+  const parsed = JSON.parse(event.content);
+  const playerTag = event.tags.find(t => t[0] === 'player');
+  return {
+    sdp: parsed.sdp,
+    playerPubkey: playerTag?.[1] || '',
+  };
+}
+
+/**
+ * Connection state helper
+ */
+export function getConnectionState(
+  peerConnection: RTCPeerConnection
+): 'connecting' | 'connected' | 'disconnected' | 'failed' {
+  switch (peerConnection.connectionState) {
+    case 'new':
+    case 'connecting':
+      return 'connecting';
+    case 'connected':
+      return 'connected';
+    case 'disconnected':
+    case 'closed':
+      return 'disconnected';
+    case 'failed':
+      return 'failed';
+    default:
+      return 'connecting';
+  }
+}

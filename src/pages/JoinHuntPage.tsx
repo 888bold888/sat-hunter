@@ -7,6 +7,7 @@ import { useHuntByCode } from '@/hooks/useHuntByCode';
 import { usePublishJoin } from '@/hooks/useHuntSync';
 import { useAuthor } from '@/hooks/useAuthor';
 import { useNWC } from '@/hooks/useNWCContext';
+import { useJoinP2P } from '@/hooks/useJoinP2P';
 import { LoginArea } from '@/components/auth/LoginArea';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -42,9 +43,13 @@ export default function JoinHuntPage() {
 
   const [inputCode, setInputCode] = useState(code?.toUpperCase() || '');
   const [searchCode, setSearchCode] = useState(code?.toUpperCase() || '');
+  const [isJoining, setIsJoining] = useState(false);
 
   // Query hunt from Nostr
   const { data: foundHunt, isLoading: isSearching, error: searchError, refetch, isFetching } = useHuntByCode(searchCode);
+
+  // P2P connection for receiving location data (privacy mode)
+  const { state: p2pState, error: p2pError, connect: connectP2P, reset: _resetP2P } = useJoinP2P();
 
   // Fetch user's profile to check for Lightning address
   const { data: userProfile, isLoading: isLoadingProfile } = useAuthor(user?.pubkey);
@@ -79,7 +84,7 @@ export default function JoinHuntPage() {
     setSearchCode(inputCode.toUpperCase());
   };
 
-  const handleJoin = () => {
+  const handleJoin = async () => {
     if (!user) {
       toast({
         title: 'Login Required',
@@ -129,14 +134,61 @@ export default function JoinHuntPage() {
       return;
     }
 
-    // Join the hunt
-    joinHunt(foundHunt);
-    addParticipant(user.pubkey);
+    setIsJoining(true);
 
-    // Publish join event to Nostr for host to see
-    publishJoin(foundHunt.id, foundHunt.shareCode);
+    try {
+      let huntToJoin = foundHunt;
 
-    navigate('/play');
+      // If hunt requires P2P, connect to host for location data
+      if (foundHunt.requiresP2P) {
+        toast({
+          title: 'Connecting to host...',
+          description: 'Receiving hunt location data securely',
+        });
+
+        const locationData = await connectP2P(foundHunt.id, foundHunt.shareCode);
+
+        if (!locationData) {
+          toast({
+            title: 'Connection Failed',
+            description: p2pError || 'Could not connect to host. Make sure they have the hunt open.',
+            variant: 'destructive',
+          });
+          setIsJoining(false);
+          return;
+        }
+
+        // Merge P2P location data with hunt metadata
+        huntToJoin = {
+          ...foundHunt,
+          geoFence: locationData.geoFence,
+          monsters: locationData.monsters,
+          satStops: locationData.satStops,
+        };
+
+        toast({
+          title: 'Connected!',
+          description: `Received ${locationData.monsters.length} creature locations`,
+        });
+      }
+
+      // Join the hunt
+      joinHunt(huntToJoin);
+      addParticipant(user.pubkey);
+
+      // Publish join event to Nostr for host to see
+      publishJoin(foundHunt.id, foundHunt.shareCode);
+
+      navigate('/play');
+    } catch (err) {
+      toast({
+        title: 'Failed to join',
+        description: err instanceof Error ? err.message : 'Unknown error',
+        variant: 'destructive',
+      });
+    } finally {
+      setIsJoining(false);
+    }
   };
 
   return (
@@ -271,8 +323,26 @@ export default function JoinHuntPage() {
                       Waiting for payment
                     </Badge>
                   )}
+                  {foundHunt.requiresP2P && (
+                    <Badge variant="outline" className="border-green-500/50 text-green-500">
+                      🔒 Privacy Mode - Direct connection to host
+                    </Badge>
+                  )}
                 </CardContent>
               </Card>
+            )}
+
+            {/* P2P Connection Status */}
+            {isJoining && foundHunt?.requiresP2P && (
+              <Alert className="border-blue-500/30 bg-blue-500/5">
+                <Loader2 className="w-4 h-4 text-blue-500 animate-spin" />
+                <AlertDescription className="text-sm">
+                  {p2pState === 'fetching-offer' && 'Finding host...'}
+                  {p2pState === 'connecting' && 'Establishing secure connection...'}
+                  {p2pState === 'waiting-data' && 'Receiving hunt data...'}
+                  {p2pState === 'error' && (p2pError || 'Connection failed')}
+                </AlertDescription>
+              </Alert>
             )}
 
             {/* Login Prompt */}
@@ -328,17 +398,28 @@ export default function JoinHuntPage() {
             {/* Join Button */}
             <Button
               onClick={handleJoin}
-              disabled={!foundHunt || !user || foundHunt.paymentStatus !== 'paid' || isLoadingProfile}
+              disabled={!foundHunt || !user || foundHunt.paymentStatus !== 'paid' || isLoadingProfile || isJoining}
               className="w-full h-12 font-display text-lg bg-gradient-to-r from-primary to-orange-600 hover:from-orange-600 hover:to-primary shadow-glow-orange"
             >
-              <Target className="w-5 h-5 mr-2" />
-              {!foundHunt
-                ? 'Search for Hunt First'
-                : !user
-                  ? 'Login to Join'
-                  : isLoadingProfile
-                    ? 'Checking profile...'
-                    : 'Join Hunt!'}
+              {isJoining ? (
+                <>
+                  <Loader2 className="w-5 h-5 mr-2 animate-spin" />
+                  Connecting...
+                </>
+              ) : (
+                <>
+                  <Target className="w-5 h-5 mr-2" />
+                  {!foundHunt
+                    ? 'Search for Hunt First'
+                    : !user
+                      ? 'Login to Join'
+                      : isLoadingProfile
+                        ? 'Checking profile...'
+                        : foundHunt.requiresP2P
+                          ? 'Connect & Join'
+                          : 'Join Hunt!'}
+                </>
+              )}
             </Button>
           </CardContent>
         </Card>

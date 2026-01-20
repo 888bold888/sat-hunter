@@ -21,12 +21,14 @@ import {
   Navigation,
   RefreshCw,
   ShieldAlert,
+  Wifi,
 } from 'lucide-react';
 import QRCode from 'qrcode';
 import { useHuntSync } from '@/hooks/useHuntSync';
 import { usePayPlayer } from '@/hooks/usePayPlayer';
 import { useToast } from '@/hooks/useToast';
 import { ANTI_CHEAT_CONFIG } from '@/lib/antiCheat';
+import { useHostP2P } from '@/hooks/useHostP2P';
 
 // Anti-cheat data from capture events
 interface CaptureAntiCheat {
@@ -53,6 +55,16 @@ export function HostDashboard() {
 
   const { payPlayer } = usePayPlayer();
   const { toast } = useToast();
+
+  // P2P hosting for secure location data transfer
+  const {
+    isActive: isP2PActive,
+    connectedPlayers: _p2pConnectedPlayers,
+    sentDataTo: p2pSentDataTo,
+    error: p2pError,
+    startHosting: startP2P,
+    stopHosting: stopP2P,
+  } = useHostP2P(activeHunt);
 
   // Pay player when a capture is detected (with anti-cheat validation)
   const processPayment = useCallback(async (
@@ -176,6 +188,21 @@ export function HostDashboard() {
     }
   }, [activeHunt?.shareUrl]);
 
+  // Auto-start P2P hosting when hunt is ready/active
+  useEffect(() => {
+    if (activeHunt && (activeHunt.status === 'ready' || activeHunt.status === 'active') && !isP2PActive) {
+      console.log('[HostDashboard] Starting P2P hosting for hunt', activeHunt.shareCode);
+      startP2P();
+    }
+  }, [activeHunt, activeHunt?.status, isP2PActive, startP2P]);
+
+  // Cleanup P2P on unmount
+  useEffect(() => {
+    return () => {
+      stopP2P();
+    };
+  }, [stopP2P]);
+
 
 
   if (!activeHunt || !isHost()) return null;
@@ -258,6 +285,30 @@ export function HostDashboard() {
                 </span>
               </div>
               <Badge variant="destructive" className="text-xs">Anti-Cheat</Badge>
+            </CardContent>
+          </Card>
+        )}
+        {/* P2P Status - Privacy Mode */}
+        <Card className={`col-span-3 ${isP2PActive ? 'border-green-500/30 bg-green-500/10' : 'border-yellow-500/30 bg-yellow-500/10'}`}>
+          <CardContent className="p-3 flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <Wifi className={`w-5 h-5 ${isP2PActive ? 'text-green-500' : 'text-yellow-500'}`} />
+              <span className={`text-sm ${isP2PActive ? 'text-green-400' : 'text-yellow-400'}`}>
+                {isP2PActive
+                  ? `P2P Active - ${p2pSentDataTo} player${p2pSentDataTo !== 1 ? 's' : ''} received location data`
+                  : 'Starting P2P connection...'}
+              </span>
+            </div>
+            <Badge variant="outline" className={`text-xs ${isP2PActive ? 'border-green-500/50 text-green-500' : 'border-yellow-500/50 text-yellow-500'}`}>
+              🔒 Privacy Mode
+            </Badge>
+          </CardContent>
+        </Card>
+        {p2pError && (
+          <Card className="col-span-3 border-red-500/30 bg-red-500/10">
+            <CardContent className="p-3 flex items-center gap-2">
+              <ShieldAlert className="w-5 h-5 text-red-500" />
+              <span className="text-sm text-red-400">P2P Error: {p2pError}</span>
             </CardContent>
           </Card>
         )}

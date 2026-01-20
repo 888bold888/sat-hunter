@@ -19,25 +19,18 @@ export function usePublishHunt() {
         throw new Error('No Nostr signer available. Please log in first.');
       }
 
-      // Create geohash for the hunt center
+      // Create geohash for the hunt center (coarse, ~5km precision for discoverability)
       const geohash = ngeohash.encode(hunt.geoFence.center.lat, hunt.geoFence.center.lng, 5);
 
-      // Prepare content (large data that doesn't need to be queried)
+      // PRIVACY: Only publish metadata to relay, NO location data
+      // Location data (geoFence, monsters, satStops) is transferred via P2P
+      // when players join, keeping it completely off Nostr relays
       const content = JSON.stringify({
         description: hunt.description,
-        geoFence: hunt.geoFence,
-        monsters: hunt.monsters.map(m => ({
-          id: m.id,
-          name: m.name,
-          type: m.type,
-          description: m.description,
-          satAmount: m.satAmount,
-          rarity: m.rarity,
-          location: m.location,
-          emoji: m.emoji,
-          spawnTime: m.spawnTime,
-        })),
-        satStops: hunt.satStops,
+        // P2P flag indicates players must connect to host for location data
+        p2pRequired: true,
+        // Include radius for display purposes (no exact coordinates)
+        radiusMeters: hunt.geoFence.radiusMeters,
       });
 
       // Sign event using user's signer (works for all login types)
@@ -55,6 +48,7 @@ export function usePublishHunt() {
           ['status', hunt.status],
           ['payment_status', hunt.paymentStatus],
           ['g', geohash],
+          ['p2p', 'required'], // Location data served via P2P, not on relay
           ['alt', `Sat Hunter: ${hunt.name} - ${hunt.monsterCount} creatures, ${hunt.totalSats.toLocaleString()} sats`],
           ...(hunt.lightningInvoice ? [['bolt11', hunt.lightningInvoice]] : []),
           ...(hunt.paymentHash ? [['payment_hash', hunt.paymentHash]] : []),
