@@ -146,7 +146,7 @@ export default function JoinHuntPage() {
           description: 'Receiving hunt location data securely',
         });
 
-        const locationData = await connectP2P(foundHunt.id, foundHunt.shareCode);
+        const locationData = await connectP2P(foundHunt.id, foundHunt.shareCode, foundHunt.hostPubkey);
 
         if (!locationData) {
           toast({
@@ -337,8 +337,9 @@ export default function JoinHuntPage() {
               <Alert className="border-blue-500/30 bg-blue-500/5">
                 <Loader2 className="w-4 h-4 text-blue-500 animate-spin" />
                 <AlertDescription className="text-sm">
-                  {p2pState === 'fetching-offer' && 'Finding host...'}
-                  {p2pState === 'connecting' && 'Establishing secure connection...'}
+                  {p2pState === 'creating-offer' && 'Creating secure connection...'}
+                  {p2pState === 'waiting-answer' && 'Waiting for host...'}
+                  {p2pState === 'connecting' && 'Establishing connection...'}
                   {p2pState === 'waiting-data' && 'Receiving hunt data...'}
                   {p2pState === 'error' && (p2pError || 'Connection failed')}
                 </AlertDescription>
