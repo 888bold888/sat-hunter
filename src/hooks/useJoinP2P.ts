@@ -1,30 +1,35 @@
 /**
  * Player-side P2P hook for receiving hunt location data
  *
- * The player fetches the host's WebRTC offer from Nostr,
- * creates an answer, publishes it, and waits for the host
- * to send hunt location data directly via P2P.
+ * Reversed flow: Player creates offer, host responds with answer.
+ * This ensures each player gets their own unique peer connection.
+ *
+ * The player:
+ * 1. Creates a WebRTC offer with a data channel
+ * 2. Publishes the offer to Nostr (tagged for the host)
+ * 3. Polls for the host's answer
+ * 4. Applies the answer to complete the connection
+ * 5. Receives hunt location data on the data channel
  */
 
 import { useState, useCallback, useRef } from 'react';
 import { useNostr } from '@nostrify/react';
 import { useCurrentUser } from './useCurrentUser';
 import {
-  P2P_OFFER_KIND,
-  createPlayerConnection,
-  waitForHuntData,
-  buildAnswerEvent,
-  parseOfferFromEvent,
+  P2P_ANSWER_KIND,
+  createHostConnection,
+  applyAnswer,
+  buildOfferEvent,
   type HuntLocationData,
 } from '@/lib/p2pSignaling';
 
-type ConnectionState = 'idle' | 'fetching-offer' | 'connecting' | 'waiting-data' | 'complete' | 'error';
+type ConnectionState = 'idle' | 'creating-offer' | 'waiting-answer' | 'connecting' | 'waiting-data' | 'complete' | 'error';
 
 interface UseJoinP2PResult {
   state: ConnectionState;
   error: string | null;
   huntData: HuntLocationData | null;
-  connect: (huntId: string, shareCode: string) => Promise<HuntLocationData | null>;
+  connect: (huntId: string, shareCode: string, hostPubkey: string) => Promise<HuntLocationData | null>;
   reset: () => void;
 }
 
@@ -37,9 +42,18 @@ export function useJoinP2P(): UseJoinP2PResult {
   const [huntData, setHuntData] = useState<HuntLocationData | null>(null);
 
   const peerConnectionRef = useRef<RTCPeerConnection | null>(null);
+  const dataChannelRef = useRef<RTCDataChannel | null>(null);
 
   // Cleanup
   const cleanup = useCallback(() => {
+    if (dataChannelRef.current) {
+      try {
+        dataChannelRef.current.close();
+      } catch {
+        // Ignore
+      }
+      dataChannelRef.current = null;
+    }
     if (peerConnectionRef.current) {
       try {
         peerConnectionRef.current.close();
@@ -60,7 +74,7 @@ export function useJoinP2P(): UseJoinP2PResult {
 
   // Connect to host and receive hunt data
   const connect = useCallback(
-    async (huntId: string, shareCode: string): Promise<HuntLocationData | null> => {
+    async (huntId: string, shareCode: string, hostPubkey: string): Promise<HuntLocationData | null> => {
       if (!user?.signer) {
         setError('Please log in first');
         setState('error');
@@ -69,64 +83,64 @@ export function useJoinP2P(): UseJoinP2PResult {
 
       try {
         setError(null);
-        setState('fetching-offer');
-        console.log('[P2P Player] Fetching offer for hunt', shareCode);
+        setState('creating-offer');
+        console.log('[P2P Player] Creating offer for hunt', shareCode);
 
-        // Fetch offer from Nostr
-        const events = await nostr.query(
-          [
-            {
-              kinds: [P2P_OFFER_KIND],
-              '#d': [`p2p-${shareCode}`],
-              limit: 1,
-            },
-          ],
-          { signal: AbortSignal.timeout(15000) }
-        );
-
-        if (events.length === 0) {
-          // No P2P offer found - host might not be online or hunt uses legacy mode
-          setError('Host not available for P2P connection. They may need to open the hunt.');
-          setState('error');
-          return null;
-        }
-
-        const offerEvent = events[0];
-        const { sdp: offerSdp, hostPubkey } = parseOfferFromEvent(offerEvent);
-
-        console.log('[P2P Player] Got offer from host', hostPubkey.slice(0, 8));
-        setState('connecting');
-
-        // Create answer
-        const { peerConnection, answer } = await createPlayerConnection({
-          type: 'offer',
-          sdp: offerSdp,
-        });
+        // Create offer with data channel
+        const { peerConnection, dataChannel, offer } = await createHostConnection();
         peerConnectionRef.current = peerConnection;
+        dataChannelRef.current = dataChannel;
 
-        // Publish answer to Nostr
-        const answerEvent = buildAnswerEvent(
+        // Publish offer to Nostr
+        const offerEvent = buildOfferEvent(
           huntId,
           shareCode,
-          answer,
+          offer,
           hostPubkey,
           user.pubkey
         );
 
-        const signedAnswer = await user.signer.signEvent({
-          kind: answerEvent.kind,
+        const signedOffer = await user.signer.signEvent({
+          kind: offerEvent.kind,
           created_at: Math.floor(Date.now() / 1000),
-          content: answerEvent.content,
-          tags: answerEvent.tags,
+          content: offerEvent.content,
+          tags: offerEvent.tags,
         });
 
-        await nostr.event(signedAnswer);
-        console.log('[P2P Player] Published answer to Nostr');
+        await nostr.event(signedOffer);
+        console.log('[P2P Player] Published offer to Nostr');
 
+        setState('waiting-answer');
+
+        // Poll for host's answer
+        const answerSdp = await pollForAnswer(
+          nostr,
+          huntId,
+          user.pubkey,
+          30000 // 30 second timeout
+        );
+
+        if (!answerSdp) {
+          setError('Connection failed: Could not connect to host. Make sure they have the hunt open.');
+          setState('error');
+          cleanup();
+          return null;
+        }
+
+        console.log('[P2P Player] Got answer from host');
+        setState('connecting');
+
+        // Apply answer
+        await applyAnswer(peerConnection, {
+          type: 'answer',
+          sdp: answerSdp,
+        });
+
+        console.log('[P2P Player] Applied answer, waiting for data channel');
         setState('waiting-data');
 
-        // Wait for hunt data from host
-        const data = await waitForHuntData(peerConnection, 30000);
+        // Wait for hunt data from host on our data channel
+        const data = await waitForDataOnChannel(dataChannel, 30000);
 
         console.log('[P2P Player] Received hunt data:', {
           monsters: data.monsters.length,
@@ -155,4 +169,86 @@ export function useJoinP2P(): UseJoinP2PResult {
     connect,
     reset,
   };
+}
+
+/**
+ * Poll Nostr for the host's answer
+ */
+async function pollForAnswer(
+  nostr: ReturnType<typeof useNostr>['nostr'],
+  huntId: string,
+  playerPubkey: string,
+  timeoutMs: number
+): Promise<string | null> {
+  const startTime = Date.now();
+  const pollInterval = 1000; // 1 second
+
+  while (Date.now() - startTime < timeoutMs) {
+    try {
+      const events = await nostr.query(
+        [
+          {
+            kinds: [P2P_ANSWER_KIND],
+            '#h': [huntId],
+            '#p': [playerPubkey],
+            since: Math.floor(startTime / 1000) - 10,
+            limit: 1,
+          },
+        ],
+        { signal: AbortSignal.timeout(5000) }
+      );
+
+      if (events.length > 0) {
+        const parsed = JSON.parse(events[0].content);
+        return parsed.sdp;
+      }
+    } catch (err) {
+      console.warn('[P2P Player] Poll error:', err);
+    }
+
+    // Wait before next poll
+    await new Promise(resolve => setTimeout(resolve, pollInterval));
+  }
+
+  return null;
+}
+
+/**
+ * Wait for data on the data channel (player side - we created the channel)
+ */
+function waitForDataOnChannel(
+  dataChannel: RTCDataChannel,
+  timeoutMs: number
+): Promise<HuntLocationData> {
+  return new Promise((resolve, reject) => {
+    const timeout = setTimeout(() => {
+      reject(new Error('Timeout waiting for hunt data'));
+    }, timeoutMs);
+
+    // Channel might already be open
+    if (dataChannel.readyState === 'open') {
+      console.log('[P2P Player] Data channel already open');
+    }
+
+    dataChannel.onmessage = (event) => {
+      clearTimeout(timeout);
+      try {
+        const data = JSON.parse(event.data) as HuntLocationData;
+        resolve(data);
+      } catch {
+        reject(new Error('Invalid hunt data received'));
+      }
+    };
+
+    dataChannel.onerror = (err) => {
+      clearTimeout(timeout);
+      console.error('[P2P Player] Data channel error:', err);
+      reject(new Error('Data channel error'));
+    };
+
+    dataChannel.onclose = () => {
+      clearTimeout(timeout);
+      reject(new Error('Data channel closed before receiving data'));
+    };
+  });
 }

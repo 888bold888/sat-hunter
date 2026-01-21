@@ -9,8 +9,10 @@
 import type { GeoFence, Monster, SatStop } from './gameTypes';
 
 // Nostr event kinds for P2P signaling
-export const P2P_OFFER_KIND = 29001;  // Ephemeral: Host publishes WebRTC offer
-export const P2P_ANSWER_KIND = 29002; // Ephemeral: Player responds with answer
+// Reversed flow: Player creates offer, Host responds with answer
+// This ensures each player gets their own unique peer connection
+export const P2P_OFFER_KIND = 29001;  // Ephemeral: Player publishes WebRTC offer
+export const P2P_ANSWER_KIND = 29002; // Ephemeral: Host responds with answer
 
 // ICE servers for NAT traversal (using public STUN servers)
 const ICE_SERVERS: RTCIceServer[] = [
@@ -196,13 +198,14 @@ function waitForIceGathering(
 }
 
 /**
- * Build Nostr event for signaling offer
+ * Build Nostr event for signaling offer (from player to host)
  */
 export function buildOfferEvent(
   huntId: string,
   shareCode: string,
   offer: RTCSessionDescriptionInit,
-  hostPubkey: string
+  hostPubkey: string,
+  playerPubkey: string
 ): {
   kind: number;
   content: string;
@@ -215,21 +218,21 @@ export function buildOfferEvent(
       sdp: offer.sdp,
     }),
     tags: [
-      ['d', `p2p-${shareCode}`],
+      ['d', `p2p-offer-${shareCode}-${playerPubkey.slice(0, 8)}`],
       ['h', huntId],
-      ['p', hostPubkey], // So players can filter by host
+      ['p', hostPubkey], // Tag host so they receive it
+      ['player', playerPubkey],
     ],
   };
 }
 
 /**
- * Build Nostr event for signaling answer
+ * Build Nostr event for signaling answer (from host to player)
  */
 export function buildAnswerEvent(
   huntId: string,
   shareCode: string,
   answer: RTCSessionDescriptionInit,
-  hostPubkey: string,
   playerPubkey: string
 ): {
   kind: number;
@@ -245,23 +248,23 @@ export function buildAnswerEvent(
     tags: [
       ['d', `p2p-answer-${shareCode}-${playerPubkey.slice(0, 8)}`],
       ['h', huntId],
-      ['p', hostPubkey], // Tag host so they receive it
-      ['player', playerPubkey],
+      ['p', playerPubkey], // Tag player so they receive it
     ],
   };
 }
 
 /**
- * Parse offer from Nostr event
+ * Parse offer from Nostr event (player's offer)
  */
-export function parseOfferFromEvent(event: { content: string; pubkey: string }): {
+export function parseOfferFromEvent(event: { content: string; pubkey: string; tags: string[][] }): {
   sdp: string;
-  hostPubkey: string;
+  playerPubkey: string;
 } {
   const parsed = JSON.parse(event.content);
+  const playerTag = event.tags.find(t => t[0] === 'player');
   return {
     sdp: parsed.sdp,
-    hostPubkey: event.pubkey,
+    playerPubkey: playerTag?.[1] || event.pubkey,
   };
 }
 
