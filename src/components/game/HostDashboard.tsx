@@ -14,7 +14,6 @@ import {
   Target,
   Skull,
   Eye,
-  Play,
   QrCode,
   Copy,
   Check,
@@ -38,7 +37,7 @@ interface CaptureAntiCheat {
 }
 
 export function HostDashboard() {
-  const { state, startHunt, isHost, addParticipant } = useGame();
+  const { state, isHost, addParticipant } = useGame();
   const { activeHunt, playerLocation } = state;
   const [timeRemaining, setTimeRemaining] = useState('');
   const [copied, setCopied] = useState(false);
@@ -239,8 +238,6 @@ export function HostDashboard() {
     }
   };
 
-  const canStart = activeHunt.status === 'ready' && activeHunt.paymentStatus === 'paid';
-
   return (
     <div className="space-y-4">
       {/* Header Stats */}
@@ -350,16 +347,6 @@ export function HostDashboard() {
             <Progress value={progress} className="h-2" />
           </div>
 
-          {/* Start Button (if ready) */}
-          {canStart && (
-            <Button
-              onClick={startHunt}
-              className="w-full bg-gradient-to-r from-secondary to-green-600 shadow-glow-green"
-            >
-              <Play className="w-4 h-4 mr-2" />
-              Start Hunt Now
-            </Button>
-          )}
         </CardContent>
       </Card>
 

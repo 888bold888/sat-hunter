@@ -42,16 +42,17 @@ export function PaymentConfirmation() {
       confirmPayment();
 
       // Get the updated hunt with paid status for publishing
+      // Hunt is immediately active once paid - no separate "start" step needed
       const paidHunt = {
         ...activeHunt,
-        status: 'ready' as const,
+        status: 'active' as const,
         paymentStatus: 'paid' as const,
       };
       const signedEvent = await publishHunt(paidHunt) as NostrEvent;
       // Critical: Update local hunt ID to match Nostr event ID for sync
       // Pass status to avoid race condition with confirmPayment
       if (signedEvent?.id) {
-        updateHuntId(signedEvent.id, { status: 'ready', paymentStatus: 'paid' });
+        updateHuntId(signedEvent.id, { status: 'active', paymentStatus: 'paid' });
       }
     } catch (error) {
       setPaymentError(error instanceof Error ? error.message : 'Payment failed');
@@ -69,16 +70,17 @@ export function PaymentConfirmation() {
       confirmPayment();
 
       // Publish with updated status
+      // Hunt is immediately active once paid - no separate "start" step needed
       const paidHunt = {
         ...activeHunt,
-        status: 'ready' as const,
+        status: 'active' as const,
         paymentStatus: 'paid' as const,
       };
       const signedEvent = await publishHunt(paidHunt) as NostrEvent;
       // Critical: Update local hunt ID to match Nostr event ID for sync
       // Pass status to avoid race condition with confirmPayment
       if (signedEvent?.id) {
-        updateHuntId(signedEvent.id, { status: 'ready', paymentStatus: 'paid' });
+        updateHuntId(signedEvent.id, { status: 'active', paymentStatus: 'paid' });
       }
     } catch (error) {
       setPaymentError(error instanceof Error ? error.message : 'Failed to activate hunt');
