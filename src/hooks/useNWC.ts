@@ -177,22 +177,47 @@ export function useNWCInternal() {
       throw new Error(`Failed to create NWC client: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
 
-    try {
-      let timeoutId: NodeJS.Timeout | undefined;
-      const timeoutPromise = new Promise<never>((_, reject) => {
-        timeoutId = setTimeout(() => reject(new Error('Payment timeout after 15 seconds')), 15000);
-      });
+    // Try payment with retries (NWC relays can be slow/flaky)
+    const maxRetries = 2;
+    let lastError: Error | null = null;
 
-      const paymentPromise = client.pay(invoice);
-
+    for (let attempt = 1; attempt <= maxRetries; attempt++) {
       try {
-        const response = await Promise.race([paymentPromise, timeoutPromise]) as { preimage: string };
-        if (timeoutId) clearTimeout(timeoutId);
-        return response;
+        let timeoutId: NodeJS.Timeout | undefined;
+        const timeoutMs = attempt === 1 ? 30000 : 45000; // 30s first try, 45s retry
+        const timeoutPromise = new Promise<never>((_, reject) => {
+          timeoutId = setTimeout(() => reject(new Error(`Payment timeout after ${timeoutMs / 1000} seconds`)), timeoutMs);
+        });
+
+        const paymentPromise = client.pay(invoice);
+
+        try {
+          const response = await Promise.race([paymentPromise, timeoutPromise]) as { preimage: string };
+          if (timeoutId) clearTimeout(timeoutId);
+          return response;
+        } catch (error) {
+          if (timeoutId) clearTimeout(timeoutId);
+          throw error;
+        }
       } catch (error) {
-        if (timeoutId) clearTimeout(timeoutId);
-        throw error;
+        lastError = error instanceof Error ? error : new Error('Unknown error');
+        console.warn(`NWC payment attempt ${attempt}/${maxRetries} failed:`, lastError.message);
+
+        // Don't retry on non-timeout errors (insufficient funds, invalid invoice, etc.)
+        if (!lastError.message.includes('timeout')) {
+          break;
+        }
+
+        // Wait before retry
+        if (attempt < maxRetries) {
+          await new Promise(resolve => setTimeout(resolve, 2000));
+        }
       }
+    }
+
+    // All retries failed, throw the last error
+    try {
+      throw lastError || new Error('Payment failed');
     } catch (error) {
       console.error('NWC payment failed:', error);
 
