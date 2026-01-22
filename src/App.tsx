@@ -37,9 +37,6 @@ const defaultConfig: AppConfig = {
   relayMetadata: {
     relays: [
       { url: 'wss://nos.lol', read: true, write: true },
-      { url: 'wss://140.f7z.io', read: true, write: true },
-      { url: 'wss://relays.land/spatianostra', read: true, write: true },
-      { url: 'wss://pyramid.fiatjaf.com', read: true, write: true },
       { url: 'wss://relay.damus.io', read: true, write: true },
     ],
     updatedAt: 0,

@@ -23,9 +23,6 @@ const NostrProvider: React.FC<NostrProviderProps> = (props) => {
   if (!pool.current) {
     const stableRelays = [
       'wss://nos.lol',
-      'wss://140.f7z.io',
-      'wss://relays.land/spatianostra',
-      'wss://pyramid.fiatjaf.com',
       'wss://relay.damus.io',
     ];
     const configRelays = relayMetadata.current.relays.map(r => r.url);

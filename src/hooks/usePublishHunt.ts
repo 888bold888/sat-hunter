@@ -3,7 +3,6 @@ import { useNostr } from '@nostrify/react';
 import type { HuntEvent } from '@/lib/gameTypes';
 import { useToast } from '@/hooks/useToast';
 import { useCurrentUser } from './useCurrentUser';
-import ngeohash from 'ngeohash';
 
 const HUNT_EVENT_KIND = 32959;
 
@@ -18,9 +17,6 @@ export function usePublishHunt() {
       if (!user?.signer) {
         throw new Error('No Nostr signer available. Please log in first.');
       }
-
-      // Create geohash for the hunt center (coarse, ~5km precision for discoverability)
-      const geohash = ngeohash.encode(hunt.geoFence.center.lat, hunt.geoFence.center.lng, 5);
 
       // PRIVACY: Only publish metadata to relay, NO location data
       // Location data (geoFence, monsters, satStops) is transferred via P2P
@@ -47,7 +43,6 @@ export function usePublishHunt() {
           ['end_time', Math.floor(hunt.endTime / 1000).toString()],
           ['status', hunt.status],
           ['payment_status', hunt.paymentStatus],
-          ['g', geohash],
           ['p2p', 'required'], // Location data served via P2P, not on relay
           ['alt', `Sat Hunter: ${hunt.name} - ${hunt.monsterCount} creatures, ${hunt.totalSats.toLocaleString()} sats`],
           ...(hunt.lightningInvoice ? [['bolt11', hunt.lightningInvoice]] : []),
