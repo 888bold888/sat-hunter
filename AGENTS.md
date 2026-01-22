@@ -283,6 +283,104 @@ The file `NIP.md` is used by this project to define a custom Nostr protocol docu
 
 Whenever new kinds are generated, the `NIP.md` file in the project must be created or updated to document the custom event schema. Whenever the schema of one of these custom events changes, `NIP.md` must also be updated accordingly.
 
+### Nostr Security Model
+
+**CRITICAL**: Nostr is permissionless - **anyone can publish any event**. When implementing admin/moderation systems or any feature that should only trust specific users, you MUST filter queries by the `authors` field. Without author filtering, anyone can publish events claiming to be admin actions, moderator decisions, or trusted content.
+
+#### Using the `authors` Filter
+
+**Always filter by authors when querying:**
+- **Admin/moderator actions** - MUST filter by trusted admin pubkeys
+- **Addressable events (kinds 30000-39999)** - MUST include author to prevent anyone from publishing events with the same d-tag
+- **Any privileged operations** - Filter by trusted pubkeys only
+
+**✅ Secure - Filtering by trusted authors:**
+```typescript
+import { ADMIN_PUBKEYS } from '@/lib/admins';
+
+// Query organizer appointments - ONLY accept events from admins
+const events = await nostr.query([{
+  kinds: [30078],
+  authors: ADMIN_PUBKEYS, // CRITICAL: Only trust admin authors
+  '#d': ['pathos-organizers'],
+  limit: 1
+}], { signal });
+```
+
+**❌ INSECURE - No author filtering:**
+```typescript
+// DANGER: This accepts events from ANYONE who publishes kind 30078
+// An attacker could appoint themselves as an organizer
+const events = await nostr.query([{
+  kinds: [30078],
+  '#d': ['pathos-organizers'],
+  limit: 1
+}], { signal });
+```
+
+**Addressable Events Example:**
+```typescript
+// For addressable events, ALWAYS include the author in your filter
+// This prevents attackers from publishing events with the same d-tag
+const article = await nostr.query([{
+  kinds: [30023], // Long-form article
+  authors: [authorPubkey], // CRITICAL: Verify the author
+  '#d': ['my-article-slug'],
+  limit: 1
+}], { signal });
+```
+
+**URL Routing for Addressable/Replaceable Events:**
+
+When creating URL paths for addressable or replaceable events, always include the author in the URL structure:
+
+```typescript
+// ❌ INSECURE: Missing author - anyone could publish an event with this d-tag
+<Route path="/article/:slug" element={<Article />} />
+// URL: /article/hello-world
+
+// ✅ SECURE: Includes author - can safely filter by both author and d-tag
+<Route path="/article/:npub/:slug" element={<Article />} />
+// URL: /article/npub1abc.../hello-world
+```
+
+This ensures your route parameters provide both the author pubkey and the d-tag identifier needed to create a secure query filter.
+
+**NIP-72 Community Moderation Example:**
+
+When implementing moderated communities (NIP-72), you must query the community definition to get the moderator list, then filter approval events by those moderators:
+
+```typescript
+// Step 1: Query the community definition to get moderators
+const communityEvents = await nostr.query([{
+  kinds: [34550],
+  authors: [communityOwnerPubkey], // CRITICAL: Only trust the community owner
+  '#d': [communityId],
+  limit: 1,
+}], { signal });
+
+if (communityEvents.length === 0) return [];
+
+// Step 2: Extract moderator pubkeys from p tags
+const moderatorPubkeys = communityEvents[0].tags
+  .filter(([name, _, __, role]) => name === 'p' && role === 'moderator')
+  .map(([_, pubkey]) => pubkey);
+
+// Step 3: Query approval events - ONLY from trusted moderators
+const approvals = await nostr.query([{
+  kinds: [4550],
+  authors: moderatorPubkeys, // CRITICAL: Only accept approvals from moderators
+  '#a': [`34550:${communityOwnerPubkey}:${communityId}`],
+  limit: 100,
+}], { signal });
+```
+
+Without filtering approvals by the moderator list, anyone could publish kind 4550 events claiming to approve posts for the community.
+
+#### When Author Filtering Is NOT Required
+
+Author filtering is not needed for public user-generated content where anyone should be able to post (kind 1 notes, reactions, discovery queries, public feeds, etc.).
+
 ### The `useNostr` Hook
 
 The `useNostr` hook returns an object containing a `nostr` property, with `.query()` and `.event()` methods for querying and publishing Nostr events respectively.
@@ -838,7 +936,7 @@ const defaultConfig: AppConfig = {
   relayMetadata: {
     relays: [
       { url: 'wss://relay.ditto.pub', read: true, write: true },
-      { url: 'wss://relay.nostr.band', read: true, write: true },
+      { url: 'wss://relay.primal.net', read: true, write: true },
       { url: 'wss://relay.damus.io', read: true, write: true },
     ],
     updatedAt: 0,
@@ -954,7 +1052,7 @@ import { Card, CardContent } from '@/components/ui/card';
 
 - Achieve Apple-level refinement with meticulous attention to detail, ensuring designs evoke strong emotions (e.g., wonder, inspiration, energy) through color, motion, and composition
 - Deliver fully functional interactive components with intuitive feedback states, ensuring every element has a clear purpose and enhances user engagement
-- Use custom illustrations, 3D elements, or symbolic visuals instead of generic stock imagery to create a unique brand narrative; stock imagery, when required, must be sourced exclusively from Pexels (NEVER Unsplash) and align with the design’s emotional tone
+- **Generate custom images liberally** when image generation tools are available - this is ALWAYS preferred over stock photography for creating unique, brand-specific visuals that perfectly match the design intent
 - Ensure designs feel alive and modern with dynamic elements like gradients, glows, or parallax effects, avoiding static or flat aesthetics
 - Before finalizing, ask: "Would this design make Apple or Stripe designers pause and take notice?" If not, iterate until it does
 
@@ -1053,6 +1151,7 @@ When users specify color schemes:
 - Follow shadcn/ui patterns for component variants
 - Implement responsive design with Tailwind breakpoints
 - Add hover and focus states for interactive elements
+- When using negative z-index (e.g., `-z-10`) for background images or decorative elements, **always add `isolate` to the parent container** to create a local stacking context. Without `isolate`, negative z-index pushes elements behind the page's background color, making them invisible.
 
 ## Writing Tests vs Running Tests
 
