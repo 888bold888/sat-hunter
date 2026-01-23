@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useMemo } from 'react';
 import { useGame } from '@/contexts/GameContext';
 import { formatSats, formatTimeRemaining } from '@/lib/gameUtils';
 import { HuntMap } from './HuntMap';
@@ -28,6 +28,7 @@ import { usePayPlayer } from '@/hooks/usePayPlayer';
 import { useToast } from '@/hooks/useToast';
 import { ANTI_CHEAT_CONFIG } from '@/lib/antiCheat';
 import { useHostP2P } from '@/hooks/useHostP2P';
+import { useLocalStorage } from '@/hooks/useLocalStorage';
 
 // Anti-cheat data from capture events
 interface CaptureAntiCheat {
@@ -35,6 +36,17 @@ interface CaptureAntiCheat {
   trustFlags?: string[];
   geohash?: string;
 }
+
+// Serializers for Set and Map types in localStorage
+const setSerializer = {
+  serialize: (value: Set<string>) => JSON.stringify([...value]),
+  deserialize: (value: string) => new Set<string>(JSON.parse(value)),
+};
+
+const mapSerializer = {
+  serialize: (value: Map<string, string>) => JSON.stringify([...value.entries()]),
+  deserialize: (value: string) => new Map<string, string>(JSON.parse(value)),
+};
 
 export function HostDashboard() {
   const { state, isHost, addParticipant } = useGame();
@@ -48,9 +60,23 @@ export function HostDashboard() {
     antiCheat?: CaptureAntiCheat;
   }>>(new Map());
   const [syncedPlayers, setSyncedPlayers] = useState<Set<string>>(new Set());
-  const [paidCaptures, setPaidCaptures] = useState<Set<string>>(new Set());
+
+  // Persist paid captures to localStorage to prevent duplicate payments on refresh
+  const huntId = activeHunt?.id ?? 'no-hunt';
+  const paidCapturesKey = useMemo(() => `sathunter:paid-captures:${huntId}`, [huntId]);
+  const rejectedCapturesKey = useMemo(() => `sathunter:rejected-captures:${huntId}`, [huntId]);
+
+  const [paidCaptures, setPaidCaptures] = useLocalStorage<Set<string>>(
+    paidCapturesKey,
+    new Set(),
+    setSerializer
+  );
   const [payingCaptures, setPayingCaptures] = useState<Set<string>>(new Set());
-  const [rejectedCaptures, setRejectedCaptures] = useState<Map<string, string>>(new Map()); // monsterId -> reason
+  const [rejectedCaptures, setRejectedCaptures] = useLocalStorage<Map<string, string>>(
+    rejectedCapturesKey,
+    new Map(),
+    mapSerializer
+  ); // monsterId -> reason
 
   const { payPlayer } = usePayPlayer();
   const { toast } = useToast();
@@ -121,7 +147,7 @@ export function HostDashboard() {
       next.delete(monsterId);
       return next;
     });
-  }, [payPlayer, paidCaptures, payingCaptures, rejectedCaptures, toast]);
+  }, [payPlayer, paidCaptures, payingCaptures, rejectedCaptures, toast, setPaidCaptures, setRejectedCaptures]);
 
   // Callbacks for hunt sync
   const onMonsterCaptured = useCallback((
