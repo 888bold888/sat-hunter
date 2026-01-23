@@ -15,9 +15,8 @@ import {
   FormMessage,
 } from '@/components/ui/form';
 import { Input } from '@/components/ui/input';
-import { Textarea } from '@/components/ui/textarea';
-import { Switch } from '@/components/ui/switch';
-import { Loader2, Upload } from 'lucide-react';
+import { Loader2, Upload, Zap, ExternalLink } from 'lucide-react';
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { NSchema as n, type NostrMetadata } from '@nostrify/nostrify';
 import { useQueryClient } from '@tanstack/react-query';
 import { useUploadFile } from '@/hooks/useUploadFile';
@@ -30,17 +29,15 @@ export const EditProfileForm: React.FC = () => {
   const { mutateAsync: uploadFile, isPending: isUploading } = useUploadFile();
   const { toast } = useToast();
 
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
   // Initialize the form with default values
   const form = useForm<NostrMetadata>({
     resolver: zodResolver(n.metadata()),
     defaultValues: {
       name: '',
-      about: '',
       picture: '',
-      banner: '',
-      website: '',
-      nip05: '',
-      bot: false,
+      lud16: '',
     },
   });
 
@@ -49,31 +46,29 @@ export const EditProfileForm: React.FC = () => {
     if (metadata) {
       form.reset({
         name: metadata.name || '',
-        about: metadata.about || '',
         picture: metadata.picture || '',
-        banner: metadata.banner || '',
-        website: metadata.website || '',
-        nip05: metadata.nip05 || '',
-        bot: metadata.bot || false,
+        lud16: metadata.lud16 || '',
       });
     }
   }, [metadata, form]);
 
-  // Handle file uploads for profile picture and banner
-  const uploadPicture = async (file: File, field: 'picture' | 'banner') => {
+  // Watch the lud16 field to show/hide onboarding prompt
+  const lud16Value = form.watch('lud16');
+
+  // Handle file upload for profile picture
+  const uploadPicture = async (file: File) => {
     try {
-      // The first tuple in the array contains the URL
       const [[_, url]] = await uploadFile(file);
-      form.setValue(field, url);
+      form.setValue('picture', url);
       toast({
         title: 'Success',
-        description: `${field === 'picture' ? 'Profile picture' : 'Banner'} uploaded successfully`,
+        description: 'Profile picture uploaded successfully',
       });
     } catch (error) {
-      console.error(`Failed to upload ${field}:`, error);
+      console.error('Failed to upload picture:', error);
       toast({
         title: 'Error',
-        description: `Failed to upload ${field === 'picture' ? 'profile picture' : 'banner'}. Please try again.`,
+        description: 'Failed to upload profile picture. Please try again.',
         variant: 'destructive',
       });
     }
@@ -90,7 +85,7 @@ export const EditProfileForm: React.FC = () => {
     }
 
     try {
-      // Combine existing metadata with new values
+      // Combine existing metadata with new values to preserve other fields
       const data = { ...metadata, ...values };
 
       // Clean up empty values
@@ -124,9 +119,64 @@ export const EditProfileForm: React.FC = () => {
     }
   };
 
+  const pictureValue = form.watch('picture');
+
   return (
     <Form {...form}>
       <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
+        {/* Lightning Address - Prominent onboarding when empty */}
+        {!lud16Value && (
+          <Alert className="border-bitcoin bg-bitcoin/10">
+            <Zap className="h-4 w-4 text-bitcoin" />
+            <AlertTitle className="text-bitcoin">Set up your Lightning Address to receive sats!</AlertTitle>
+            <AlertDescription className="text-muted-foreground">
+              <p className="mb-3">
+                When you catch creatures, sats are sent instantly to your Lightning Address.
+                It looks like an email, e.g. <span className="font-mono text-foreground">you@wallet.com</span>
+              </p>
+              <p className="text-sm mb-2">Get a free Lightning Address from:</p>
+              <div className="flex flex-col gap-1">
+                <a
+                  href="https://www.walletofsatoshi.com/"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-1 text-sm text-bitcoin hover:underline font-medium"
+                >
+                  Wallet of Satoshi <ExternalLink className="h-3 w-3" />
+                </a>
+                <a
+                  href="https://www.minibits.cash/"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-1 text-sm text-bitcoin hover:underline font-medium"
+                >
+                  Minibits <ExternalLink className="h-3 w-3" />
+                </a>
+              </div>
+            </AlertDescription>
+          </Alert>
+        )}
+
+        <FormField
+          control={form.control}
+          name="lud16"
+          render={({ field }) => (
+            <FormItem>
+              <FormLabel className="flex items-center gap-2">
+                <Zap className="h-4 w-4 text-bitcoin" />
+                Lightning Address
+              </FormLabel>
+              <FormControl>
+                <Input placeholder="e.g. you@wallet.com" {...field} />
+              </FormControl>
+              <FormDescription>
+                Your Lightning Address for receiving sats when you catch creatures.
+              </FormDescription>
+              <FormMessage />
+            </FormItem>
+          )}
+        />
+
         <FormField
           control={form.control}
           name="name"
@@ -137,7 +187,7 @@ export const EditProfileForm: React.FC = () => {
                 <Input placeholder="Your name" {...field} />
               </FormControl>
               <FormDescription>
-                This is your display name that will be displayed to others.
+                Your display name shown to other players.
               </FormDescription>
               <FormMessage />
             </FormItem>
@@ -146,204 +196,74 @@ export const EditProfileForm: React.FC = () => {
 
         <FormField
           control={form.control}
-          name="about"
+          name="picture"
           render={({ field }) => (
             <FormItem>
-              <FormLabel>Bio</FormLabel>
-              <FormControl>
-                <Textarea 
-                  placeholder="Tell others about yourself" 
-                  className="resize-none" 
-                  {...field} 
-                />
-              </FormControl>
+              <FormLabel>Profile Picture</FormLabel>
+              <div className="flex flex-col gap-2">
+                <FormControl>
+                  <Input
+                    placeholder="https://example.com/photo.jpg"
+                    {...field}
+                  />
+                </FormControl>
+                <div className="flex items-center gap-3">
+                  <input
+                    type="file"
+                    ref={fileInputRef}
+                    accept="image/*"
+                    className="hidden"
+                    onChange={(e) => {
+                      const file = e.target.files?.[0];
+                      if (file) {
+                        uploadPicture(file);
+                      }
+                    }}
+                  />
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => fileInputRef.current?.click()}
+                    disabled={isUploading}
+                  >
+                    {isUploading ? (
+                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                    ) : (
+                      <Upload className="h-4 w-4 mr-2" />
+                    )}
+                    Upload
+                  </Button>
+                  {pictureValue && (
+                    <div className="h-10 w-10 rounded-full overflow-hidden">
+                      <img
+                        src={pictureValue}
+                        alt="Profile preview"
+                        className="h-full w-full object-cover"
+                      />
+                    </div>
+                  )}
+                </div>
+              </div>
               <FormDescription>
-                A short description about yourself.
+                Your profile picture shown to other players.
               </FormDescription>
               <FormMessage />
             </FormItem>
           )}
         />
 
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-          <FormField
-            control={form.control}
-            name="picture"
-            render={({ field }) => (
-              <ImageUploadField
-                field={field}
-                label="Profile Picture"
-                placeholder="https://example.com/profile.jpg"
-                description="URL to your profile picture. You can upload an image or provide a URL."
-                previewType="square"
-                onUpload={(file) => uploadPicture(file, 'picture')}
-              />
-            )}
-          />
-
-          <FormField
-            control={form.control}
-            name="banner"
-            render={({ field }) => (
-              <ImageUploadField
-                field={field}
-                label="Banner Image"
-                placeholder="https://example.com/banner.jpg"
-                description="URL to a wide banner image for your profile. You can upload an image or provide a URL."
-                previewType="wide"
-                onUpload={(file) => uploadPicture(file, 'banner')}
-              />
-            )}
-          />
-        </div>
-
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-          <FormField
-            control={form.control}
-            name="website"
-            render={({ field }) => (
-              <FormItem>
-                <FormLabel>Website</FormLabel>
-                <FormControl>
-                  <Input placeholder="https://yourwebsite.com" {...field} />
-                </FormControl>
-                <FormDescription>
-                  Your personal website or social media link.
-                </FormDescription>
-                <FormMessage />
-              </FormItem>
-            )}
-          />
-
-          <FormField
-            control={form.control}
-            name="nip05"
-            render={({ field }) => (
-              <FormItem>
-                <FormLabel>NIP-05 Identifier</FormLabel>
-                <FormControl>
-                  <Input placeholder="you@example.com" {...field} />
-                </FormControl>
-                <FormDescription>
-                  Your verified Nostr identifier.
-                </FormDescription>
-                <FormMessage />
-              </FormItem>
-            )}
-          />
-        </div>
-
-        <FormField
-          control={form.control}
-          name="bot"
-          render={({ field }) => (
-            <FormItem className="flex flex-row items-center justify-between rounded-lg border p-4">
-              <div className="space-y-0.5">
-                <FormLabel className="text-base">Bot Account</FormLabel>
-                <FormDescription>
-                  Mark this account as automated or a bot.
-                </FormDescription>
-              </div>
-              <FormControl>
-                <Switch
-                  checked={field.value}
-                  onCheckedChange={field.onChange}
-                />
-              </FormControl>
-            </FormItem>
-          )}
-        />
-
-        <Button 
-          type="submit" 
-          className="w-full md:w-auto" 
+        <Button
+          type="submit"
+          className="w-full"
           disabled={isPending || isUploading}
         >
-          {(isPending || isUploading) && (
+          {isPending && (
             <Loader2 className="mr-2 h-4 w-4 animate-spin" />
           )}
           Save Profile
         </Button>
       </form>
     </Form>
-  );
-};
-
-// Reusable component for image upload fields
-interface ImageUploadFieldProps {
-  field: {
-    value: string | undefined;
-    onChange: (value: string) => void;
-    name: string;
-    onBlur: () => void;
-  };
-  label: string;
-  placeholder: string;
-  description: string;
-  previewType: 'square' | 'wide';
-  onUpload: (file: File) => void;
-}
-
-const ImageUploadField: React.FC<ImageUploadFieldProps> = ({
-  field,
-  label,
-  placeholder,
-  description,
-  previewType,
-  onUpload,
-}) => {
-  const fileInputRef = useRef<HTMLInputElement>(null);
-
-  return (
-    <FormItem>
-      <FormLabel>{label}</FormLabel>
-      <div className="flex flex-col gap-2">
-        <FormControl>
-          <Input
-            placeholder={placeholder}
-            name={field.name}
-            value={field.value ?? ''}
-            onChange={e => field.onChange(e.target.value)}
-            onBlur={field.onBlur}
-          />
-        </FormControl>
-        <div className="flex items-center gap-2">
-          <input 
-            type="file" 
-            ref={fileInputRef}
-            accept="image/*"
-            className="hidden"
-            onChange={(e) => {
-              const file = e.target.files?.[0];
-              if (file) {
-                onUpload(file);
-              }
-            }}
-          />
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            onClick={() => fileInputRef.current?.click()}
-          >
-            <Upload className="h-4 w-4 mr-2" />
-            Upload Image
-          </Button>
-          {field.value && (
-            <div className={`h-10 ${previewType === 'square' ? 'w-10' : 'w-24'} rounded overflow-hidden`}>
-              <img 
-                src={field.value} 
-                alt={`${label} preview`} 
-                className="h-full w-full object-cover"
-              />
-            </div>
-          )}
-        </div>
-      </div>
-      <FormDescription>
-        {description}
-      </FormDescription>
-      <FormMessage />
-    </FormItem>
   );
 };
