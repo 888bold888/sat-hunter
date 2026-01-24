@@ -6,6 +6,30 @@ import 'leaflet-draw';
 import 'leaflet-draw/dist/leaflet.draw.css';
 import { cn } from '@/lib/utils';
 
+// Inject global styles once for iOS Safari z-index fix
+// This runs once at module load, not on each render
+const STYLE_ID = 'polygon-draw-map-ios-fix';
+if (typeof document !== 'undefined' && !document.getElementById(STYLE_ID)) {
+  const style = document.createElement('style');
+  style.id = STYLE_ID;
+  style.textContent = `
+    /* iOS Safari z-index fix for Leaflet draw controls */
+    .leaflet-top,
+    .leaflet-bottom {
+      z-index: 1000 !important;
+    }
+    .leaflet-control {
+      z-index: 1000 !important;
+    }
+    .leaflet-draw-section,
+    .leaflet-draw-toolbar,
+    .leaflet-draw-actions {
+      z-index: 1000 !important;
+    }
+  `;
+  document.head.appendChild(style);
+}
+
 interface PolygonDrawMapProps {
   center: GeoLocation;
   polygon?: GeoLocation[];
@@ -119,37 +143,6 @@ export function PolygonDrawMap({
 
     mapInstanceRef.current = map;
 
-    // Fix z-index for iOS Safari - apply directly to DOM elements
-    // This ensures draw controls are visible above the map
-    const fixZIndex = () => {
-      if (!mapRef.current) return;
-
-      // Fix control containers
-      const controls = mapRef.current.querySelectorAll('.leaflet-control-container, .leaflet-top, .leaflet-bottom, .leaflet-left, .leaflet-right');
-      controls.forEach((el) => {
-        (el as HTMLElement).style.zIndex = '1000';
-      });
-
-      // Fix draw toolbar specifically
-      const drawToolbar = mapRef.current.querySelectorAll('.leaflet-draw, .leaflet-draw-toolbar, .leaflet-draw-section, .leaflet-draw-actions');
-      drawToolbar.forEach((el) => {
-        (el as HTMLElement).style.zIndex = '1000';
-        (el as HTMLElement).style.position = 'relative';
-      });
-
-      // Fix individual control elements
-      const controlElements = mapRef.current.querySelectorAll('.leaflet-control');
-      controlElements.forEach((el) => {
-        (el as HTMLElement).style.zIndex = '1000';
-      });
-    };
-
-    // Apply fix after a short delay to ensure DOM is ready
-    setTimeout(fixZIndex, 100);
-    // Also apply on map load event
-    map.on('load', fixZIndex);
-    map.whenReady(fixZIndex);
-
     return () => {
       map.remove();
       mapInstanceRef.current = null;
@@ -199,17 +192,8 @@ export function PolygonDrawMap({
   }, [center.lat, center.lng]);
 
   return (
-    <div className={cn('relative', className)} style={{ isolation: 'isolate' }}>
-      <div
-        ref={mapRef}
-        className="w-full h-full rounded-lg"
-        style={{
-          // Inline styles to ensure they apply on iOS Safari
-          position: 'relative',
-          zIndex: 0,
-        }}
-      />
-      {/* Draw control visibility fix for iOS Safari - applied via useEffect */}
+    <div className={cn('relative', className)}>
+      <div ref={mapRef} className="w-full h-full rounded-lg" />
       <div className="absolute bottom-2 left-2 right-2 bg-background/90 backdrop-blur rounded px-3 py-2 text-xs text-muted-foreground text-center pointer-events-none" style={{ zIndex: 1000 }}>
         Tap the polygon icon (top-right), then tap points on the map to draw your boundary. Tap the first point to close the shape.
       </div>
