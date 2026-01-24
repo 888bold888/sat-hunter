@@ -168,11 +168,70 @@ export function PolygonDrawMap({
   }, [center.lat, center.lng]);
 
   return (
-    <div className={cn('relative', className)}>
-      <div ref={mapRef} className="w-full h-full rounded-lg" />
-      <div className="absolute bottom-2 left-2 right-2 bg-background/90 backdrop-blur rounded px-3 py-2 text-xs text-muted-foreground text-center">
-        Click the polygon icon (top-right), then tap points on the map to draw your boundary. Tap the first point to close the shape.
+    <>
+      <style>{`
+        /* Contain Leaflet in its own stacking context to prevent iOS Safari z-index issues */
+        .leaflet-draw-map-container {
+          isolation: isolate;
+          contain: layout style;
+          position: relative;
+          z-index: 0;
+        }
+        .leaflet-draw-map-container .leaflet-container {
+          background: #0d0f14 !important;
+          z-index: 1 !important;
+          isolation: isolate;
+        }
+        .leaflet-draw-map-container .leaflet-pane {
+          z-index: 1 !important;
+        }
+        .leaflet-draw-map-container .leaflet-tile-pane {
+          z-index: 1 !important;
+        }
+        .leaflet-draw-map-container .leaflet-overlay-pane {
+          z-index: 2 !important;
+        }
+        .leaflet-draw-map-container .leaflet-shadow-pane {
+          z-index: 3 !important;
+        }
+        .leaflet-draw-map-container .leaflet-marker-pane {
+          z-index: 4 !important;
+        }
+        .leaflet-draw-map-container .leaflet-tooltip-pane {
+          z-index: 5 !important;
+        }
+        .leaflet-draw-map-container .leaflet-popup-pane {
+          z-index: 6 !important;
+        }
+        .leaflet-draw-map-container .leaflet-top,
+        .leaflet-draw-map-container .leaflet-bottom {
+          z-index: 10 !important;
+        }
+        .leaflet-draw-map-container .leaflet-control {
+          z-index: 10 !important;
+        }
+        /* Ensure draw toolbar and actions are visible */
+        .leaflet-draw-map-container .leaflet-draw-toolbar {
+          z-index: 10 !important;
+        }
+        .leaflet-draw-map-container .leaflet-draw-actions {
+          z-index: 10 !important;
+        }
+        /* Style the draw controls for dark theme */
+        .leaflet-draw-map-container .leaflet-draw-toolbar a {
+          background-color: rgba(13, 15, 20, 0.9);
+          border-color: rgba(249, 115, 22, 0.3);
+        }
+        .leaflet-draw-map-container .leaflet-draw-toolbar a:hover {
+          background-color: rgba(249, 115, 22, 0.2);
+        }
+      `}</style>
+      <div className={cn('relative leaflet-draw-map-container', className)}>
+        <div ref={mapRef} className="w-full h-full rounded-lg" />
+        <div className="absolute bottom-2 left-2 right-2 bg-background/90 backdrop-blur rounded px-3 py-2 text-xs text-muted-foreground text-center z-20">
+          Tap the polygon icon (top-right), then tap points on the map to draw your boundary. Tap the first point to close the shape.
+        </div>
       </div>
-    </div>
+    </>
   );
 }
