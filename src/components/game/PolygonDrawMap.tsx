@@ -14,50 +14,21 @@ if (typeof document !== 'undefined' && !document.getElementById(STYLE_ID)) {
   style.id = STYLE_ID;
   style.textContent = `
     /* iOS Safari z-index fix for Leaflet draw controls */
-    /* Constrain ALL map panes to low z-index */
-    .leaflet-pane {
-      z-index: 1 !important;
-    }
-    .leaflet-tile-pane {
-      z-index: 1 !important;
-    }
-    .leaflet-overlay-pane {
-      z-index: 2 !important;
-    }
-    .leaflet-shadow-pane {
-      z-index: 3 !important;
-    }
-    .leaflet-marker-pane {
-      z-index: 4 !important;
-    }
-    .leaflet-tooltip-pane {
-      z-index: 5 !important;
-    }
-    .leaflet-popup-pane {
-      z-index: 6 !important;
-    }
-    /* Force control container to create new stacking context above panes */
+    /* Use transform to force GPU layer without isolation */
     .leaflet-control-container {
-      z-index: 800 !important;
-      position: absolute !important;
+      transform: translateZ(0);
+      -webkit-transform: translateZ(0);
     }
-    .leaflet-top,
-    .leaflet-bottom {
-      z-index: 800 !important;
-      position: absolute !important;
+    .leaflet-top.leaflet-right {
+      z-index: 9999 !important;
+      transform: translateZ(0);
+      -webkit-transform: translateZ(0);
     }
-    .leaflet-control {
-      z-index: 800 !important;
-      position: relative !important;
+    .leaflet-draw {
+      z-index: 9999 !important;
     }
-    .leaflet-draw-section,
-    .leaflet-draw-toolbar,
-    .leaflet-draw-actions {
-      z-index: 800 !important;
-    }
-    /* Force new stacking context on map container */
-    .leaflet-container {
-      isolation: isolate;
+    .leaflet-draw-toolbar {
+      z-index: 9999 !important;
     }
   `;
   document.head.appendChild(style);
