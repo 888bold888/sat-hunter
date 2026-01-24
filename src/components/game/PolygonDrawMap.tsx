@@ -14,17 +14,50 @@ if (typeof document !== 'undefined' && !document.getElementById(STYLE_ID)) {
   style.id = STYLE_ID;
   style.textContent = `
     /* iOS Safari z-index fix for Leaflet draw controls */
+    /* Constrain ALL map panes to low z-index */
+    .leaflet-pane {
+      z-index: 1 !important;
+    }
+    .leaflet-tile-pane {
+      z-index: 1 !important;
+    }
+    .leaflet-overlay-pane {
+      z-index: 2 !important;
+    }
+    .leaflet-shadow-pane {
+      z-index: 3 !important;
+    }
+    .leaflet-marker-pane {
+      z-index: 4 !important;
+    }
+    .leaflet-tooltip-pane {
+      z-index: 5 !important;
+    }
+    .leaflet-popup-pane {
+      z-index: 6 !important;
+    }
+    /* Force control container to create new stacking context above panes */
+    .leaflet-control-container {
+      z-index: 800 !important;
+      position: absolute !important;
+    }
     .leaflet-top,
     .leaflet-bottom {
-      z-index: 1000 !important;
+      z-index: 800 !important;
+      position: absolute !important;
     }
     .leaflet-control {
-      z-index: 1000 !important;
+      z-index: 800 !important;
+      position: relative !important;
     }
     .leaflet-draw-section,
     .leaflet-draw-toolbar,
     .leaflet-draw-actions {
-      z-index: 1000 !important;
+      z-index: 800 !important;
+    }
+    /* Force new stacking context on map container */
+    .leaflet-container {
+      isolation: isolate;
     }
   `;
   document.head.appendChild(style);
