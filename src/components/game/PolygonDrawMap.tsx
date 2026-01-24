@@ -14,20 +14,29 @@ if (typeof document !== 'undefined' && !document.getElementById(STYLE_ID)) {
   style.id = STYLE_ID;
   style.textContent = `
     /* iOS Safari z-index fix for Leaflet draw controls */
-    /* Use transform to force GPU layer without isolation */
+    /* Push tile pane down with transform to create lower GPU layer */
+    .leaflet-tile-pane {
+      z-index: 1 !important;
+      transform: translateZ(-1px);
+      -webkit-transform: translateZ(-1px);
+    }
+    .leaflet-pane {
+      z-index: 1 !important;
+    }
+    /* Pull control container up with transform to create higher GPU layer */
     .leaflet-control-container {
-      transform: translateZ(0);
-      -webkit-transform: translateZ(0);
+      z-index: 9999 !important;
+      transform: translateZ(1px);
+      -webkit-transform: translateZ(1px);
     }
     .leaflet-top.leaflet-right {
       z-index: 9999 !important;
-      transform: translateZ(0);
-      -webkit-transform: translateZ(0);
+      transform: translateZ(1px);
+      -webkit-transform: translateZ(1px);
     }
-    .leaflet-draw {
-      z-index: 9999 !important;
-    }
-    .leaflet-draw-toolbar {
+    .leaflet-draw,
+    .leaflet-draw-toolbar,
+    .leaflet-draw-section {
       z-index: 9999 !important;
     }
   `;
