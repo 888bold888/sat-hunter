@@ -1,47 +1,12 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import type { GeoLocation } from '@/lib/gameTypes';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import 'leaflet-draw';
 import 'leaflet-draw/dist/leaflet.draw.css';
 import { cn } from '@/lib/utils';
-
-// Inject global styles once for iOS Safari z-index fix
-// This runs once at module load, not on each render
-const STYLE_ID = 'polygon-draw-map-ios-fix';
-if (typeof document !== 'undefined' && !document.getElementById(STYLE_ID)) {
-  const style = document.createElement('style');
-  style.id = STYLE_ID;
-  style.textContent = `
-    /* iOS Safari z-index fix for Leaflet draw controls */
-    /* Push tile pane down with transform to create lower GPU layer */
-    .leaflet-tile-pane {
-      z-index: 1 !important;
-      transform: translateZ(-1px);
-      -webkit-transform: translateZ(-1px);
-    }
-    .leaflet-pane {
-      z-index: 1 !important;
-    }
-    /* Pull control container up with transform to create higher GPU layer */
-    .leaflet-control-container {
-      z-index: 9999 !important;
-      transform: translateZ(1px);
-      -webkit-transform: translateZ(1px);
-    }
-    .leaflet-top.leaflet-right {
-      z-index: 9999 !important;
-      transform: translateZ(1px);
-      -webkit-transform: translateZ(1px);
-    }
-    .leaflet-draw,
-    .leaflet-draw-toolbar,
-    .leaflet-draw-section {
-      z-index: 9999 !important;
-    }
-  `;
-  document.head.appendChild(style);
-}
+import { Button } from '@/components/ui/button';
+import { Pentagon, Trash2, X } from 'lucide-react';
 
 interface PolygonDrawMapProps {
   center: GeoLocation;
@@ -61,6 +26,10 @@ export function PolygonDrawMap({
   const mapRef = useRef<HTMLDivElement>(null);
   const mapInstanceRef = useRef<L.Map | null>(null);
   const drawnItemsRef = useRef<L.FeatureGroup | null>(null);
+  const drawHandlerRef = useRef<L.Draw.Polygon | null>(null);
+
+  const [isDrawing, setIsDrawing] = useState(false);
+  const [hasPolygon, setHasPolygon] = useState(false);
 
   // Stable refs for callbacks
   const onPolygonCompleteRef = useRef(onPolygonComplete);
@@ -68,12 +37,12 @@ export function PolygonDrawMap({
   onPolygonCompleteRef.current = onPolygonComplete;
   onPolygonClearRef.current = onPolygonClear;
 
-  // Initialize map
+  // Initialize map (without leaflet-draw controls - we'll use our own UI)
   useEffect(() => {
     if (!mapRef.current || mapInstanceRef.current) return;
 
     const map = L.map(mapRef.current, {
-      zoomControl: true,
+      zoomControl: false, // We'll handle zoom differently or skip it
       attributionControl: false,
     }).setView([center.lat, center.lng], 17);
 
@@ -86,42 +55,12 @@ export function PolygonDrawMap({
     map.addLayer(drawnItems);
     drawnItemsRef.current = drawnItems;
 
-    // Add draw control - polygon only
-    const drawControl = new L.Control.Draw({
-      position: 'topright',
-      draw: {
-        polygon: {
-          allowIntersection: false,
-          showArea: false,
-          shapeOptions: {
-            color: '#f97316',
-            fillColor: '#f97316',
-            fillOpacity: 0.2,
-            weight: 3,
-          },
-        },
-        rectangle: false,
-        circle: false,
-        circlemarker: false,
-        marker: false,
-        polyline: false,
-      },
-      edit: {
-        featureGroup: drawnItems,
-        remove: true,
-      },
-    });
-    map.addControl(drawControl);
-
-    // Handle polygon creation
+    // Handle polygon creation event
     map.on(L.Draw.Event.CREATED, (event: L.DrawEvents.Created) => {
-      // Clear existing polygons first (only allow one at a time)
       drawnItems.clearLayers();
-
       const layer = event.layer;
       drawnItems.addLayer(layer);
 
-      // Extract coordinates
       if (layer instanceof L.Polygon) {
         const latLngs = layer.getLatLngs()[0] as L.LatLng[];
         const points: GeoLocation[] = latLngs.map(ll => ({
@@ -129,29 +68,14 @@ export function PolygonDrawMap({
           lng: ll.lng,
         }));
         onPolygonCompleteRef.current(points);
+        setHasPolygon(true);
       }
+      setIsDrawing(false);
     });
 
-    // Handle polygon edit
-    map.on(L.Draw.Event.EDITED, (event: L.DrawEvents.Edited) => {
-      const layers = event.layers;
-      layers.eachLayer((layer) => {
-        if (layer instanceof L.Polygon) {
-          const latLngs = layer.getLatLngs()[0] as L.LatLng[];
-          const points: GeoLocation[] = latLngs.map(ll => ({
-            lat: ll.lat,
-            lng: ll.lng,
-          }));
-          onPolygonCompleteRef.current(points);
-        }
-      });
-    });
-
-    // Handle polygon deletion
-    map.on(L.Draw.Event.DELETED, () => {
-      if (drawnItems.getLayers().length === 0) {
-        onPolygonClearRef.current();
-      }
+    // Handle drawing stop (cancel)
+    map.on('draw:drawstop', () => {
+      setIsDrawing(false);
     });
 
     mapInstanceRef.current = map;
@@ -160,6 +84,7 @@ export function PolygonDrawMap({
       map.remove();
       mapInstanceRef.current = null;
       drawnItemsRef.current = null;
+      drawHandlerRef.current = null;
     };
   }, [center.lat, center.lng]);
 
@@ -167,7 +92,6 @@ export function PolygonDrawMap({
   useEffect(() => {
     if (!mapInstanceRef.current || !drawnItemsRef.current) return;
 
-    // Clear existing
     drawnItemsRef.current.clearLayers();
 
     if (polygon && polygon.length >= 3) {
@@ -179,9 +103,10 @@ export function PolygonDrawMap({
         weight: 3,
       });
       drawnItemsRef.current.addLayer(polygonLayer);
-
-      // Fit bounds to polygon
       mapInstanceRef.current.fitBounds(polygonLayer.getBounds(), { padding: [50, 50] });
+      setHasPolygon(true);
+    } else {
+      setHasPolygon(false);
     }
   }, [polygon]);
 
@@ -204,11 +129,124 @@ export function PolygonDrawMap({
     };
   }, [center.lat, center.lng]);
 
+  // Start drawing polygon
+  const startDrawing = () => {
+    if (!mapInstanceRef.current) return;
+
+    // Clear existing polygon first
+    if (drawnItemsRef.current) {
+      drawnItemsRef.current.clearLayers();
+    }
+    setHasPolygon(false);
+
+    // Create and enable polygon draw handler
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const drawHandler = new L.Draw.Polygon(mapInstanceRef.current as any, {
+      allowIntersection: false,
+      showArea: false,
+      shapeOptions: {
+        color: '#f97316',
+        fillColor: '#f97316',
+        fillOpacity: 0.2,
+        weight: 3,
+      },
+    });
+
+    drawHandler.enable();
+    drawHandlerRef.current = drawHandler;
+    setIsDrawing(true);
+  };
+
+  // Cancel drawing
+  const cancelDrawing = () => {
+    if (drawHandlerRef.current) {
+      drawHandlerRef.current.disable();
+      drawHandlerRef.current = null;
+    }
+    setIsDrawing(false);
+  };
+
+  // Delete polygon
+  const deletePolygon = () => {
+    if (drawnItemsRef.current) {
+      drawnItemsRef.current.clearLayers();
+    }
+    setHasPolygon(false);
+    onPolygonClearRef.current();
+  };
+
+  // Zoom controls
+  const zoomIn = () => mapInstanceRef.current?.zoomIn();
+  const zoomOut = () => mapInstanceRef.current?.zoomOut();
+
   return (
     <div className={cn('relative', className)}>
       <div ref={mapRef} className="w-full h-full rounded-lg" />
+
+      {/* Custom controls - positioned outside Leaflet's DOM */}
+      <div className="absolute top-2 right-2 flex flex-col gap-2" style={{ zIndex: 1000 }}>
+        {!isDrawing ? (
+          <>
+            <Button
+              size="sm"
+              variant="secondary"
+              onClick={startDrawing}
+              className="h-10 w-10 p-0 bg-background/95 border border-primary/30 shadow-lg"
+              title="Draw polygon"
+            >
+              <Pentagon className="h-5 w-5 text-primary" />
+            </Button>
+            {hasPolygon && (
+              <Button
+                size="sm"
+                variant="secondary"
+                onClick={deletePolygon}
+                className="h-10 w-10 p-0 bg-background/95 border border-destructive/30 shadow-lg"
+                title="Delete polygon"
+              >
+                <Trash2 className="h-5 w-5 text-destructive" />
+              </Button>
+            )}
+          </>
+        ) : (
+          <Button
+            size="sm"
+            variant="secondary"
+            onClick={cancelDrawing}
+            className="h-10 w-10 p-0 bg-background/95 border border-destructive/30 shadow-lg"
+            title="Cancel drawing"
+          >
+            <X className="h-5 w-5 text-destructive" />
+          </Button>
+        )}
+      </div>
+
+      {/* Zoom controls */}
+      <div className="absolute top-2 left-2 flex flex-col gap-1" style={{ zIndex: 1000 }}>
+        <Button
+          size="sm"
+          variant="secondary"
+          onClick={zoomIn}
+          className="h-8 w-8 p-0 bg-background/95 border border-border shadow-lg text-lg font-bold"
+        >
+          +
+        </Button>
+        <Button
+          size="sm"
+          variant="secondary"
+          onClick={zoomOut}
+          className="h-8 w-8 p-0 bg-background/95 border border-border shadow-lg text-lg font-bold"
+        >
+          −
+        </Button>
+      </div>
+
+      {/* Instructions */}
       <div className="absolute bottom-2 left-2 right-2 bg-background/90 backdrop-blur rounded px-3 py-2 text-xs text-muted-foreground text-center pointer-events-none" style={{ zIndex: 1000 }}>
-        Tap the polygon icon (top-right), then tap points on the map to draw your boundary. Tap the first point to close the shape.
+        {isDrawing
+          ? "Tap points on the map to draw your boundary. Tap the first point to close the shape."
+          : "Tap the polygon icon (top-right) to start drawing your hunt boundary."
+        }
       </div>
     </div>
   );
