@@ -141,7 +141,7 @@ export function PolygonDrawMap({
     // Create and enable polygon draw handler
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const drawHandler = new L.Draw.Polygon(mapInstanceRef.current as any, {
-      allowIntersection: false,
+      allowIntersection: true, // Allow intersections to avoid confusing error messages
       showArea: false,
       shapeOptions: {
         color: '#f97316',
