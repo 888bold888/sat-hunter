@@ -179,11 +179,19 @@ export function PolygonDrawMap({
   const zoomOut = () => mapInstanceRef.current?.zoomOut();
 
   return (
-    <div className={cn('relative', className)}>
-      <div ref={mapRef} className="w-full h-full rounded-lg" />
+    <div className={cn('relative', className)} style={{ isolation: 'isolate' }}>
+      {/* Map container - explicitly lower in stacking order */}
+      <div ref={mapRef} className="w-full h-full rounded-lg" style={{ position: 'relative', zIndex: 1 }} />
 
-      {/* Custom controls - positioned outside Leaflet's DOM */}
-      <div className="absolute top-2 right-2 flex flex-col gap-2" style={{ zIndex: 1000 }}>
+      {/* Custom controls - force into own compositing layer with transform */}
+      <div
+        className="absolute top-2 right-2 flex flex-col gap-2"
+        style={{
+          zIndex: 9999,
+          transform: 'translate3d(0,0,0)',
+          WebkitTransform: 'translate3d(0,0,0)',
+        }}
+      >
         {!isDrawing ? (
           <>
             <button
@@ -217,8 +225,15 @@ export function PolygonDrawMap({
         )}
       </div>
 
-      {/* Zoom controls */}
-      <div className="absolute top-2 left-2 flex flex-col gap-1" style={{ zIndex: 1000 }}>
+      {/* Zoom controls - force into own compositing layer */}
+      <div
+        className="absolute top-2 left-2 flex flex-col gap-1"
+        style={{
+          zIndex: 9999,
+          transform: 'translate3d(0,0,0)',
+          WebkitTransform: 'translate3d(0,0,0)',
+        }}
+      >
         <button
           type="button"
           onClick={zoomIn}
@@ -235,8 +250,15 @@ export function PolygonDrawMap({
         </button>
       </div>
 
-      {/* Instructions */}
-      <div className="absolute bottom-2 left-2 right-2 bg-background/90 backdrop-blur rounded px-3 py-2 text-xs text-muted-foreground text-center pointer-events-none" style={{ zIndex: 1000 }}>
+      {/* Instructions - force into own compositing layer */}
+      <div
+        className="absolute bottom-2 left-2 right-2 bg-zinc-900/95 rounded px-3 py-2 text-xs text-zinc-400 text-center pointer-events-none"
+        style={{
+          zIndex: 9999,
+          transform: 'translate3d(0,0,0)',
+          WebkitTransform: 'translate3d(0,0,0)',
+        }}
+      >
         {isDrawing
           ? "Tap points on the map to draw your boundary. Tap the first point to close the shape."
           : "Tap the polygon icon (top-right) to start drawing your hunt boundary."
