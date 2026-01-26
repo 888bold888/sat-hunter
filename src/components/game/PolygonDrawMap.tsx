@@ -7,6 +7,14 @@ import 'leaflet-draw/dist/leaflet.draw.css';
 import { cn } from '@/lib/utils';
 import { Pentagon, Trash2, X } from 'lucide-react';
 
+// Override Leaflet Draw error messages to prevent confusing UX
+if (typeof L !== 'undefined' && L.drawLocal) {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  (L.drawLocal.draw.handlers.polygon as any).error = '';
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  (L.drawLocal.draw.handlers.polyline as any).error = '';
+}
+
 interface PolygonDrawMapProps {
   center: GeoLocation;
   polygon?: GeoLocation[];
@@ -30,20 +38,21 @@ export function PolygonDrawMap({
   const [isDrawing, setIsDrawing] = useState(false);
   const [hasPolygon, setHasPolygon] = useState(false);
 
-  // Stable refs for callbacks
+  // Stable refs for callbacks and initial center
   const onPolygonCompleteRef = useRef(onPolygonComplete);
   const onPolygonClearRef = useRef(onPolygonClear);
+  const initialCenterRef = useRef(center);
   onPolygonCompleteRef.current = onPolygonComplete;
   onPolygonClearRef.current = onPolygonClear;
 
-  // Initialize map (without leaflet-draw controls - we'll use our own UI)
+  // Initialize map ONCE on mount (without leaflet-draw controls - we'll use our own UI)
   useEffect(() => {
     if (!mapRef.current || mapInstanceRef.current) return;
 
     const map = L.map(mapRef.current, {
       zoomControl: false, // We'll handle zoom differently or skip it
       attributionControl: false,
-    }).setView([center.lat, center.lng], 17);
+    }).setView([initialCenterRef.current.lat, initialCenterRef.current.lng], 17);
 
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
       maxZoom: 19,
@@ -85,7 +94,7 @@ export function PolygonDrawMap({
       drawnItemsRef.current = null;
       drawHandlerRef.current = null;
     };
-  }, [center.lat, center.lng]);
+  }, []); // Only initialize once on mount
 
   // Draw existing polygon if provided (only on initial load or explicit changes)
   const polygonLoadedRef = useRef(false);
