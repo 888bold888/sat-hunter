@@ -87,13 +87,15 @@ export function PolygonDrawMap({
     };
   }, [center.lat, center.lng]);
 
-  // Draw existing polygon if provided
+  // Draw existing polygon if provided (only on initial load or explicit changes)
+  const polygonLoadedRef = useRef(false);
   useEffect(() => {
     if (!mapInstanceRef.current || !drawnItemsRef.current) return;
 
-    drawnItemsRef.current.clearLayers();
-
-    if (polygon && polygon.length >= 3) {
+    // Only process polygon prop on initial load or if we don't already have a drawn polygon
+    // This prevents clearing user-drawn polygons on parent re-renders
+    if (polygon && polygon.length >= 3 && !polygonLoadedRef.current) {
+      drawnItemsRef.current.clearLayers();
       const latLngs = polygon.map(p => L.latLng(p.lat, p.lng));
       const polygonLayer = L.polygon(latLngs, {
         color: '#f97316',
@@ -104,8 +106,7 @@ export function PolygonDrawMap({
       drawnItemsRef.current.addLayer(polygonLayer);
       mapInstanceRef.current.fitBounds(polygonLayer.getBounds(), { padding: [50, 50] });
       setHasPolygon(true);
-    } else {
-      setHasPolygon(false);
+      polygonLoadedRef.current = true;
     }
   }, [polygon]);
 
