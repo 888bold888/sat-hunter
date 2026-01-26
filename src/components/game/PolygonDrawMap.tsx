@@ -5,7 +5,6 @@ import 'leaflet/dist/leaflet.css';
 import 'leaflet-draw';
 import 'leaflet-draw/dist/leaflet.draw.css';
 import { cn } from '@/lib/utils';
-import { Button } from '@/components/ui/button';
 import { Pentagon, Trash2, X } from 'lucide-react';
 
 interface PolygonDrawMapProps {
@@ -187,58 +186,53 @@ export function PolygonDrawMap({
       <div className="absolute top-2 right-2 flex flex-col gap-2" style={{ zIndex: 1000 }}>
         {!isDrawing ? (
           <>
-            <Button
-              size="sm"
-              variant="secondary"
+            <button
+              type="button"
               onClick={startDrawing}
-              className="h-10 w-10 p-0 bg-background/95 border border-primary/30 shadow-lg"
+              className="h-10 w-10 flex items-center justify-center rounded-md bg-zinc-900 border-2 border-orange-500 shadow-lg"
               title="Draw polygon"
             >
-              <Pentagon className="h-5 w-5 text-primary" />
-            </Button>
+              <Pentagon className="h-5 w-5 text-orange-500" />
+            </button>
             {hasPolygon && (
-              <Button
-                size="sm"
-                variant="secondary"
+              <button
+                type="button"
                 onClick={deletePolygon}
-                className="h-10 w-10 p-0 bg-background/95 border border-destructive/30 shadow-lg"
+                className="h-10 w-10 flex items-center justify-center rounded-md bg-zinc-900 border-2 border-red-500 shadow-lg"
                 title="Delete polygon"
               >
-                <Trash2 className="h-5 w-5 text-destructive" />
-              </Button>
+                <Trash2 className="h-5 w-5 text-red-500" />
+              </button>
             )}
           </>
         ) : (
-          <Button
-            size="sm"
-            variant="secondary"
+          <button
+            type="button"
             onClick={cancelDrawing}
-            className="h-10 w-10 p-0 bg-background/95 border border-destructive/30 shadow-lg"
+            className="h-10 w-10 flex items-center justify-center rounded-md bg-zinc-900 border-2 border-red-500 shadow-lg"
             title="Cancel drawing"
           >
-            <X className="h-5 w-5 text-destructive" />
-          </Button>
+            <X className="h-5 w-5 text-red-500" />
+          </button>
         )}
       </div>
 
       {/* Zoom controls */}
       <div className="absolute top-2 left-2 flex flex-col gap-1" style={{ zIndex: 1000 }}>
-        <Button
-          size="sm"
-          variant="secondary"
+        <button
+          type="button"
           onClick={zoomIn}
-          className="h-8 w-8 p-0 bg-background/95 border border-border shadow-lg text-lg font-bold"
+          className="h-8 w-8 flex items-center justify-center rounded-md bg-zinc-900 border border-zinc-700 shadow-lg text-white text-lg font-bold"
         >
           +
-        </Button>
-        <Button
-          size="sm"
-          variant="secondary"
+        </button>
+        <button
+          type="button"
           onClick={zoomOut}
-          className="h-8 w-8 p-0 bg-background/95 border border-border shadow-lg text-lg font-bold"
+          className="h-8 w-8 flex items-center justify-center rounded-md bg-zinc-900 border border-zinc-700 shadow-lg text-white text-lg font-bold"
         >
           −
-        </Button>
+        </button>
       </div>
 
       {/* Instructions */}
