@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useGame } from '@/contexts/GameContext';
 import { useCurrentUser } from '@/hooks/useCurrentUser';
 import { validateHuntConfig, formatSats } from '@/lib/gameUtils';
@@ -82,6 +82,53 @@ export function CreateHuntForm({ onHuntCreated }: CreateHuntFormProps) {
     max.setDate(max.getDate() + 30);
     return max;
   };
+
+  // Check if selected date is today
+  const isSelectedDateToday = scheduledDate
+    ? scheduledDate.getFullYear() === new Date().getFullYear() &&
+      scheduledDate.getMonth() === new Date().getMonth() &&
+      scheduledDate.getDate() === new Date().getDate()
+    : false;
+
+  // Get available hours (filter past hours if today)
+  const getAvailableHours = useCallback(() => {
+    const hours = Array.from({ length: 24 }, (_, i) => i);
+    if (!isSelectedDateToday) return hours;
+    const currentHour = new Date().getHours();
+    return hours.filter((h) => h >= currentHour);
+  }, [isSelectedDateToday]);
+
+  // Get available minutes for a given hour (filter past minutes if today + current hour)
+  const getAvailableMinutes = useCallback((hour: number) => {
+    const minutes = ['00', '15', '30', '45'];
+    if (!isSelectedDateToday) return minutes;
+    const now = new Date();
+    const currentHour = now.getHours();
+    if (hour > currentHour) return minutes;
+    if (hour < currentHour) return [];
+    // Same hour - filter out past minutes
+    const currentMinute = now.getMinutes();
+    return minutes.filter((m) => parseInt(m) > currentMinute);
+  }, [isSelectedDateToday]);
+
+  // Auto-adjust hour/minute when date changes to today
+  useEffect(() => {
+    if (!isSelectedDateToday) return;
+    const availableHours = getAvailableHours();
+    const currentSelectedHour = parseInt(scheduledHour);
+    // If current hour is no longer valid, select next available
+    if (!availableHours.includes(currentSelectedHour) && availableHours.length > 0) {
+      setScheduledHour(availableHours[0].toString().padStart(2, '0'));
+    }
+  }, [scheduledDate, isSelectedDateToday, scheduledHour, getAvailableHours]);
+
+  // Auto-adjust minute when hour changes
+  useEffect(() => {
+    const availableMinutes = getAvailableMinutes(parseInt(scheduledHour));
+    if (!availableMinutes.includes(scheduledMinute) && availableMinutes.length > 0) {
+      setScheduledMinute(availableMinutes[0]);
+    }
+  }, [scheduledHour, scheduledDate, scheduledMinute, isSelectedDateToday, getAvailableMinutes]);
 
   useEffect(() => {
     startLocationTracking();
@@ -368,7 +415,7 @@ export function CreateHuntForm({ onHuntCreated }: CreateHuntFormProps) {
                         <SelectValue placeholder="Hour" />
                       </SelectTrigger>
                       <SelectContent>
-                        {Array.from({ length: 24 }, (_, i) => (
+                        {getAvailableHours().map((i) => (
                           <SelectItem key={i} value={i.toString().padStart(2, '0')}>
                             {i === 0 ? '12 AM' : i < 12 ? `${i} AM` : i === 12 ? '12 PM' : `${i - 12} PM`}
                           </SelectItem>
@@ -380,7 +427,7 @@ export function CreateHuntForm({ onHuntCreated }: CreateHuntFormProps) {
                         <SelectValue placeholder="Min" />
                       </SelectTrigger>
                       <SelectContent>
-                        {['00', '15', '30', '45'].map((min) => (
+                        {getAvailableMinutes(parseInt(scheduledHour)).map((min) => (
                           <SelectItem key={min} value={min}>
                             :{min}
                           </SelectItem>
