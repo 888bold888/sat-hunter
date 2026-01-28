@@ -70,13 +70,18 @@ export function CreateHuntForm({ onHuntCreated }: CreateHuntFormProps) {
     return date.getTime();
   };
 
-  // Get minimum date (today)
-  const getMinDate = () => new Date();
+  // Get minimum date (start of today - allows selecting today)
+  const getMinDate = () => {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    return today;
+  };
 
   // Get maximum date (30 days from now)
   const getMaxDate = () => {
     const max = new Date();
     max.setDate(max.getDate() + 30);
+    max.setHours(23, 59, 59, 999);
     return max;
   };
 
