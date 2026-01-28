@@ -44,6 +44,7 @@ export function usePublishHunt() {
           ['status', hunt.status],
           ['payment_status', hunt.paymentStatus],
           ['p2p', 'required'], // Location data served via P2P, not on relay
+          ...(hunt.requiresApproval ? [['requires_approval', 'true']] : []),
           ['alt', `Sat Hunter: ${hunt.name} - ${hunt.monsterCount} creatures, ${hunt.totalSats.toLocaleString()} sats`],
           ...(hunt.lightningInvoice ? [['bolt11', hunt.lightningInvoice]] : []),
           ...(hunt.paymentHash ? [['payment_hash', hunt.paymentHash]] : []),

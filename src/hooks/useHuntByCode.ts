@@ -38,6 +38,9 @@ export function useHuntByCode(shareCode: string | undefined) {
       // Check if this hunt uses P2P for location data (privacy mode)
       const isP2P = getTag('p2p') === 'required' || contentData.p2pRequired === true;
 
+      // Check if this hunt requires host approval to join
+      const requiresApproval = getTag('requires_approval') === 'true';
+
       // For P2P hunts, location data (geoFence, monsters, satStops) comes via P2P
       // not from the relay. We create placeholder structures that will be filled
       // when the player connects to the host via WebRTC.
@@ -68,6 +71,7 @@ export function useHuntByCode(shareCode: string | undefined) {
         participants: [],
         spawnMode: (contentData.spawnMode as HuntEvent['spawnMode']) || 'all_at_once',
         maxConcurrentMonsters: contentData.maxConcurrentMonsters,
+        requiresApproval,
       };
       
       // Validate payment status before allowing join

@@ -83,6 +83,8 @@ export interface HuntEvent {
   // Spawn mode configuration
   spawnMode: SpawnMode;
   maxConcurrentMonsters?: number; // Only for 'scattered_replacement' mode
+  // Security settings
+  requiresApproval?: boolean; // Host must approve players before they can join
 }
 
 export interface HuntParticipant {

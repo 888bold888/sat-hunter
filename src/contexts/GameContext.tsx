@@ -268,6 +268,7 @@ interface GameContextType {
     spawnMode?: SpawnMode;
     maxConcurrentMonsters?: number;
     scheduledStartTime?: number; // Optional: schedule hunt to start in the future
+    requiresApproval?: boolean; // Optional: require host approval to join
   }) => Promise<CreateHuntResult>;
   confirmPayment: () => void;
   startHunt: () => void;
@@ -371,6 +372,7 @@ export function GameProvider({ children }: { children: ReactNode }) {
       spawnMode?: SpawnMode;
       maxConcurrentMonsters?: number;
       scheduledStartTime?: number;
+      requiresApproval?: boolean;
     }): Promise<CreateHuntResult> => {
       // Create geofence based on boundary type
       const geoFence = config.boundaryType === 'polygon' && config.polygon
@@ -418,6 +420,7 @@ export function GameProvider({ children }: { children: ReactNode }) {
         participants: [],
         spawnMode: config.spawnMode || 'all_at_once',
         maxConcurrentMonsters: config.maxConcurrentMonsters,
+        requiresApproval: config.requiresApproval,
       };
       dispatch({ type: 'SET_ACTIVE_HUNT', hunt });
       return { hunt, monstersInfo: monstersResult, satStopsInfo: satStopsResult };
