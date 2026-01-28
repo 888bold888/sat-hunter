@@ -299,21 +299,30 @@ export function CreateHuntForm({ onHuntCreated }: CreateHuntFormProps) {
               </div>
             </div>
 
-            {/* Schedule for Later */}
+            {/* Schedule Start Time */}
             <div className="space-y-3">
-              <div className="flex items-center justify-between">
-                <Label className="font-display flex items-center gap-2">
-                  <CalendarClock className="w-4 h-4 text-cyan-400" />
-                  Schedule Start Time
-                </Label>
+              <Label className="font-display flex items-center gap-2">
+                <CalendarClock className="w-4 h-4 text-cyan-400" />
+                Start Time
+              </Label>
+              <div className="grid grid-cols-2 gap-2">
+                <Button
+                  type="button"
+                  variant={!isScheduled ? 'default' : 'outline'}
+                  className={!isScheduled ? 'bg-cyan-600 hover:bg-cyan-700' : ''}
+                  onClick={() => setIsScheduled(false)}
+                >
+                  <Clock className="w-4 h-4 mr-2" />
+                  Start Now
+                </Button>
                 <Button
                   type="button"
                   variant={isScheduled ? 'default' : 'outline'}
-                  size="sm"
                   className={isScheduled ? 'bg-cyan-600 hover:bg-cyan-700' : ''}
-                  onClick={() => setIsScheduled(!isScheduled)}
+                  onClick={() => setIsScheduled(true)}
                 >
-                  {isScheduled ? 'Scheduled' : 'Start Now'}
+                  <CalendarClock className="w-4 h-4 mr-2" />
+                  Scheduled
                 </Button>
               </div>
               {isScheduled && (
