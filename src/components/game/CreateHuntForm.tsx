@@ -29,6 +29,7 @@ import {
   Shuffle,
   RefreshCw,
   Users,
+  CalendarClock,
 } from 'lucide-react';
 
 interface CreateHuntFormProps {
@@ -50,8 +51,24 @@ export function CreateHuntForm({ onHuntCreated }: CreateHuntFormProps) {
   const [polygonPoints, setPolygonPoints] = useState<GeoLocation[] | null>(null);
   const [spawnMode, setSpawnMode] = useState<SpawnMode>('all_at_once');
   const [maxConcurrentMonsters, setMaxConcurrentMonsters] = useState(20);
+  const [isScheduled, setIsScheduled] = useState(false);
+  const [scheduledDateTime, setScheduledDateTime] = useState('');
   const [isCreating, setIsCreating] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // Helper to get minimum datetime (now + 5 minutes)
+  const getMinDateTime = () => {
+    const now = new Date();
+    now.setMinutes(now.getMinutes() + 5);
+    return now.toISOString().slice(0, 16);
+  };
+
+  // Helper to get maximum datetime (30 days from now)
+  const getMaxDateTime = () => {
+    const max = new Date();
+    max.setDate(max.getDate() + 30);
+    return max.toISOString().slice(0, 16);
+  };
 
   useEffect(() => {
     startLocationTracking();
@@ -75,6 +92,18 @@ export function CreateHuntForm({ onHuntCreated }: CreateHuntFormProps) {
       setError('Please draw a hunt boundary with at least 3 points');
       return;
     }
+    // Validate scheduled time if scheduling
+    if (isScheduled) {
+      if (!scheduledDateTime) {
+        setError('Please select a start date and time for the scheduled hunt');
+        return;
+      }
+      const scheduledTime = new Date(scheduledDateTime).getTime();
+      if (scheduledTime <= Date.now()) {
+        setError('Scheduled start time must be in the future');
+        return;
+      }
+    }
     const validation = validateHuntConfig(totalSats, monsterCount, durationMinutes);
     if (!validation.valid) {
       setError(validation.error ?? 'Invalid configuration');
@@ -84,6 +113,9 @@ export function CreateHuntForm({ onHuntCreated }: CreateHuntFormProps) {
     setError(null);
     try {
       // Create hunt with pending_payment status (async - fetches streets for monsters and POIs for SatStops)
+      const scheduledStartTime = isScheduled && scheduledDateTime
+        ? new Date(scheduledDateTime).getTime()
+        : undefined;
       const { monstersInfo, satStopsInfo } = await createHunt({
         name: name.trim(),
         description: description.trim(),
@@ -96,6 +128,7 @@ export function CreateHuntForm({ onHuntCreated }: CreateHuntFormProps) {
         polygon: boundaryType === 'polygon' ? polygonPoints ?? undefined : undefined,
         spawnMode,
         maxConcurrentMonsters: spawnMode === 'scattered_replacement' ? maxConcurrentMonsters : undefined,
+        scheduledStartTime,
       });
 
       // Check for issues with creature placement
@@ -264,6 +297,40 @@ export function CreateHuntForm({ onHuntCreated }: CreateHuntFormProps) {
                 <span>15min</span>
                 <span>8 hours</span>
               </div>
+            </div>
+
+            {/* Schedule for Later */}
+            <div className="space-y-3">
+              <div className="flex items-center justify-between">
+                <Label className="font-display flex items-center gap-2">
+                  <CalendarClock className="w-4 h-4 text-cyan-400" />
+                  Schedule Start Time
+                </Label>
+                <Button
+                  type="button"
+                  variant={isScheduled ? 'default' : 'outline'}
+                  size="sm"
+                  className={isScheduled ? 'bg-cyan-600 hover:bg-cyan-700' : ''}
+                  onClick={() => setIsScheduled(!isScheduled)}
+                >
+                  {isScheduled ? 'Scheduled' : 'Start Now'}
+                </Button>
+              </div>
+              {isScheduled && (
+                <div className="space-y-2">
+                  <Input
+                    type="datetime-local"
+                    value={scheduledDateTime}
+                    onChange={(e) => setScheduledDateTime(e.target.value)}
+                    min={getMinDateTime()}
+                    max={getMaxDateTime()}
+                    className="border-cyan-500/30 focus:border-cyan-500"
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    You'll get the share code immediately to promote your hunt. Players can find it but won't be able to join until the scheduled time.
+                  </p>
+                </div>
+              )}
             </div>
 
             {/* Spawn Mode Selection */}

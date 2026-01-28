@@ -27,9 +27,10 @@ import {
   QrCode,
   CheckCircle,
   Info,
+  CalendarClock,
 } from 'lucide-react';
 import { Link } from 'react-router-dom';
-import { formatSats, formatTimeRemaining } from '@/lib/gameUtils';
+import { formatSats, formatTimeRemaining, formatCountdown } from '@/lib/gameUtils';
 import { useToast } from '@/hooks/useToast';
 
 export default function JoinHuntPage() {
@@ -129,6 +130,16 @@ export default function JoinHuntPage() {
       toast({
         title: 'Hunt Not Ready',
         description: 'This hunt is waiting for payment confirmation',
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    // Check if hunt has started (scheduled hunts)
+    if (foundHunt.startTime > Date.now()) {
+      toast({
+        title: 'Hunt Not Started Yet',
+        description: `This hunt starts ${formatCountdown(foundHunt.startTime)}. Come back then!`,
         variant: 'destructive',
       });
       return;
@@ -323,6 +334,12 @@ export default function JoinHuntPage() {
                       Waiting for payment
                     </Badge>
                   )}
+                  {foundHunt.startTime > Date.now() && foundHunt.paymentStatus === 'paid' && (
+                    <Badge variant="outline" className="border-cyan-500/50 text-cyan-500">
+                      <CalendarClock className="w-3 h-3 mr-1" />
+                      Starts {formatCountdown(foundHunt.startTime)}
+                    </Badge>
+                  )}
                   {foundHunt.requiresP2P && (
                     <Badge variant="outline" className="border-green-500/50 text-green-500">
                       🔒 Privacy Mode - Direct connection to host
@@ -399,8 +416,8 @@ export default function JoinHuntPage() {
             {/* Join Button */}
             <Button
               onClick={handleJoin}
-              disabled={!foundHunt || !user || foundHunt.paymentStatus !== 'paid' || isLoadingProfile || isJoining}
-              className="w-full h-12 font-display text-lg bg-gradient-to-r from-primary to-orange-600 hover:from-orange-600 hover:to-primary shadow-glow-orange"
+              disabled={!foundHunt || !user || foundHunt.paymentStatus !== 'paid' || foundHunt.startTime > Date.now() || isLoadingProfile || isJoining}
+              className="w-full h-12 font-display text-lg bg-gradient-to-r from-primary to-orange-600 hover:from-orange-600 hover:to-primary shadow-glow-orange disabled:opacity-50"
             >
               {isJoining ? (
                 <>
@@ -409,16 +426,25 @@ export default function JoinHuntPage() {
                 </>
               ) : (
                 <>
-                  <Target className="w-5 h-5 mr-2" />
-                  {!foundHunt
-                    ? 'Search for Hunt First'
-                    : !user
-                      ? 'Login to Join'
-                      : isLoadingProfile
-                        ? 'Checking profile...'
-                        : foundHunt.requiresP2P
-                          ? 'Connect & Join'
-                          : 'Join Hunt!'}
+                  {foundHunt && foundHunt.startTime > Date.now() ? (
+                    <>
+                      <CalendarClock className="w-5 h-5 mr-2" />
+                      Starts {formatCountdown(foundHunt.startTime)}
+                    </>
+                  ) : (
+                    <>
+                      <Target className="w-5 h-5 mr-2" />
+                      {!foundHunt
+                        ? 'Search for Hunt First'
+                        : !user
+                          ? 'Login to Join'
+                          : isLoadingProfile
+                            ? 'Checking profile...'
+                            : foundHunt.requiresP2P
+                              ? 'Connect & Join'
+                              : 'Join Hunt!'}
+                    </>
+                  )}
                 </>
               )}
             </Button>

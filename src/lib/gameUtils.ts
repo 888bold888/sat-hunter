@@ -791,6 +791,27 @@ export function formatTimeRemaining(endTime: number): string {
   }
 }
 
+// Format countdown to a future start time
+export function formatCountdown(startTime: number): string {
+  const remaining = startTime - Date.now();
+
+  if (remaining <= 0) return 'Starting now';
+
+  const days = Math.floor(remaining / (1000 * 60 * 60 * 24));
+  const hours = Math.floor((remaining % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
+  const minutes = Math.floor((remaining % (1000 * 60 * 60)) / (1000 * 60));
+
+  if (days > 0) {
+    return `in ${days}d ${hours}h`;
+  } else if (hours > 0) {
+    return `in ${hours}h ${minutes}m`;
+  } else if (minutes > 0) {
+    return `in ${minutes}m`;
+  } else {
+    return 'in <1m';
+  }
+}
+
 // Format sats with commas
 export function formatSats(sats: number | undefined | null): string {
   return (sats ?? 0).toLocaleString();

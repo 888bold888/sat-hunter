@@ -267,6 +267,7 @@ interface GameContextType {
     polygon?: GeoLocation[];
     spawnMode?: SpawnMode;
     maxConcurrentMonsters?: number;
+    scheduledStartTime?: number; // Optional: schedule hunt to start in the future
   }) => Promise<CreateHuntResult>;
   confirmPayment: () => void;
   startHunt: () => void;
@@ -369,6 +370,7 @@ export function GameProvider({ children }: { children: ReactNode }) {
       polygon?: GeoLocation[];
       spawnMode?: SpawnMode;
       maxConcurrentMonsters?: number;
+      scheduledStartTime?: number;
     }): Promise<CreateHuntResult> => {
       // Create geofence based on boundary type
       const geoFence = config.boundaryType === 'polygon' && config.polygon
@@ -391,6 +393,10 @@ export function GameProvider({ children }: { children: ReactNode }) {
       ]);
 
       const now = Date.now();
+      // Use scheduled start time if provided, otherwise start immediately
+      const startTime = config.scheduledStartTime && config.scheduledStartTime > now
+        ? config.scheduledStartTime
+        : now;
       const shareCode = generateShareCode();
       const hunt: HuntEvent = {
         id: generateId(),
@@ -400,8 +406,8 @@ export function GameProvider({ children }: { children: ReactNode }) {
         totalSats: config.totalSats,
         monsterCount: config.monsterCount,
         geoFence,
-        startTime: now,
-        endTime: now + huntDurationMs,
+        startTime,
+        endTime: startTime + huntDurationMs,
         createdAt: now,
         monsters: monstersResult.monsters,
         satStops: satStopsResult.stops,
@@ -422,24 +428,33 @@ export function GameProvider({ children }: { children: ReactNode }) {
   // Confirm payment and set to ready (no auto-active)
   const confirmPayment = useCallback(() => {
     if (!state.activeHunt || state.activeHunt.paymentStatus !== 'pending') return;
+    const now = Date.now();
+    const huntDuration = state.activeHunt.endTime - state.activeHunt.startTime;
+    // Preserve scheduled start time if it's in the future, otherwise start now
+    const isScheduled = state.activeHunt.startTime > now;
+    const startTime = isScheduled ? state.activeHunt.startTime : now;
     const readyHunt: HuntEvent = {
       ...state.activeHunt,
       status: 'ready',
       paymentStatus: 'paid',
-      startTime: Date.now(),
-      endTime: Date.now() + (state.activeHunt.endTime - state.activeHunt.startTime),
+      startTime,
+      endTime: startTime + huntDuration,
     };
     dispatch({ type: 'UPDATE_HUNT', hunt: readyHunt });
   }, [state.activeHunt]);
 
   // Start the hunt (only if ready/paid)
+  // For scheduled hunts: if called before scheduled time, starts early (host override)
   const startHunt = useCallback(() => {
     if (!state.activeHunt || state.activeHunt.status !== 'ready' || state.activeHunt.paymentStatus !== 'paid') return;
+    const now = Date.now();
+    const huntDuration = state.activeHunt.endTime - state.activeHunt.startTime;
+    // Start now (host is manually starting, possibly early)
     const activeHunt: HuntEvent = {
       ...state.activeHunt,
       status: 'active',
-      startTime: Date.now(),
-      endTime: Date.now() + (state.activeHunt.endTime - state.activeHunt.startTime),
+      startTime: now,
+      endTime: now + huntDuration,
     };
     dispatch({ type: 'UPDATE_HUNT', hunt: activeHunt });
   }, [state.activeHunt]);

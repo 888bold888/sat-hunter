@@ -1,6 +1,6 @@
 import { useEffect, useState, useCallback, useMemo } from 'react';
 import { useGame } from '@/contexts/GameContext';
-import { formatSats, formatTimeRemaining } from '@/lib/gameUtils';
+import { formatSats, formatTimeRemaining, formatCountdown } from '@/lib/gameUtils';
 import { HuntMap } from './HuntMap';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -21,6 +21,7 @@ import {
   RefreshCw,
   ShieldAlert,
   Wifi,
+  CalendarClock,
 } from 'lucide-react';
 import QRCode from 'qrcode';
 import { useHuntSync } from '@/hooks/useHuntSync';
@@ -347,12 +348,17 @@ export function HostDashboard() {
             </span>
             <Badge
               variant={isEnded ? 'destructive' : activeHunt.status === 'active' ? 'default' : 'outline'}
-              className={activeHunt.status === 'active' ? 'bg-secondary' : ''}
+              className={activeHunt.status === 'active' ? 'bg-secondary' : activeHunt.status === 'ready' && activeHunt.startTime > Date.now() ? 'border-cyan-500/50 text-cyan-500' : ''}
             >
               {activeHunt.status === 'active' ? (
                 <>
                   <Clock className="w-3 h-3 mr-1" />
                   {timeRemaining}
+                </>
+              ) : activeHunt.status === 'ready' && activeHunt.startTime > Date.now() ? (
+                <>
+                  <CalendarClock className="w-3 h-3 mr-1" />
+                  Starts {formatCountdown(activeHunt.startTime)}
                 </>
               ) : (
                 activeHunt.status.toUpperCase()
