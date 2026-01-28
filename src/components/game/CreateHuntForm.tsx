@@ -11,8 +11,12 @@ import { Textarea } from '@/components/ui/textarea';
 import { Slider } from '@/components/ui/slider';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Alert, AlertDescription } from '@/components/ui/alert';
+import { Calendar } from '@/components/ui/calendar';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useToast } from '@/hooks/useToast';
 import type { GeoLocation, BoundaryType, SpawnMode } from '@/lib/gameTypes';
+import { format } from 'date-fns';
 import {
   Zap,
   Target,
@@ -52,22 +56,28 @@ export function CreateHuntForm({ onHuntCreated }: CreateHuntFormProps) {
   const [spawnMode, setSpawnMode] = useState<SpawnMode>('all_at_once');
   const [maxConcurrentMonsters, setMaxConcurrentMonsters] = useState(20);
   const [isScheduled, setIsScheduled] = useState(false);
-  const [scheduledDateTime, setScheduledDateTime] = useState('');
+  const [scheduledDate, setScheduledDate] = useState<Date | undefined>(undefined);
+  const [scheduledHour, setScheduledHour] = useState('12');
+  const [scheduledMinute, setScheduledMinute] = useState('00');
   const [isCreating, setIsCreating] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // Helper to get minimum datetime (now + 5 minutes)
-  const getMinDateTime = () => {
-    const now = new Date();
-    now.setMinutes(now.getMinutes() + 5);
-    return now.toISOString().slice(0, 16);
+  // Get scheduled datetime as timestamp
+  const getScheduledTimestamp = (): number | undefined => {
+    if (!isScheduled || !scheduledDate) return undefined;
+    const date = new Date(scheduledDate);
+    date.setHours(parseInt(scheduledHour), parseInt(scheduledMinute), 0, 0);
+    return date.getTime();
   };
 
-  // Helper to get maximum datetime (30 days from now)
-  const getMaxDateTime = () => {
+  // Get minimum date (today)
+  const getMinDate = () => new Date();
+
+  // Get maximum date (30 days from now)
+  const getMaxDate = () => {
     const max = new Date();
     max.setDate(max.getDate() + 30);
-    return max.toISOString().slice(0, 16);
+    return max;
   };
 
   useEffect(() => {
@@ -94,12 +104,12 @@ export function CreateHuntForm({ onHuntCreated }: CreateHuntFormProps) {
     }
     // Validate scheduled time if scheduling
     if (isScheduled) {
-      if (!scheduledDateTime) {
-        setError('Please select a start date and time for the scheduled hunt');
+      if (!scheduledDate) {
+        setError('Please select a start date for the scheduled hunt');
         return;
       }
-      const scheduledTime = new Date(scheduledDateTime).getTime();
-      if (scheduledTime <= Date.now()) {
+      const scheduledTime = getScheduledTimestamp();
+      if (!scheduledTime || scheduledTime <= Date.now()) {
         setError('Scheduled start time must be in the future');
         return;
       }
@@ -113,9 +123,7 @@ export function CreateHuntForm({ onHuntCreated }: CreateHuntFormProps) {
     setError(null);
     try {
       // Create hunt with pending_payment status (async - fetches streets for monsters and POIs for SatStops)
-      const scheduledStartTime = isScheduled && scheduledDateTime
-        ? new Date(scheduledDateTime).getTime()
-        : undefined;
+      const scheduledStartTime = getScheduledTimestamp();
       const { monstersInfo, satStopsInfo } = await createHunt({
         name: name.trim(),
         description: description.trim(),
@@ -326,15 +334,64 @@ export function CreateHuntForm({ onHuntCreated }: CreateHuntFormProps) {
                 </Button>
               </div>
               {isScheduled && (
-                <div className="space-y-2">
-                  <Input
-                    type="datetime-local"
-                    value={scheduledDateTime}
-                    onChange={(e) => setScheduledDateTime(e.target.value)}
-                    min={getMinDateTime()}
-                    max={getMaxDateTime()}
-                    className="border-cyan-500/30 focus:border-cyan-500"
-                  />
+                <div className="space-y-3">
+                  {/* Date Picker */}
+                  <Popover>
+                    <PopoverTrigger asChild>
+                      <Button
+                        variant="outline"
+                        className={`w-full justify-start text-left font-normal border-cyan-500/30 ${!scheduledDate ? 'text-muted-foreground' : ''}`}
+                      >
+                        <CalendarClock className="mr-2 h-4 w-4" />
+                        {scheduledDate ? format(scheduledDate, 'EEEE, MMMM d, yyyy') : 'Select date'}
+                      </Button>
+                    </PopoverTrigger>
+                    <PopoverContent className="w-auto p-0" align="start">
+                      <Calendar
+                        mode="single"
+                        selected={scheduledDate}
+                        onSelect={setScheduledDate}
+                        disabled={(date) => date < getMinDate() || date > getMaxDate()}
+                        initialFocus
+                      />
+                    </PopoverContent>
+                  </Popover>
+
+                  {/* Time Picker */}
+                  <div className="flex gap-2">
+                    <Select value={scheduledHour} onValueChange={setScheduledHour}>
+                      <SelectTrigger className="flex-1 border-cyan-500/30">
+                        <SelectValue placeholder="Hour" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {Array.from({ length: 24 }, (_, i) => (
+                          <SelectItem key={i} value={i.toString().padStart(2, '0')}>
+                            {i === 0 ? '12 AM' : i < 12 ? `${i} AM` : i === 12 ? '12 PM' : `${i - 12} PM`}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <Select value={scheduledMinute} onValueChange={setScheduledMinute}>
+                      <SelectTrigger className="w-24 border-cyan-500/30">
+                        <SelectValue placeholder="Min" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {['00', '15', '30', '45'].map((min) => (
+                          <SelectItem key={min} value={min}>
+                            :{min}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  {/* Preview */}
+                  {scheduledDate && (
+                    <div className="text-sm text-cyan-400 text-center py-2 bg-cyan-500/10 rounded-md">
+                      Hunt starts: {format(scheduledDate, 'MMM d')} at {parseInt(scheduledHour) === 0 ? '12' : parseInt(scheduledHour) <= 12 ? scheduledHour : (parseInt(scheduledHour) - 12).toString()}:{scheduledMinute} {parseInt(scheduledHour) < 12 ? 'AM' : 'PM'}
+                    </div>
+                  )}
+
                   <p className="text-xs text-muted-foreground">
                     You'll get the share code immediately to promote your hunt. Players can find it but won't be able to join until the scheduled time.
                   </p>
