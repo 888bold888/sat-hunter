@@ -1,6 +1,6 @@
 import { useEffect, useRef, useCallback } from 'react';
-import type { Monster, SatStop, GeoLocation, BoundaryType } from '@/lib/gameTypes';
-import { calculateDistance, formatSats } from '@/lib/gameUtils';
+import type { Monster, SatStop, GeoLocation, BoundaryType, VisibleMonster } from '@/lib/gameTypes';
+import { formatSats, getVisibleMonsters } from '@/lib/gameUtils';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import { cn } from '@/lib/utils';
@@ -161,40 +161,124 @@ export function HuntMap({
           circlesRef.current.push(geofenceCircle);
         }
 
-        // Filter visible monsters - 15 meters (~50 feet) visibility range
-        const VISIBILITY_RANGE = 15;
-        const visibleMonsters = showAllMonsters
-          ? monsters
+        // Phase 2B: Progressive creature reveal based on distance
+        // Host view (showAllMonsters) shows everything, player view uses visibility tiers
+        const visibleMonsters: VisibleMonster[] = showAllMonsters
+          ? monsters.map(m => ({ ...m, visibility: 'catchable' as const, distance: 0 }))
           : playerLocation
-            ? monsters.filter(m => calculateDistance(playerLocation, m.location) <= VISIBILITY_RANGE)
+            ? getVisibleMonsters(playerLocation, monsters)
             : [];
 
-        // Add monster markers
+        // Add monster markers with visibility-based rendering
         visibleMonsters.forEach(monster => {
           if (!isMountedRef.current || !isMapReady(mapInstanceRef.current)) return;
           if (monster.captured && !showAllMonsters) return;
 
+          // Build marker HTML based on visibility tier
+          let markerHtml: string;
+          let popupHtml: string;
+          const baseClasses = monster.captured ? 'captured' : '';
+
+          switch (monster.visibility) {
+            case 'silhouette':
+              // Grey blur with "?" - no identifying info
+              markerHtml = `
+                <div class="monster-marker silhouette ${baseClasses}">
+                  <span>?</span>
+                </div>
+              `;
+              popupHtml = `
+                <div style="text-align: center;">
+                  <p style="font-size: 24px; margin: 0; color: #666;">?</p>
+                  <p style="color: #888; font-size: 12px;">Get closer to identify...</p>
+                  <p style="color: #666; font-size: 11px;">${Math.round(monster.distance)}m away</p>
+                </div>
+              `;
+              break;
+
+            case 'type':
+              // Emoji only - can see what type but no details
+              markerHtml = `
+                <div class="monster-marker type-only ${baseClasses}">
+                  <span>${monster.emoji}</span>
+                </div>
+              `;
+              popupHtml = `
+                <div style="text-align: center;">
+                  <p style="font-size: 24px; margin: 0;">${monster.emoji}</p>
+                  <p style="color: #888; font-size: 12px;">Get closer to learn more...</p>
+                  <p style="color: #666; font-size: 11px;">${Math.round(monster.distance)}m away</p>
+                </div>
+              `;
+              break;
+
+            case 'identity':
+              // Emoji + name + rarity, but no sat amount
+              markerHtml = `
+                <div class="monster-marker ${monster.rarity} ${baseClasses}">
+                  <span>${monster.emoji}</span>
+                </div>
+              `;
+              popupHtml = `
+                <div style="text-align: center;">
+                  <p style="font-size: 24px; margin: 0;">${monster.emoji}</p>
+                  <p style="font-weight: bold; margin: 4px 0;">${monster.name}</p>
+                  <p style="font-size: 12px; color: #666; text-transform: capitalize;">${monster.rarity}</p>
+                  <p style="color: #888; font-size: 11px;">Get closer to see reward...</p>
+                  <p style="color: #666; font-size: 11px;">${Math.round(monster.distance)}m away</p>
+                </div>
+              `;
+              break;
+
+            case 'full':
+              // All info but not yet catchable
+              markerHtml = `
+                <div class="monster-marker ${monster.rarity} ${baseClasses}">
+                  <span>${monster.emoji}</span>
+                </div>
+              `;
+              popupHtml = `
+                <div style="text-align: center;">
+                  <p style="font-size: 24px; margin: 0;">${monster.emoji}</p>
+                  <p style="font-weight: bold; margin: 4px 0;">${monster.name}</p>
+                  <p style="font-size: 12px; color: #666; text-transform: capitalize;">${monster.rarity}</p>
+                  <p style="font-weight: bold; color: #f97316;">⚡ ${formatSats(monster.satAmount)} sats</p>
+                  <p style="color: #22c55e; font-size: 11px;">Almost there! ${Math.round(monster.distance)}m away</p>
+                </div>
+              `;
+              break;
+
+            case 'catchable':
+            default:
+              // Full info + catchable indicator
+              markerHtml = `
+                <div class="monster-marker ${monster.rarity} catchable ${baseClasses}">
+                  <span>${monster.emoji}</span>
+                </div>
+              `;
+              popupHtml = `
+                <div style="text-align: center;">
+                  <p style="font-size: 24px; margin: 0;">${monster.emoji}</p>
+                  <p style="font-weight: bold; margin: 4px 0;">${monster.name}</p>
+                  <p style="font-size: 12px; color: #666; text-transform: capitalize;">${monster.rarity}</p>
+                  <p style="font-weight: bold; color: #f97316;">⚡ ${formatSats(monster.satAmount)} sats</p>
+                  ${monster.captured
+                    ? '<p style="color: #888; font-size: 12px;">Captured</p>'
+                    : '<p style="color: #22c55e; font-weight: bold; font-size: 12px;">🎯 In range! Tap to catch!</p>'}
+                </div>
+              `;
+              break;
+          }
+
           const icon = L.divIcon({
-            html: `
-              <div class="monster-marker ${monster.rarity} ${monster.captured ? 'captured' : ''}">
-                <span>${monster.emoji}</span>
-              </div>
-            `,
+            html: markerHtml,
             className: '',
             iconSize: [40, 40],
             iconAnchor: [20, 20],
           });
 
           const marker = L.marker([monster.location.lat, monster.location.lng], { icon })
-            .bindPopup(`
-              <div style="text-align: center;">
-                <p style="font-size: 24px; margin: 0;">${monster.emoji}</p>
-                <p style="font-weight: bold; margin: 4px 0;">${monster.name}</p>
-                <p style="font-size: 12px; color: #666; text-transform: capitalize;">${monster.rarity}</p>
-                <p style="font-weight: bold; color: #f97316;">⚡ ${formatSats(monster.satAmount)} sats</p>
-                ${monster.captured ? '<p style="color: #888; font-size: 12px;">Captured</p>' : ''}
-              </div>
-            `)
+            .bindPopup(popupHtml)
             .addTo(map);
 
           if (onMonsterClickRef.current) {
@@ -308,10 +392,32 @@ export function HuntMap({
           font-size: 20px;
           cursor: pointer;
         }
+        /* Phase 2B: Silhouette tier - grey blur, mysterious */
+        .monster-marker.silhouette {
+          background: radial-gradient(circle, rgba(100,100,100,0.8) 0%, rgba(60,60,60,0.6) 100%);
+          border-color: #666;
+          box-shadow: 0 0 10px rgba(100, 100, 100, 0.4);
+          filter: blur(1px);
+          font-size: 18px;
+          color: #888;
+        }
+        /* Phase 2B: Type-only tier - visible but muted */
+        .monster-marker.type-only {
+          background: radial-gradient(circle, rgba(200,200,200,0.9) 0%, rgba(160,160,160,0.7) 100%);
+          border-color: #999;
+          box-shadow: 0 0 8px rgba(150, 150, 150, 0.4);
+        }
+        /* Phase 2B: Catchable tier - enhanced glow, pulse animation */
+        .monster-marker.catchable:not(.captured) {
+          animation: float 3s ease-in-out infinite, catchable-pulse 1s ease-in-out infinite;
+        }
         .monster-marker.mythic {
           border-color: #facc15;
           box-shadow: 0 0 25px rgba(250, 204, 21, 0.9);
           animation: float 3s ease-in-out infinite, glow-pulse 2s ease-in-out infinite;
+        }
+        .monster-marker.mythic.catchable:not(.captured) {
+          animation: float 3s ease-in-out infinite, glow-pulse 2s ease-in-out infinite, catchable-pulse 1s ease-in-out infinite;
         }
         .monster-marker.legendary {
           border-color: #a855f7;
@@ -339,6 +445,15 @@ export function HuntMap({
         @keyframes glow-pulse {
           0%, 100% { filter: drop-shadow(0 0 10px rgba(250, 204, 21, 0.7)); }
           50% { filter: drop-shadow(0 0 20px rgba(250, 204, 21, 1)); }
+        }
+        /* Phase 2B: Catchable pulse - green glow indicating creature is in range */
+        @keyframes catchable-pulse {
+          0%, 100% {
+            box-shadow: 0 0 15px rgba(34, 197, 94, 0.6), 0 0 30px rgba(34, 197, 94, 0.3);
+          }
+          50% {
+            box-shadow: 0 0 25px rgba(34, 197, 94, 0.9), 0 0 45px rgba(34, 197, 94, 0.5);
+          }
         }
         /* Contain Leaflet in its own stacking context to prevent iOS Safari z-index issues */
         .leaflet-map-container {

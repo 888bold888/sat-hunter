@@ -159,6 +159,16 @@ export interface LeaderboardEntry {
   monstersCount: number;
 }
 
+// Progressive reveal visibility tiers (Phase 2B anti-screenshot protection)
+// Prevents players from screenshotting exact creature locations
+export type CreatureVisibility = 'hidden' | 'silhouette' | 'type' | 'identity' | 'full' | 'catchable';
+
+// Monster with visibility information for map rendering
+export interface VisibleMonster extends Monster {
+  visibility: CreatureVisibility;
+  distance: number;
+}
+
 // Monster Generation Config
 export interface MonsterGenConfig {
   totalSats: number;
