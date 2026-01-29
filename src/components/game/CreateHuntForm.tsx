@@ -34,6 +34,8 @@ import {
   RefreshCw,
   Users,
   CalendarClock,
+  ShieldCheck,
+  ShieldOff,
 } from 'lucide-react';
 
 interface CreateHuntFormProps {
@@ -59,6 +61,7 @@ export function CreateHuntForm({ onHuntCreated }: CreateHuntFormProps) {
   const [scheduledDate, setScheduledDate] = useState<Date | undefined>(undefined);
   const [scheduledHour, setScheduledHour] = useState('12');
   const [scheduledMinute, setScheduledMinute] = useState('00');
+  const [requiresApproval, setRequiresApproval] = useState(false);
   const [isCreating, setIsCreating] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -189,6 +192,7 @@ export function CreateHuntForm({ onHuntCreated }: CreateHuntFormProps) {
         spawnMode,
         maxConcurrentMonsters: spawnMode === 'scattered_replacement' ? maxConcurrentMonsters : undefined,
         scheduledStartTime,
+        requiresApproval,
       });
 
       // Check for issues with creature placement
@@ -449,6 +453,39 @@ export function CreateHuntForm({ onHuntCreated }: CreateHuntFormProps) {
                   </p>
                 </div>
               )}
+            </div>
+
+            {/* Player Approval Setting */}
+            <div className="space-y-3">
+              <Label className="font-display flex items-center gap-2">
+                <ShieldCheck className="w-4 h-4 text-green-400" />
+                Player Access
+              </Label>
+              <div className="grid grid-cols-2 gap-2">
+                <Button
+                  type="button"
+                  variant={!requiresApproval ? 'default' : 'outline'}
+                  className={!requiresApproval ? 'bg-green-600 hover:bg-green-700' : ''}
+                  onClick={() => setRequiresApproval(false)}
+                >
+                  <ShieldOff className="w-4 h-4 mr-2" />
+                  Open Join
+                </Button>
+                <Button
+                  type="button"
+                  variant={requiresApproval ? 'default' : 'outline'}
+                  className={requiresApproval ? 'bg-green-600 hover:bg-green-700' : ''}
+                  onClick={() => setRequiresApproval(true)}
+                >
+                  <ShieldCheck className="w-4 h-4 mr-2" />
+                  Require Approval
+                </Button>
+              </div>
+              <p className="text-xs text-muted-foreground">
+                {requiresApproval
+                  ? 'Players must request to join. You approve each player before they can see creature locations.'
+                  : 'Anyone with the share code can join immediately.'}
+              </p>
             </div>
 
             {/* Spawn Mode Selection */}

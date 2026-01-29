@@ -8,6 +8,7 @@ import { usePublishJoin } from '@/hooks/useHuntSync';
 import { useAuthor } from '@/hooks/useAuthor';
 import { useNWC } from '@/hooks/useNWCContext';
 import { useJoinP2P } from '@/hooks/useJoinP2P';
+import { useJoinRequest } from '@/hooks/useJoinRequest';
 import { LoginArea } from '@/components/auth/LoginArea';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -28,6 +29,8 @@ import {
   CheckCircle,
   Info,
   CalendarClock,
+  ShieldCheck,
+  XCircle,
 } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { formatSats, formatTimeRemaining, formatCountdown } from '@/lib/gameUtils';
@@ -51,6 +54,15 @@ export default function JoinHuntPage() {
 
   // P2P connection for receiving location data (privacy mode)
   const { state: p2pState, error: p2pError, connect: connectP2P, reset: _resetP2P } = useJoinP2P();
+
+  // Join request for hunts requiring approval
+  const {
+    status: joinRequestStatus,
+    rejectionReason,
+    error: joinRequestError,
+    requestJoin,
+    reset: resetJoinRequest,
+  } = useJoinRequest();
 
   // Fetch user's profile to check for Lightning address
   const { data: userProfile, isLoading: isLoadingProfile } = useAuthor(user?.pubkey);
@@ -84,6 +96,38 @@ export default function JoinHuntPage() {
     if (!inputCode || inputCode.length < 6) return;
     setSearchCode(inputCode.toUpperCase());
   };
+
+  // Handle requesting to join (for approval-required hunts)
+  const handleRequestJoin = async () => {
+    if (!user || !foundHunt) return;
+
+    const success = await requestJoin(
+      foundHunt.id,
+      foundHunt.shareCode,
+      foundHunt.hostPubkey
+    );
+
+    if (success) {
+      toast({
+        title: 'Request Sent',
+        description: 'Waiting for host to approve your request...',
+      });
+    } else {
+      toast({
+        title: 'Request Failed',
+        description: joinRequestError || 'Could not send join request',
+        variant: 'destructive',
+      });
+    }
+  };
+
+  // Effect: When approved, proceed to join
+  useEffect(() => {
+    if (joinRequestStatus === 'approved' && foundHunt && !isJoining) {
+      handleJoin();
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [joinRequestStatus]);
 
   const handleJoin = async () => {
     if (!user) {
@@ -142,6 +186,13 @@ export default function JoinHuntPage() {
         description: `This hunt starts ${formatCountdown(foundHunt.startTime)}. Come back then!`,
         variant: 'destructive',
       });
+      return;
+    }
+
+    // Check if approval is required but not yet approved
+    if (foundHunt.requiresApproval && joinRequestStatus !== 'approved') {
+      // Should request approval first
+      handleRequestJoin();
       return;
     }
 
@@ -345,8 +396,53 @@ export default function JoinHuntPage() {
                       🔒 Privacy Mode - Direct connection to host
                     </Badge>
                   )}
+                  {foundHunt.requiresApproval && (
+                    <Badge variant="outline" className="border-amber-500/50 text-amber-500">
+                      <ShieldCheck className="w-3 h-3 mr-1" />
+                      Requires host approval
+                    </Badge>
+                  )}
                 </CardContent>
               </Card>
+            )}
+
+            {/* Approval Request Status */}
+            {foundHunt?.requiresApproval && joinRequestStatus === 'pending' && (
+              <Alert className="border-amber-500/30 bg-amber-500/5">
+                <Loader2 className="w-4 h-4 text-amber-500 animate-spin" />
+                <AlertTitle className="text-amber-500 text-sm">Waiting for approval</AlertTitle>
+                <AlertDescription className="text-sm">
+                  Your request has been sent to the host. They'll approve you shortly...
+                </AlertDescription>
+              </Alert>
+            )}
+
+            {foundHunt?.requiresApproval && joinRequestStatus === 'approved' && (
+              <Alert className="border-green-500/30 bg-green-500/5">
+                <CheckCircle className="w-4 h-4 text-green-500" />
+                <AlertTitle className="text-green-500 text-sm">Approved!</AlertTitle>
+                <AlertDescription className="text-sm">
+                  Host approved your request. Connecting now...
+                </AlertDescription>
+              </Alert>
+            )}
+
+            {foundHunt?.requiresApproval && joinRequestStatus === 'rejected' && (
+              <Alert className="border-red-500/30 bg-red-500/5">
+                <XCircle className="w-4 h-4 text-red-500" />
+                <AlertTitle className="text-red-500 text-sm">Request Denied</AlertTitle>
+                <AlertDescription className="text-sm">
+                  {rejectionReason || 'The host declined your request to join.'}
+                  <Button
+                    variant="link"
+                    size="sm"
+                    className="text-red-400 p-0 h-auto ml-2"
+                    onClick={() => resetJoinRequest()}
+                  >
+                    Try again
+                  </Button>
+                </AlertDescription>
+              </Alert>
             )}
 
             {/* P2P Connection Status */}
@@ -415,8 +511,17 @@ export default function JoinHuntPage() {
 
             {/* Join Button */}
             <Button
-              onClick={handleJoin}
-              disabled={!foundHunt || !user || foundHunt.paymentStatus !== 'paid' || foundHunt.startTime > Date.now() || isLoadingProfile || isJoining}
+              onClick={foundHunt?.requiresApproval && joinRequestStatus === 'idle' ? handleRequestJoin : handleJoin}
+              disabled={
+                !foundHunt ||
+                !user ||
+                foundHunt.paymentStatus !== 'paid' ||
+                foundHunt.startTime > Date.now() ||
+                isLoadingProfile ||
+                isJoining ||
+                joinRequestStatus === 'pending' ||
+                joinRequestStatus === 'rejected'
+              }
               className="w-full h-12 font-display text-lg bg-gradient-to-r from-primary to-orange-600 hover:from-orange-600 hover:to-primary shadow-glow-orange disabled:opacity-50"
             >
               {isJoining ? (
@@ -424,12 +529,22 @@ export default function JoinHuntPage() {
                   <Loader2 className="w-5 h-5 mr-2 animate-spin" />
                   Connecting...
                 </>
+              ) : joinRequestStatus === 'pending' ? (
+                <>
+                  <Loader2 className="w-5 h-5 mr-2 animate-spin" />
+                  Waiting for approval...
+                </>
               ) : (
                 <>
                   {foundHunt && foundHunt.startTime > Date.now() ? (
                     <>
                       <CalendarClock className="w-5 h-5 mr-2" />
                       Starts {formatCountdown(foundHunt.startTime)}
+                    </>
+                  ) : foundHunt?.requiresApproval && joinRequestStatus === 'idle' ? (
+                    <>
+                      <ShieldCheck className="w-5 h-5 mr-2" />
+                      Request to Join
                     </>
                   ) : (
                     <>

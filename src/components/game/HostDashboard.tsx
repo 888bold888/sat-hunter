@@ -22,6 +22,9 @@ import {
   ShieldAlert,
   Wifi,
   CalendarClock,
+  UserCheck,
+  UserX,
+  ShieldCheck,
 } from 'lucide-react';
 import QRCode from 'qrcode';
 import { useHuntSync } from '@/hooks/useHuntSync';
@@ -29,7 +32,10 @@ import { usePayPlayer } from '@/hooks/usePayPlayer';
 import { useToast } from '@/hooks/useToast';
 import { ANTI_CHEAT_CONFIG } from '@/lib/antiCheat';
 import { useHostP2P } from '@/hooks/useHostP2P';
+import { useHostApprovals, usePlayerMetadata } from '@/hooks/useHostApprovals';
 import { useLocalStorage } from '@/hooks/useLocalStorage';
+import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
+import { genUserName } from '@/lib/genUserName';
 
 // Anti-cheat data from capture events
 interface CaptureAntiCheat {
@@ -49,6 +55,61 @@ const mapSerializer = {
   deserialize: (value: string) => new Map<string, string>(JSON.parse(value)),
 };
 
+// Component to display a player's join request with their profile
+function PlayerRequestCard({
+  pubkey,
+  message,
+  requestedAt,
+  onApprove,
+  onReject,
+  isProcessing,
+}: {
+  pubkey: string;
+  message?: string;
+  requestedAt: number;
+  onApprove: () => void;
+  onReject: () => void;
+  isProcessing: boolean;
+}) {
+  const metadata = usePlayerMetadata(pubkey);
+  const displayName = metadata?.name || genUserName(pubkey);
+  const timeAgo = Math.floor((Date.now() - requestedAt) / 60000);
+
+  return (
+    <div className="flex items-center gap-3 p-3 bg-muted/30 rounded-lg">
+      <Avatar className="w-10 h-10">
+        <AvatarImage src={metadata?.picture} alt={displayName} />
+        <AvatarFallback>{displayName.charAt(0).toUpperCase()}</AvatarFallback>
+      </Avatar>
+      <div className="flex-1 min-w-0">
+        <p className="font-medium text-sm truncate">{displayName}</p>
+        {message && <p className="text-xs text-muted-foreground truncate">{message}</p>}
+        <p className="text-xs text-muted-foreground">{timeAgo < 1 ? 'Just now' : `${timeAgo}m ago`}</p>
+      </div>
+      <div className="flex gap-2">
+        <Button
+          size="sm"
+          variant="outline"
+          className="border-green-500/50 text-green-500 hover:bg-green-500/10"
+          onClick={onApprove}
+          disabled={isProcessing}
+        >
+          <UserCheck className="w-4 h-4" />
+        </Button>
+        <Button
+          size="sm"
+          variant="outline"
+          className="border-red-500/50 text-red-500 hover:bg-red-500/10"
+          onClick={onReject}
+          disabled={isProcessing}
+        >
+          <UserX className="w-4 h-4" />
+        </Button>
+      </div>
+    </div>
+  );
+}
+
 export function HostDashboard() {
   const { state, isHost, addParticipant } = useGame();
   const { activeHunt, playerLocation } = state;
@@ -61,6 +122,7 @@ export function HostDashboard() {
     antiCheat?: CaptureAntiCheat;
   }>>(new Map());
   const [syncedPlayers, setSyncedPlayers] = useState<Set<string>>(new Set());
+  const [processingRequests, setProcessingRequests] = useState<Set<string>>(new Set());
 
   // Persist paid captures to localStorage to prevent duplicate payments on refresh
   const huntId = activeHunt?.id ?? 'no-hunt';
@@ -91,6 +153,26 @@ export function HostDashboard() {
     startHosting: startP2P,
     stopHosting: stopP2P,
   } = useHostP2P(activeHunt);
+
+  // Host approvals for join requests
+  const {
+    pendingRequests,
+    approvedPlayers,
+    approvePlayer,
+    rejectPlayer,
+    startListening: startApprovalListening,
+    stopListening: stopApprovalListening,
+  } = useHostApprovals();
+
+  // Start listening for join requests when hunt requires approval
+  useEffect(() => {
+    if (activeHunt?.requiresApproval && activeHunt.id && activeHunt.shareCode) {
+      startApprovalListening(activeHunt.id, activeHunt.shareCode);
+    }
+    return () => {
+      stopApprovalListening();
+    };
+  }, [activeHunt?.id, activeHunt?.shareCode, activeHunt?.requiresApproval, startApprovalListening, stopApprovalListening]);
 
   // Pay player when a capture is detected (with anti-cheat validation)
   const processPayment = useCallback(async (
@@ -337,6 +419,80 @@ export function HostDashboard() {
           </Card>
         )}
       </div>
+
+      {/* Pending Join Requests */}
+      {activeHunt.requiresApproval && (
+        <Card className="border-amber-500/30">
+          <CardHeader className="pb-2">
+            <CardTitle className="flex items-center justify-between text-sm">
+              <span className="flex items-center gap-2">
+                <ShieldCheck className="w-4 h-4 text-amber-500" />
+                Join Requests
+              </span>
+              <Badge variant="outline" className="border-amber-500/50 text-amber-500">
+                {pendingRequests.length} pending
+              </Badge>
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            {pendingRequests.length === 0 ? (
+              <p className="text-sm text-muted-foreground text-center py-4">
+                No pending requests. Players will appear here when they request to join.
+              </p>
+            ) : (
+              <div className="space-y-2 max-h-48 overflow-y-auto">
+                {pendingRequests.map((request) => (
+                  <PlayerRequestCard
+                    key={request.id}
+                    pubkey={request.playerPubkey}
+                    message={request.message}
+                    requestedAt={request.requestedAt}
+                    isProcessing={processingRequests.has(request.id)}
+                    onApprove={async () => {
+                      setProcessingRequests(prev => new Set(prev).add(request.id));
+                      const success = await approvePlayer(request);
+                      if (success) {
+                        toast({
+                          title: 'Player Approved',
+                          description: 'They can now connect and join the hunt',
+                        });
+                      }
+                      setProcessingRequests(prev => {
+                        const next = new Set(prev);
+                        next.delete(request.id);
+                        return next;
+                      });
+                    }}
+                    onReject={async () => {
+                      setProcessingRequests(prev => new Set(prev).add(request.id));
+                      const success = await rejectPlayer(request);
+                      if (success) {
+                        toast({
+                          title: 'Request Declined',
+                          description: 'Player will be notified',
+                        });
+                      }
+                      setProcessingRequests(prev => {
+                        const next = new Set(prev);
+                        next.delete(request.id);
+                        return next;
+                      });
+                    }}
+                  />
+                ))}
+              </div>
+            )}
+            {approvedPlayers.size > 0 && (
+              <div className="mt-3 pt-3 border-t border-border">
+                <p className="text-xs text-muted-foreground">
+                  <UserCheck className="w-3 h-3 inline mr-1 text-green-500" />
+                  {approvedPlayers.size} player{approvedPlayers.size !== 1 ? 's' : ''} approved
+                </p>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      )}
 
       {/* Event Status */}
       <Card className="border-primary/30">
