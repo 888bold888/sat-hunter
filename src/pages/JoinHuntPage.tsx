@@ -9,6 +9,7 @@ import { useAuthor } from '@/hooks/useAuthor';
 import { useNWC } from '@/hooks/useNWCContext';
 import { useJoinP2P } from '@/hooks/useJoinP2P';
 import { useJoinRequest } from '@/hooks/useJoinRequest';
+import { useAntiCheat } from '@/hooks/useAntiCheat';
 import { LoginArea } from '@/components/auth/LoginArea';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -63,6 +64,9 @@ export default function JoinHuntPage() {
     requestJoin,
     reset: resetJoinRequest,
   } = useJoinRequest();
+
+  // Anti-cheat with motion tracking (Phase 2C)
+  const { initializeMotionTracking } = useAntiCheat();
 
   // Fetch user's profile to check for Lightning address
   const { data: userProfile, isLoading: isLoadingProfile } = useAuthor(user?.pubkey);
@@ -199,6 +203,10 @@ export default function JoinHuntPage() {
     setIsJoining(true);
 
     try {
+      // Phase 2C: Initialize motion tracking for anti-cheat
+      // Must be called from user gesture (button click) for iOS permission
+      await initializeMotionTracking();
+
       let huntToJoin = foundHunt;
 
       // If hunt requires P2P, connect to host for location data

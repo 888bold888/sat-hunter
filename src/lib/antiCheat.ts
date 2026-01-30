@@ -6,6 +6,7 @@
 import type { GeoLocation } from './gameTypes';
 import { calculateDistance } from './gameUtils';
 import ngeohash from 'ngeohash';
+import { getMotionScore, getMotionStats } from './motionTracking';
 
 // ══════════════════════════════════════════════════════════════
 // CONFIGURATION
@@ -61,6 +62,7 @@ export interface TrustScoreBreakdown {
   environment: number;
   velocity: number;
   history: number;
+  motion: number; // Phase 2C: Accelerometer-based anti-spoofing
 }
 
 export interface TrustScoreResult {
@@ -277,6 +279,7 @@ export function calculateTrustScore(
     environment: 100,
     velocity: 100,
     history: 100,
+    motion: 100, // Phase 2C
   };
 
   // ──────────────────────────────────────────────────────────────
@@ -346,14 +349,43 @@ export function calculateTrustScore(
   breakdown.history = Math.max(0, breakdown.history);
 
   // ──────────────────────────────────────────────────────────────
+  // MOTION SCORE (Phase 2C: Accelerometer anti-spoofing)
+  // ──────────────────────────────────────────────────────────────
+
+  // Calculate distance moved since last reading
+  let distanceMoved = 0;
+  if (history.length > 0) {
+    const lastReading = history[history.length - 1];
+    distanceMoved = calculateDistance(
+      { lat: lastReading.lat, lng: lastReading.lng },
+      { lat: reading.lat, lng: reading.lng }
+    );
+  }
+
+  breakdown.motion = getMotionScore(distanceMoved);
+
+  // Add motion flags
+  const motionStats = getMotionStats();
+  if (!motionStats.sensorAvailable) {
+    flags.push('NO_MOTION_SENSORS');
+  } else if (!motionStats.permissionGranted) {
+    flags.push('MOTION_PERMISSION_DENIED');
+  } else if (breakdown.motion < 50) {
+    flags.push(`NO_MOTION_DETECTED: GPS moved ${Math.round(distanceMoved)}m but no device movement`);
+  } else if (breakdown.motion < 80) {
+    flags.push(`LOW_MOTION: Limited device movement for ${Math.round(distanceMoved)}m GPS change`);
+  }
+
+  // ──────────────────────────────────────────────────────────────
   // COMPOSITE SCORE (weighted average)
   // ──────────────────────────────────────────────────────────────
 
   const composite = Math.round(
-    breakdown.location * 0.30 +
-    breakdown.environment * 0.30 +
-    breakdown.velocity * 0.25 +
-    breakdown.history * 0.15
+    breakdown.location * 0.25 +
+    breakdown.environment * 0.25 +
+    breakdown.velocity * 0.20 +
+    breakdown.history * 0.10 +
+    breakdown.motion * 0.20  // Phase 2C: 20% weight for motion
   );
 
   return {
