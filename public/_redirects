@@ -1,2 +1,7 @@
-/assets/*   /assets/:splat   200
-/*          /index.html      200
+/assets/*       /assets/:splat   200
+/og-image.png   /og-image.png    200
+/*.png          /:splat.png      200
+/*.jpg          /:splat.jpg      200
+/*.ico          /:splat.ico      200
+/*.webmanifest  /:splat.webmanifest  200
+/*              /index.html      200

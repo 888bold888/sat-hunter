@@ -126,7 +126,7 @@ const Index = () => {
             Hunt <span className="text-primary font-bold">Bitcoin</span> in the Real World
           </p>
           <p className="text-sm text-muted-foreground mb-8 max-w-sm">
-            Catch cypherpunk creatures containing real satoshis. Powered by Lightning ⚡
+            Hunt creatures containing real Bitcoin.
           </p>
 
           {/* CTA Button */}
@@ -217,7 +217,7 @@ const Index = () => {
       <section className="relative py-20 px-4 bg-gradient-to-b from-transparent via-muted/30 to-transparent">
         <div className="max-w-4xl mx-auto text-center">
           <h2 className="font-display text-3xl md:text-4xl font-bold mb-4">
-            Cypherpunk <span className="text-accent">Creatures</span>
+            Sat <span className="text-accent">Creatures</span>
           </h2>
           <p className="text-muted-foreground mb-12 max-w-md mx-auto">
             From common Ratasats to the mythic Pisatchu, each creature holds real Bitcoin value
