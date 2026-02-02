@@ -129,7 +129,7 @@ export function CaptureSuccessDialog({ monster, open, onClose }: CaptureSuccessD
                 +{formatSats(monster.satAmount)}
               </span>
             </div>
-            <p className="text-sm text-muted-foreground mt-1">satoshis earned!</p>
+            <p className="text-sm text-muted-foreground mt-1">satoshis stacked!</p>
           </div>
 
           {/* Continue Button */}

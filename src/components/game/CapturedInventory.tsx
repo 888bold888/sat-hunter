@@ -43,7 +43,7 @@ export function CapturedInventory() {
             <p className="font-display font-bold text-2xl text-primary text-glow-orange">
               {formatSats(totalSatsEarned)}
             </p>
-            <p className="text-xs text-muted-foreground">Total Sats Earned</p>
+            <p className="text-xs text-muted-foreground">Total Sats Stacked</p>
           </div>
           <div className="p-4 rounded-lg bg-accent/10 border border-accent/30 text-center">
             <Trophy className="w-8 h-8 mx-auto text-accent mb-2" />
@@ -75,7 +75,7 @@ export function CapturedInventory() {
             <Sparkles className="w-16 h-16 mx-auto text-muted-foreground mb-4 animate-float" />
             <p className="text-muted-foreground">No captures yet!</p>
             <p className="text-sm text-muted-foreground mt-1">
-              Get out there and catch some creatures!
+              Get out there and capture some creatures!
             </p>
           </div>
         ) : (

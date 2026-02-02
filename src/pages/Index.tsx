@@ -30,9 +30,8 @@ const Index = () => {
   const hasActiveHostHunt = activeHunt && isHost() && activeHunt.status !== 'ended';
 
   useSeoMeta({
-    title: 'Sat Hunter - Hunt Bitcoin in the Real World',
-    description:
-      'A Pokémon GO-style scavenger hunt where you catch creatures containing real Bitcoin satoshis. Built on Nostr and Lightning.',
+    title: 'Sat Hunter - Hunt Bitcoin IRL',
+    description: 'A Bitcoin scavenger hunt.',
   });
 
   return (
@@ -126,7 +125,7 @@ const Index = () => {
             Hunt <span className="text-primary font-bold">Bitcoin</span> in the Real World
           </p>
           <p className="text-sm text-muted-foreground mb-8 max-w-sm">
-            Hunt creatures containing real Bitcoin.
+            Capture creatures. Stack sats.
           </p>
 
           {/* CTA Button */}
@@ -175,9 +174,9 @@ const Index = () => {
                   <Target className="w-8 h-8 text-primary" />
                 </div>
                 <Badge className="mb-3 bg-primary/20 text-primary border-primary/30">Step 1</Badge>
-                <h3 className="font-display font-bold text-lg mb-2">Join or Create a Hunt</h3>
+                <h3 className="font-display font-bold text-lg mb-2">Join a Hunt</h3>
                 <p className="text-sm text-muted-foreground">
-                  Hosts deploy sats into a geo-fenced area, spawning creatures with Bitcoin prizes
+                  Scan a QR code or enter a share code to join a live hunt in your area
                 </p>
               </CardContent>
             </Card>
@@ -189,9 +188,9 @@ const Index = () => {
                   <MapPin className="w-8 h-8 text-secondary" />
                 </div>
                 <Badge className="mb-3 bg-secondary/20 text-secondary border-secondary/30">Step 2</Badge>
-                <h3 className="font-display font-bold text-lg mb-2">Explore & Hunt</h3>
+                <h3 className="font-display font-bold text-lg mb-2">Find Creatures</h3>
                 <p className="text-sm text-muted-foreground">
-                  Walk through the real world, find creatures on your map, and collect SatBalls at stops
+                  Walk around the real world - creatures appear on your map when you get close
                 </p>
               </CardContent>
             </Card>
@@ -203,12 +202,74 @@ const Index = () => {
                   <Zap className="w-8 h-8 text-accent" />
                 </div>
                 <Badge className="mb-3 bg-accent/20 text-accent border-accent/30">Step 3</Badge>
-                <h3 className="font-display font-bold text-lg mb-2">Catch & Earn</h3>
+                <h3 className="font-display font-bold text-lg mb-2">Capture & Stack</h3>
                 <p className="text-sm text-muted-foreground">
-                  Capture creatures to claim their sats instantly via Lightning Network
+                  Tap to capture and claim sats instantly to your Lightning wallet
                 </p>
               </CardContent>
             </Card>
+          </div>
+        </div>
+      </section>
+
+      {/* Host a Hunt Section */}
+      <section className="relative py-20 px-4 bg-gradient-to-b from-transparent via-primary/5 to-transparent">
+        <div className="max-w-4xl mx-auto">
+          <h2 className="font-display text-3xl md:text-4xl font-bold text-center mb-4">
+            Host a <span className="text-primary">Hunt</span>
+          </h2>
+          <p className="text-muted-foreground text-center mb-12 max-w-md mx-auto">
+            Create memorable experiences for your community, meetup, or event
+          </p>
+
+          <div className="grid md:grid-cols-3 gap-6">
+            {/* Host Step 1 */}
+            <Card className="bg-card/60 backdrop-blur border-primary/20 hover:border-primary/50 transition-colors group">
+              <CardContent className="p-6 text-center">
+                <div className="w-12 h-12 mx-auto mb-4 rounded-full bg-gradient-to-br from-primary/20 to-primary/5 flex items-center justify-center border border-primary/30 group-hover:scale-110 transition-transform">
+                  <MapPin className="w-6 h-6 text-primary" />
+                </div>
+                <h3 className="font-display font-bold text-base mb-2">Set the Area</h3>
+                <p className="text-sm text-muted-foreground">
+                  Draw a boundary on the map where creatures will spawn
+                </p>
+              </CardContent>
+            </Card>
+
+            {/* Host Step 2 */}
+            <Card className="bg-card/60 backdrop-blur border-primary/20 hover:border-primary/50 transition-colors group">
+              <CardContent className="p-6 text-center">
+                <div className="w-12 h-12 mx-auto mb-4 rounded-full bg-gradient-to-br from-primary/20 to-primary/5 flex items-center justify-center border border-primary/30 group-hover:scale-110 transition-transform">
+                  <Bitcoin className="w-6 h-6 text-primary" />
+                </div>
+                <h3 className="font-display font-bold text-base mb-2">Fund with Sats</h3>
+                <p className="text-sm text-muted-foreground">
+                  Deposit sats via Lightning - they become the prizes players capture
+                </p>
+              </CardContent>
+            </Card>
+
+            {/* Host Step 3 */}
+            <Card className="bg-card/60 backdrop-blur border-primary/20 hover:border-primary/50 transition-colors group">
+              <CardContent className="p-6 text-center">
+                <div className="w-12 h-12 mx-auto mb-4 rounded-full bg-gradient-to-br from-primary/20 to-primary/5 flex items-center justify-center border border-primary/30 group-hover:scale-110 transition-transform">
+                  <Users className="w-6 h-6 text-primary" />
+                </div>
+                <h3 className="font-display font-bold text-base mb-2">Share & Watch</h3>
+                <p className="text-sm text-muted-foreground">
+                  Share the join code and watch players hunt in real-time
+                </p>
+              </CardContent>
+            </Card>
+          </div>
+
+          <div className="text-center mt-8">
+            <Link to="/play">
+              <Button variant="outline" className="border-primary/50 hover:bg-primary/10">
+                Create Your First Hunt
+                <ChevronRight className="w-4 h-4 ml-1" />
+              </Button>
+            </Link>
           </div>
         </div>
       </section>
@@ -301,7 +362,7 @@ const Index = () => {
             <span className="font-display font-bold">SAT HUNTER</span>
           </div>
           <p className="text-sm text-muted-foreground mb-4">
-            Catch Bitcoin. Own your data. Stay sovereign.
+            Capture sats. Own your data. Stay sovereign.
           </p>
           <div className="flex items-center justify-center gap-4 text-xs text-muted-foreground">
             <span>Built on Nostr</span>

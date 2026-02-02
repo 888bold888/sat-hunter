@@ -131,7 +131,7 @@ export const EditProfileForm: React.FC = () => {
             <AlertTitle className="text-bitcoin">Set up your Lightning Address to receive sats!</AlertTitle>
             <AlertDescription className="text-muted-foreground">
               <p className="mb-3">
-                When you catch creatures, sats are sent instantly to your Lightning Address.
+                When you capture creatures, sats are sent instantly to your Lightning Address.
                 It looks like an email, e.g. <span className="font-mono text-foreground">you@wallet.com</span>
               </p>
               <p className="text-sm mb-2">Get a free Lightning Address from:</p>
@@ -170,7 +170,7 @@ export const EditProfileForm: React.FC = () => {
                 <Input placeholder="e.g. you@wallet.com" {...field} />
               </FormControl>
               <FormDescription>
-                Your Lightning Address for receiving sats when you catch creatures.
+                Your Lightning Address for receiving sats when you capture creatures.
               </FormDescription>
               <FormMessage />
             </FormItem>
