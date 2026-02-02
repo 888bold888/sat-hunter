@@ -121,7 +121,7 @@ export function MonsterCard({
             : !isInRange
               ? 'Get Closer'
               : isCapturing
-                ? 'Catching...'
+                ? 'Capturing...'
                 : 'Capture!'}
         </Button>
       </CardContent>

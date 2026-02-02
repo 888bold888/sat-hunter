@@ -55,7 +55,7 @@ export function GameMap({ selectedMonster, selectedStop, onSelectMonster, onSele
       } else {
         toast({
           title: `${monster.name} Captured! ⚡`,
-          description: `You earned ${monster.satAmount.toLocaleString()} sats!`,
+          description: `You stacked ${monster.satAmount.toLocaleString()} sats!`,
         });
       }
     }

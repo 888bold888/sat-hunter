@@ -77,14 +77,14 @@ export function HuntEndedDialog({ open, onClose }: HuntEndedDialogProps) {
               <p className="font-display text-3xl font-black text-secondary">
                 {playerStats.currentHuntCaptured}
               </p>
-              <p className="text-xs text-muted-foreground">Creatures Caught</p>
+              <p className="text-xs text-muted-foreground">Creatures Captured</p>
             </div>
             <div className="p-4 rounded-xl bg-primary/10 border border-primary/30">
               <Zap className="w-6 h-6 mx-auto text-primary mb-2" />
               <p className="font-display text-3xl font-black text-primary text-glow-orange">
                 {formatSats(playerStats.currentHuntSatsEarned)}
               </p>
-              <p className="text-xs text-muted-foreground">Sats Earned</p>
+              <p className="text-xs text-muted-foreground">Sats Stacked</p>
             </div>
           </div>
 

@@ -137,7 +137,7 @@ export function PaymentConfirmation() {
             <Alert className="border-blue-500/30 bg-blue-500/5">
               <Wallet className="w-4 h-4 text-blue-500" />
               <AlertDescription className="text-sm">
-                <strong>NWC wallet required.</strong> Connect your Nostr Wallet Connect (NWC) in settings to pay players automatically when they catch creatures.
+                <strong>NWC wallet required.</strong> Connect your Nostr Wallet Connect (NWC) in settings to pay players automatically when they capture creatures.
               </AlertDescription>
             </Alert>
           )}
@@ -180,7 +180,7 @@ export function PaymentConfirmation() {
         <Alert className="border-primary/30 bg-primary/5">
           <Zap className="w-4 h-4 text-primary" />
           <AlertDescription className="text-xs">
-            When players catch creatures, your connected wallet will automatically pay them the reward sats via their Lightning address.
+            When players capture creatures, your connected wallet will automatically pay them the reward sats via their Lightning address.
           </AlertDescription>
         </Alert>
       </CardContent>
