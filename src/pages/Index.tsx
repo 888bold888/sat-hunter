@@ -6,6 +6,7 @@ import { useGame } from '@/contexts/GameContext';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import {
   Zap,
   Target,
@@ -162,115 +163,110 @@ const Index = () => {
       {/* How It Works Section */}
       <section className="relative py-20 px-4">
         <div className="max-w-4xl mx-auto">
-          <h2 className="font-display text-3xl md:text-4xl font-bold text-center mb-12">
+          <h2 className="font-display text-3xl md:text-4xl font-bold text-center mb-8">
             How It <span className="text-primary">Works</span>
           </h2>
 
-          <div className="grid md:grid-cols-3 gap-6">
-            {/* Step 1 */}
-            <Card className="bg-card/60 backdrop-blur border-primary/20 hover:border-primary/50 transition-colors group">
-              <CardContent className="p-6 text-center">
-                <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-gradient-to-br from-primary/20 to-primary/5 flex items-center justify-center border border-primary/30 group-hover:scale-110 transition-transform">
-                  <Target className="w-8 h-8 text-primary" />
-                </div>
-                <Badge className="mb-3 bg-primary/20 text-primary border-primary/30">Step 1</Badge>
-                <h3 className="font-display font-bold text-lg mb-2">Join a Hunt</h3>
-                <p className="text-sm text-muted-foreground">
-                  Scan a QR code or enter a share code to join a live hunt in your area
-                </p>
-              </CardContent>
-            </Card>
+          <Tabs defaultValue="players" className="w-full">
+            <TabsList className="grid w-full max-w-md mx-auto grid-cols-2 mb-8">
+              <TabsTrigger value="players" className="font-display">
+                <Play className="w-4 h-4 mr-2" />
+                Players
+              </TabsTrigger>
+              <TabsTrigger value="hosts" className="font-display">
+                <Users className="w-4 h-4 mr-2" />
+                Hosts
+              </TabsTrigger>
+            </TabsList>
 
-            {/* Step 2 */}
-            <Card className="bg-card/60 backdrop-blur border-secondary/20 hover:border-secondary/50 transition-colors group">
-              <CardContent className="p-6 text-center">
-                <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-gradient-to-br from-secondary/20 to-secondary/5 flex items-center justify-center border border-secondary/30 group-hover:scale-110 transition-transform">
-                  <MapPin className="w-8 h-8 text-secondary" />
-                </div>
-                <Badge className="mb-3 bg-secondary/20 text-secondary border-secondary/30">Step 2</Badge>
-                <h3 className="font-display font-bold text-lg mb-2">Find Creatures</h3>
-                <p className="text-sm text-muted-foreground">
-                  Walk around the real world - creatures appear on your map when you get close
-                </p>
-              </CardContent>
-            </Card>
+            {/* Players Tab */}
+            <TabsContent value="players">
+              <div className="grid md:grid-cols-3 gap-6">
+                <Card className="bg-card/60 backdrop-blur border-primary/20 hover:border-primary/50 transition-colors group">
+                  <CardContent className="p-6 text-center">
+                    <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-gradient-to-br from-primary/20 to-primary/5 flex items-center justify-center border border-primary/30 group-hover:scale-110 transition-transform">
+                      <Target className="w-8 h-8 text-primary" />
+                    </div>
+                    <Badge className="mb-3 bg-primary/20 text-primary border-primary/30">Step 1</Badge>
+                    <h3 className="font-display font-bold text-lg mb-2">Join a Hunt</h3>
+                    <p className="text-sm text-muted-foreground">
+                      Scan a QR code or enter a share code to join a live hunt in your area
+                    </p>
+                  </CardContent>
+                </Card>
 
-            {/* Step 3 */}
-            <Card className="bg-card/60 backdrop-blur border-accent/20 hover:border-accent/50 transition-colors group">
-              <CardContent className="p-6 text-center">
-                <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-gradient-to-br from-accent/20 to-accent/5 flex items-center justify-center border border-accent/30 group-hover:scale-110 transition-transform">
-                  <Zap className="w-8 h-8 text-accent" />
-                </div>
-                <Badge className="mb-3 bg-accent/20 text-accent border-accent/30">Step 3</Badge>
-                <h3 className="font-display font-bold text-lg mb-2">Capture & Stack</h3>
-                <p className="text-sm text-muted-foreground">
-                  Tap to capture and claim sats instantly to your Lightning wallet
-                </p>
-              </CardContent>
-            </Card>
-          </div>
-        </div>
-      </section>
+                <Card className="bg-card/60 backdrop-blur border-secondary/20 hover:border-secondary/50 transition-colors group">
+                  <CardContent className="p-6 text-center">
+                    <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-gradient-to-br from-secondary/20 to-secondary/5 flex items-center justify-center border border-secondary/30 group-hover:scale-110 transition-transform">
+                      <MapPin className="w-8 h-8 text-secondary" />
+                    </div>
+                    <Badge className="mb-3 bg-secondary/20 text-secondary border-secondary/30">Step 2</Badge>
+                    <h3 className="font-display font-bold text-lg mb-2">Find Creatures</h3>
+                    <p className="text-sm text-muted-foreground">
+                      Walk around the real world - creatures appear on your map when you get close
+                    </p>
+                  </CardContent>
+                </Card>
 
-      {/* Host a Hunt Section */}
-      <section className="relative py-20 px-4 bg-gradient-to-b from-transparent via-primary/5 to-transparent">
-        <div className="max-w-4xl mx-auto">
-          <h2 className="font-display text-3xl md:text-4xl font-bold text-center mb-4">
-            Host a <span className="text-primary">Hunt</span>
-          </h2>
-          <p className="text-muted-foreground text-center mb-12 max-w-md mx-auto">
-            Create memorable experiences for your community, meetup, or event
-          </p>
+                <Card className="bg-card/60 backdrop-blur border-accent/20 hover:border-accent/50 transition-colors group">
+                  <CardContent className="p-6 text-center">
+                    <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-gradient-to-br from-accent/20 to-accent/5 flex items-center justify-center border border-accent/30 group-hover:scale-110 transition-transform">
+                      <Zap className="w-8 h-8 text-accent" />
+                    </div>
+                    <Badge className="mb-3 bg-accent/20 text-accent border-accent/30">Step 3</Badge>
+                    <h3 className="font-display font-bold text-lg mb-2">Capture & Stack</h3>
+                    <p className="text-sm text-muted-foreground">
+                      Tap to capture and claim sats instantly to your Lightning wallet
+                    </p>
+                  </CardContent>
+                </Card>
+              </div>
+            </TabsContent>
 
-          <div className="grid md:grid-cols-3 gap-6">
-            {/* Host Step 1 */}
-            <Card className="bg-card/60 backdrop-blur border-primary/20 hover:border-primary/50 transition-colors group">
-              <CardContent className="p-6 text-center">
-                <div className="w-12 h-12 mx-auto mb-4 rounded-full bg-gradient-to-br from-primary/20 to-primary/5 flex items-center justify-center border border-primary/30 group-hover:scale-110 transition-transform">
-                  <MapPin className="w-6 h-6 text-primary" />
-                </div>
-                <h3 className="font-display font-bold text-base mb-2">Set the Area</h3>
-                <p className="text-sm text-muted-foreground">
-                  Draw a boundary on the map where creatures will spawn
-                </p>
-              </CardContent>
-            </Card>
+            {/* Hosts Tab */}
+            <TabsContent value="hosts">
+              <div className="grid md:grid-cols-3 gap-6">
+                <Card className="bg-card/60 backdrop-blur border-primary/20 hover:border-primary/50 transition-colors group">
+                  <CardContent className="p-6 text-center">
+                    <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-gradient-to-br from-primary/20 to-primary/5 flex items-center justify-center border border-primary/30 group-hover:scale-110 transition-transform">
+                      <MapPin className="w-8 h-8 text-primary" />
+                    </div>
+                    <Badge className="mb-3 bg-primary/20 text-primary border-primary/30">Step 1</Badge>
+                    <h3 className="font-display font-bold text-lg mb-2">Set the Area</h3>
+                    <p className="text-sm text-muted-foreground">
+                      Draw a boundary on the map where creatures will spawn
+                    </p>
+                  </CardContent>
+                </Card>
 
-            {/* Host Step 2 */}
-            <Card className="bg-card/60 backdrop-blur border-primary/20 hover:border-primary/50 transition-colors group">
-              <CardContent className="p-6 text-center">
-                <div className="w-12 h-12 mx-auto mb-4 rounded-full bg-gradient-to-br from-primary/20 to-primary/5 flex items-center justify-center border border-primary/30 group-hover:scale-110 transition-transform">
-                  <Bitcoin className="w-6 h-6 text-primary" />
-                </div>
-                <h3 className="font-display font-bold text-base mb-2">Fund with Sats</h3>
-                <p className="text-sm text-muted-foreground">
-                  Deposit sats via Lightning - they become the prizes players capture
-                </p>
-              </CardContent>
-            </Card>
+                <Card className="bg-card/60 backdrop-blur border-secondary/20 hover:border-secondary/50 transition-colors group">
+                  <CardContent className="p-6 text-center">
+                    <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-gradient-to-br from-secondary/20 to-secondary/5 flex items-center justify-center border border-secondary/30 group-hover:scale-110 transition-transform">
+                      <Bitcoin className="w-8 h-8 text-secondary" />
+                    </div>
+                    <Badge className="mb-3 bg-secondary/20 text-secondary border-secondary/30">Step 2</Badge>
+                    <h3 className="font-display font-bold text-lg mb-2">Fund with Sats</h3>
+                    <p className="text-sm text-muted-foreground">
+                      Deposit sats via Lightning - they become the prizes players capture
+                    </p>
+                  </CardContent>
+                </Card>
 
-            {/* Host Step 3 */}
-            <Card className="bg-card/60 backdrop-blur border-primary/20 hover:border-primary/50 transition-colors group">
-              <CardContent className="p-6 text-center">
-                <div className="w-12 h-12 mx-auto mb-4 rounded-full bg-gradient-to-br from-primary/20 to-primary/5 flex items-center justify-center border border-primary/30 group-hover:scale-110 transition-transform">
-                  <Users className="w-6 h-6 text-primary" />
-                </div>
-                <h3 className="font-display font-bold text-base mb-2">Share & Watch</h3>
-                <p className="text-sm text-muted-foreground">
-                  Share the join code and watch players hunt in real-time
-                </p>
-              </CardContent>
-            </Card>
-          </div>
-
-          <div className="text-center mt-8">
-            <Link to="/play">
-              <Button variant="outline" className="border-primary/50 hover:bg-primary/10">
-                Create Your First Hunt
-                <ChevronRight className="w-4 h-4 ml-1" />
-              </Button>
-            </Link>
-          </div>
+                <Card className="bg-card/60 backdrop-blur border-accent/20 hover:border-accent/50 transition-colors group">
+                  <CardContent className="p-6 text-center">
+                    <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-gradient-to-br from-accent/20 to-accent/5 flex items-center justify-center border border-accent/30 group-hover:scale-110 transition-transform">
+                      <Users className="w-8 h-8 text-accent" />
+                    </div>
+                    <Badge className="mb-3 bg-accent/20 text-accent border-accent/30">Step 3</Badge>
+                    <h3 className="font-display font-bold text-lg mb-2">Share & Watch</h3>
+                    <p className="text-sm text-muted-foreground">
+                      Share the join code and watch players hunt in real-time
+                    </p>
+                  </CardContent>
+                </Card>
+              </div>
+            </TabsContent>
+          </Tabs>
         </div>
       </section>
 
