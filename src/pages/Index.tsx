@@ -414,7 +414,7 @@ const Index = () => {
             <span className="font-display font-bold">SAT HUNTER</span>
           </div>
           <p className="text-sm text-muted-foreground mb-4">
-            Capture sats. Own your data. Stay sovereign.
+            Capture creatures. Stack sats.
           </p>
           <div className="flex items-center justify-center gap-4 text-xs text-muted-foreground">
             <span>Built on Nostr</span>
