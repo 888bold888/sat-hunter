@@ -100,7 +100,7 @@ const Index = () => {
           <div className="relative mb-8">
             <div className="absolute -top-16 -left-20 text-5xl animate-float opacity-60">🐸</div>
             <div className="absolute -top-8 -right-16 text-4xl animate-float delay-300 opacity-60">⚡</div>
-            <div className="absolute top-12 -left-24 text-3xl animate-float delay-500 opacity-40">💀</div>
+            <div className="absolute top-12 -left-24 text-3xl animate-float delay-500 opacity-40">🔥</div>
             <div className="absolute top-16 -right-20 text-4xl animate-float delay-700 opacity-50">🦊</div>
 
             {/* Main Logo */}
