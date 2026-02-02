@@ -19,6 +19,9 @@ import {
   Bitcoin,
   Radio,
   ArrowRight,
+  Lock,
+  Eye,
+  EyeOff,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
@@ -156,6 +159,59 @@ const Index = () => {
         <div className="absolute bottom-8 left-1/2 -translate-x-1/2 animate-bounce">
           <div className="w-6 h-10 rounded-full border-2 border-muted-foreground/30 flex items-start justify-center p-2">
             <div className="w-1 h-2 bg-muted-foreground/50 rounded-full animate-pulse" />
+          </div>
+        </div>
+      </section>
+
+      {/* Privacy Section */}
+      <section className="relative py-16 px-4 bg-gradient-to-b from-transparent via-green-500/5 to-transparent">
+        <div className="max-w-4xl mx-auto">
+          <div className="text-center mb-10">
+            <Badge className="mb-4 bg-green-500/20 text-green-400 border-green-500/30">
+              <Shield className="w-3 h-3 mr-1" />
+              Privacy First
+            </Badge>
+            <h2 className="font-display text-2xl md:text-3xl font-bold">
+              Built for <span className="text-green-400">Privacy</span>
+            </h2>
+          </div>
+
+          <div className="grid md:grid-cols-3 gap-4">
+            <div className="flex items-start gap-3 p-4 rounded-lg bg-card/40 border border-green-500/20">
+              <div className="w-10 h-10 rounded-full bg-green-500/10 flex items-center justify-center flex-shrink-0">
+                <Lock className="w-5 h-5 text-green-400" />
+              </div>
+              <div>
+                <h3 className="font-display font-bold text-sm mb-1">Location Off-Relay</h3>
+                <p className="text-xs text-muted-foreground">
+                  Your location never touches Nostr relays - it goes directly to the host via P2P
+                </p>
+              </div>
+            </div>
+
+            <div className="flex items-start gap-3 p-4 rounded-lg bg-card/40 border border-green-500/20">
+              <div className="w-10 h-10 rounded-full bg-green-500/10 flex items-center justify-center flex-shrink-0">
+                <Radio className="w-5 h-5 text-green-400" />
+              </div>
+              <div>
+                <h3 className="font-display font-bold text-sm mb-1">Direct Connection</h3>
+                <p className="text-xs text-muted-foreground">
+                  WebRTC connects you straight to the host - no middleman, no server
+                </p>
+              </div>
+            </div>
+
+            <div className="flex items-start gap-3 p-4 rounded-lg bg-card/40 border border-green-500/20">
+              <div className="w-10 h-10 rounded-full bg-green-500/10 flex items-center justify-center flex-shrink-0">
+                <EyeOff className="w-5 h-5 text-green-400" />
+              </div>
+              <div>
+                <h3 className="font-display font-bold text-sm mb-1">Nostr for Identity Only</h3>
+                <p className="text-xs text-muted-foreground">
+                  Relays handle login and game coordination - never your whereabouts
+                </p>
+              </div>
+            </div>
           </div>
         </div>
       </section>
