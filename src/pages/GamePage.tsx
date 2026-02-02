@@ -186,7 +186,7 @@ export default function GamePage() {
               <div className="flex-1">
                 <h3 className="font-display font-bold text-lg">Create a Hunt</h3>
                 <p className="text-sm text-muted-foreground">
-                  Deploy sats as creatures for others to catch
+                  Deploy sats as creatures for others to capture
                 </p>
               </div>
               <Sparkles className="w-5 h-5 text-primary animate-pulse" />

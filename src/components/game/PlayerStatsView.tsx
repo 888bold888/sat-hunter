@@ -132,7 +132,7 @@ export function PlayerStatsView({ showCurrentHunt = true }: PlayerStatsViewProps
             <p className="font-display text-2xl font-bold">
               {playerStats.lifetimeCaptured}
             </p>
-            <p className="text-xs text-muted-foreground">Lifetime Catches</p>
+            <p className="text-xs text-muted-foreground">Lifetime Captures</p>
           </CardContent>
         </Card>
         <Card className="bg-yellow-500/10 border-yellow-500/30">
@@ -171,7 +171,7 @@ export function PlayerStatsView({ showCurrentHunt = true }: PlayerStatsViewProps
             <CardContent>
               {monsterTypeStats.length === 0 ? (
                 <p className="text-sm text-muted-foreground text-center py-4">
-                  No creatures captured yet. Join a hunt to start catching!
+                  No creatures captured yet. Join a hunt to start capturing!
                 </p>
               ) : (
                 <ScrollArea className="h-48">
@@ -249,12 +249,12 @@ export function PlayerStatsView({ showCurrentHunt = true }: PlayerStatsViewProps
                         <p className="font-display font-bold text-primary">
                           {formatSats(selectedHunt.satsEarned)}
                         </p>
-                        <p className="text-xs text-muted-foreground">Sats Earned</p>
+                        <p className="text-xs text-muted-foreground">Sats Stacked</p>
                       </div>
                     </div>
                     {selectedHunt.capturedMonsters.length > 0 && (
                       <div className="mt-3">
-                        <p className="text-xs text-muted-foreground mb-2">Creatures Caught:</p>
+                        <p className="text-xs text-muted-foreground mb-2">Creatures Captured:</p>
                         <div className="flex flex-wrap gap-1">
                           {selectedHunt.capturedMonsters.map((m, i) => (
                             <Badge

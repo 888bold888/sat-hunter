@@ -155,7 +155,7 @@ export function Leaderboard({ currentUserPubkey }: LeaderboardProps) {
           <div className="py-8">
             <Skull className="w-16 h-16 mx-auto text-muted-foreground mb-4 animate-float" />
             <p className="text-muted-foreground">No captures yet!</p>
-            <p className="text-sm text-muted-foreground mt-1">Be the first to catch a creature</p>
+            <p className="text-sm text-muted-foreground mt-1">Be the first to capture a creature</p>
           </div>
         </CardContent>
       </Card>

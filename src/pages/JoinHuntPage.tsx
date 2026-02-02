@@ -80,7 +80,7 @@ export default function JoinHuntPage() {
 
   useSeoMeta({
     title: 'Join Hunt | Sat Hunter',
-    description: 'Join a Bitcoin scavenger hunt and start catching creatures!',
+    description: 'Join a Bitcoin scavenger hunt and start capturing creatures!',
   });
 
   // Start location tracking on mount
@@ -472,7 +472,7 @@ export default function JoinHuntPage() {
               <Alert className="border-primary/30 bg-primary/5">
                 <Zap className="w-4 h-4 text-primary" />
                 <AlertDescription>
-                  You need to log in with Nostr to join a hunt and earn sats!
+                  You need to log in with Nostr to join a hunt and stack sats!
                 </AlertDescription>
               </Alert>
             )}
@@ -484,7 +484,7 @@ export default function JoinHuntPage() {
                 <AlertTitle className="text-yellow-500 text-sm">Lightning Address Recommended</AlertTitle>
                 <AlertDescription className="space-y-2 text-xs">
                   <p>
-                    To receive sats when catching creatures, add a Lightning address to your Nostr profile.
+                    To receive sats when capturing creatures, add a Lightning address to your Nostr profile.
                   </p>
                   <p className="text-muted-foreground">
                     {hasNWC ? (

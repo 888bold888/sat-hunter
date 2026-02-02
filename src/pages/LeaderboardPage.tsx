@@ -12,7 +12,7 @@ export default function LeaderboardPage() {
 
   useSeoMeta({
     title: 'Leaderboard | Sat Hunter',
-    description: 'See the top hunters and their Bitcoin earnings',
+    description: 'See the top hunters and their stacked sats',
   });
 
   return (
@@ -47,7 +47,7 @@ export default function LeaderboardPage() {
             <div>
               <h3 className="font-display font-bold text-lg">Ready to Hunt?</h3>
               <p className="text-sm text-muted-foreground">
-                Join a hunt and start catching creatures to earn sats!
+                Join a hunt and start capturing creatures to stack sats!
               </p>
             </div>
             <Link to="/play">
