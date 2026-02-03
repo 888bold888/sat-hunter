@@ -56,8 +56,15 @@ export function useHostP2P(hunt: HuntEvent | null): UseHostP2PResult {
   // Track processed offer IDs to avoid duplicates
   const processedOffersRef = useRef<Set<string>>(new Set());
 
+  // Track if we're being cleaned up to avoid state updates after unmount
+  const isCleaningUpRef = useRef(false);
+
   // Cleanup function
   const cleanup = useCallback(() => {
+    if (isCleaningUpRef.current) return; // Already cleaning up
+    isCleaningUpRef.current = true;
+
+    console.log('[P2P Host] Cleaning up', connectionsRef.current.size, 'connections');
     connectionsRef.current.forEach((conn) => {
       try {
         conn.peerConnection.close();
@@ -70,6 +77,7 @@ export function useHostP2P(hunt: HuntEvent | null): UseHostP2PResult {
     setIsActive(false);
     setConnectedPlayers(0);
     setSentDataTo(0);
+    isCleaningUpRef.current = false;
   }, []);
 
   // Handle incoming offer from a player
@@ -127,14 +135,10 @@ export function useHostP2P(hunt: HuntEvent | null): UseHostP2PResult {
         // Wait for data channel (player created it in their offer)
         peerConnection.ondatachannel = (event) => {
           const channel = event.channel;
-          console.log('[P2P Host] Data channel received from', playerPubkey.slice(0, 8));
+          console.log('[P2P Host] Data channel received from', playerPubkey.slice(0, 8), 'state:', channel.readyState);
 
-          channel.onopen = () => {
-            console.log('[P2P Host] Data channel open for', playerPubkey.slice(0, 8));
-            connection.state = 'connected';
-            setConnectedPlayers((prev) => prev + 1);
-
-            if (huntDataRef.current) {
+          const sendData = () => {
+            if (huntDataRef.current && channel.readyState === 'open') {
               try {
                 sendHuntData(channel, huntDataRef.current);
                 connection.state = 'sent';
@@ -147,9 +151,33 @@ export function useHostP2P(hunt: HuntEvent | null): UseHostP2PResult {
             }
           };
 
+          // Channel might already be open
+          if (channel.readyState === 'open') {
+            console.log('[P2P Host] Data channel already open for', playerPubkey.slice(0, 8));
+            connection.state = 'connected';
+            setConnectedPlayers((prev) => prev + 1);
+            sendData();
+          }
+
+          channel.onopen = () => {
+            console.log('[P2P Host] Data channel open for', playerPubkey.slice(0, 8));
+            connection.state = 'connected';
+            setConnectedPlayers((prev) => prev + 1);
+            sendData();
+          };
+
           channel.onerror = (err) => {
-            console.error('[P2P Host] Data channel error:', err);
-            connection.state = 'failed';
+            // Only log as error if we haven't sent data yet - otherwise it's just cleanup
+            if (connection.state !== 'sent') {
+              console.error('[P2P Host] Data channel error:', err);
+              connection.state = 'failed';
+            } else {
+              console.log('[P2P Host] Data channel closed after sending data to', playerPubkey.slice(0, 8));
+            }
+          };
+
+          channel.onclose = () => {
+            console.log('[P2P Host] Data channel closed for', playerPubkey.slice(0, 8), 'state was:', connection.state);
           };
         };
 
