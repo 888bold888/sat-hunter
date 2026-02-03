@@ -32,6 +32,7 @@ import {
   CalendarClock,
   ShieldCheck,
   XCircle,
+  Smartphone,
 } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { formatSats, formatTimeRemaining, formatCountdown } from '@/lib/gameUtils';
@@ -203,9 +204,36 @@ export default function JoinHuntPage() {
     setIsJoining(true);
 
     try {
-      // Phase 2C: Initialize motion tracking for anti-cheat
+      // Phase 2C: Initialize motion tracking for anti-cheat (HARD ENFORCEMENT)
       // Must be called from user gesture (button click) for iOS permission
-      await initializeMotionTracking();
+      const motionResult = await initializeMotionTracking();
+
+      if (!motionResult.success) {
+        if (motionResult.reason === 'denied') {
+          toast({
+            title: 'Motion Sensors Required',
+            description: 'Please allow motion sensor access to join. This helps prevent cheating.',
+            variant: 'destructive',
+          });
+          setIsJoining(false);
+          return;
+        }
+        // For 'error' reason, also block
+        if (motionResult.reason === 'error') {
+          toast({
+            title: 'Sensor Error',
+            description: 'Could not initialize motion sensors. Please try again.',
+            variant: 'destructive',
+          });
+          setIsJoining(false);
+          return;
+        }
+      }
+
+      // If no sensors (desktop), warn but allow - they might be testing
+      if (motionResult.reason === 'no_sensors') {
+        console.log('[Join] No motion sensors - allowing join with warning');
+      }
 
       let huntToJoin = foundHunt;
 

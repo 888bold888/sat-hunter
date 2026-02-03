@@ -26,8 +26,14 @@ import {
   getMotionStats,
   isMotionPermissionRequired,
   hasMotionPermission,
+  hasMotionSensors,
   type MotionStats,
 } from '@/lib/motionTracking';
+
+export type MotionInitResult = {
+  success: boolean;
+  reason: 'granted' | 'denied' | 'no_sensors' | 'error';
+};
 import type { GeoLocation } from '@/lib/gameTypes';
 
 export interface AntiCheatState {
@@ -99,10 +105,22 @@ export function useAntiCheat() {
   /**
    * Request motion permission and start tracking (Phase 2C)
    * Must be called from a user gesture on iOS
+   *
+   * Returns detailed result for hard enforcement:
+   * - granted: Permission granted, tracking started
+   * - denied: User denied permission (block joining)
+   * - no_sensors: Desktop/device without sensors (allow with warning)
+   * - error: Unexpected error
    */
-  const initializeMotionTracking = useCallback(async (): Promise<boolean> => {
+  const initializeMotionTracking = useCallback(async (): Promise<MotionInitResult> => {
     if (motionTrackingStartedRef.current) {
-      return true;
+      return { success: true, reason: 'granted' };
+    }
+
+    // Check if device has motion sensors
+    if (!hasMotionSensors()) {
+      console.log('[AntiCheat] No motion sensors available (desktop?)');
+      return { success: true, reason: 'no_sensors' };
     }
 
     // Request permission if needed (iOS 13+)
@@ -110,14 +128,19 @@ export function useAntiCheat() {
       const granted = await requestMotionPermission();
       if (!granted) {
         console.log('[AntiCheat] Motion permission denied');
-        return false;
+        return { success: false, reason: 'denied' };
       }
     }
 
     // Start tracking
     const started = startMotionTracking();
     motionTrackingStartedRef.current = started;
-    return started;
+
+    if (started) {
+      return { success: true, reason: 'granted' };
+    } else {
+      return { success: false, reason: 'error' };
+    }
   }, []);
 
   /**

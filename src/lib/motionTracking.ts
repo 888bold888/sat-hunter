@@ -119,6 +119,14 @@ export function hasMotionPermission(): boolean {
   return permissionGranted;
 }
 
+/**
+ * Check if motion sensors are available on this device
+ * Returns true for mobile devices, false for desktop
+ */
+export function hasMotionSensors(): boolean {
+  return sensorAvailable;
+}
+
 // ══════════════════════════════════════════════════════════════
 // MOTION EVENT HANDLER
 // ══════════════════════════════════════════════════════════════
