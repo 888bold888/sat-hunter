@@ -9,6 +9,7 @@ import { useAuthor } from '@/hooks/useAuthor';
 import { useNWC } from '@/hooks/useNWCContext';
 import { useJoinP2P } from '@/hooks/useJoinP2P';
 import { useJoinRequest } from '@/hooks/useJoinRequest';
+import { useAntiCheat } from '@/hooks/useAntiCheat';
 import { LoginArea } from '@/components/auth/LoginArea';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -31,6 +32,7 @@ import {
   CalendarClock,
   ShieldCheck,
   XCircle,
+  Smartphone,
 } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { formatSats, formatTimeRemaining, formatCountdown } from '@/lib/gameUtils';
@@ -63,6 +65,9 @@ export default function JoinHuntPage() {
     requestJoin,
     reset: resetJoinRequest,
   } = useJoinRequest();
+
+  // Anti-cheat with motion tracking (Phase 2C)
+  const { initializeMotionTracking } = useAntiCheat();
 
   // Fetch user's profile to check for Lightning address
   const { data: userProfile, isLoading: isLoadingProfile } = useAuthor(user?.pubkey);
@@ -199,6 +204,37 @@ export default function JoinHuntPage() {
     setIsJoining(true);
 
     try {
+      // Phase 2C: Initialize motion tracking for anti-cheat (HARD ENFORCEMENT)
+      // Must be called from user gesture (button click) for iOS permission
+      const motionResult = await initializeMotionTracking();
+
+      if (!motionResult.success) {
+        if (motionResult.reason === 'denied') {
+          toast({
+            title: 'Motion Sensors Required',
+            description: 'Please allow motion sensor access to join. This helps prevent cheating.',
+            variant: 'destructive',
+          });
+          setIsJoining(false);
+          return;
+        }
+        // For 'error' reason, also block
+        if (motionResult.reason === 'error') {
+          toast({
+            title: 'Sensor Error',
+            description: 'Could not initialize motion sensors. Please try again.',
+            variant: 'destructive',
+          });
+          setIsJoining(false);
+          return;
+        }
+      }
+
+      // If no sensors (desktop), warn but allow - they might be testing
+      if (motionResult.reason === 'no_sensors') {
+        console.log('[Join] No motion sensors - allowing join with warning');
+      }
+
       let huntToJoin = foundHunt;
 
       // If hunt requires P2P, connect to host for location data
