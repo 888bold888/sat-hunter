@@ -50,6 +50,15 @@ export default function JoinHuntPage() {
   const [searchCode, setSearchCode] = useState(code?.toUpperCase() || '');
   const [isJoining, setIsJoining] = useState(false);
 
+  // Sync searchCode with URL param when it changes (e.g., when rejoining)
+  useEffect(() => {
+    if (code) {
+      const upperCode = code.toUpperCase();
+      setInputCode(upperCode);
+      setSearchCode(upperCode);
+    }
+  }, [code]);
+
   // Query hunt from Nostr
   const { data: foundHunt, isLoading: isSearching, error: searchError, refetch, isFetching } = useHuntByCode(searchCode);
 

@@ -118,6 +118,7 @@ export function useHuntByCode(shareCode: string | undefined) {
       };
     },
     enabled: !!shareCode && shareCode.length >= 6,
+    refetchOnMount: 'always', // Always refetch when rejoining to get fresh hunt data
     retry: (failureCount, error) => {
       // Retry "Hunt not found" up to 5 times (for relay propagation delays)
       // Retry other errors up to 2 times
