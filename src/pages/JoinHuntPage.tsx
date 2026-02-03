@@ -32,7 +32,6 @@ import {
   CalendarClock,
   ShieldCheck,
   XCircle,
-  Smartphone,
 } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { formatSats, formatTimeRemaining, formatCountdown } from '@/lib/gameUtils';
