@@ -8,8 +8,6 @@ import type {
   SatStop,
   LeaderboardEntry,
   CapturedMonster,
-  CreatureVisibility,
-  VisibleMonster,
 } from './gameTypes';
 
 import {
@@ -898,42 +896,6 @@ export function isInCaptureRange(
   rangeMeters: number = 15
 ): boolean {
   return calculateDistance(playerLocation, monsterLocation) <= rangeMeters;
-}
-
-// Phase 2B: Progressive creature reveal based on distance
-// Prevents screenshots from revealing exact creature locations
-// Distance tiers:
-//   200m+    : hidden     - Not visible at all
-//   150-200m : silhouette - Grey blur with "?"
-//   75-150m  : type       - Emoji only (no name/rarity/sats)
-//   30-75m   : identity   - Emoji + name + rarity
-//   15-30m   : full       - All info including sat amount
-//   0-15m    : catchable  - Full info + catch button enabled
-export function getCreatureVisibility(distance: number): CreatureVisibility {
-  if (distance > 200) return 'hidden';
-  if (distance > 150) return 'silhouette';
-  if (distance > 75) return 'type';
-  if (distance > 30) return 'identity';
-  if (distance > 15) return 'full';
-  return 'catchable';
-}
-
-// Get visible monsters with their visibility tier
-export function getVisibleMonsters(
-  playerLocation: GeoLocation,
-  monsters: Monster[]
-): VisibleMonster[] {
-  return monsters
-    .map((monster) => {
-      const distance = calculateDistance(playerLocation, monster.location);
-      const visibility = getCreatureVisibility(distance);
-      return {
-        ...monster,
-        visibility,
-        distance,
-      };
-    })
-    .filter((m) => m.visibility !== 'hidden'); // Only return visible monsters
 }
 
 // Check if player is at a sat stop (10 meters range)
