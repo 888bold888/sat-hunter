@@ -137,7 +137,17 @@ export function useHostP2P(hunt: HuntEvent | null): UseHostP2PResult {
           const channel = event.channel;
           console.log('[P2P Host] Data channel received from', playerPubkey.slice(0, 8), 'state:', channel.readyState);
 
+          const markConnected = () => {
+            // Guard against double-counting
+            if (connection.state === 'connecting') {
+              connection.state = 'connected';
+              setConnectedPlayers((prev) => prev + 1);
+            }
+          };
+
           const sendData = () => {
+            // Guard against double-sending
+            if (connection.state === 'sent') return;
             if (huntDataRef.current && channel.readyState === 'open') {
               try {
                 sendHuntData(channel, huntDataRef.current);
@@ -154,15 +164,13 @@ export function useHostP2P(hunt: HuntEvent | null): UseHostP2PResult {
           // Channel might already be open
           if (channel.readyState === 'open') {
             console.log('[P2P Host] Data channel already open for', playerPubkey.slice(0, 8));
-            connection.state = 'connected';
-            setConnectedPlayers((prev) => prev + 1);
+            markConnected();
             sendData();
           }
 
           channel.onopen = () => {
             console.log('[P2P Host] Data channel open for', playerPubkey.slice(0, 8));
-            connection.state = 'connected';
-            setConnectedPlayers((prev) => prev + 1);
+            markConnected();
             sendData();
           };
 
