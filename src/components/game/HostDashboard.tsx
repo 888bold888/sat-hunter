@@ -145,6 +145,7 @@ interface PlayerMonitorStats {
   hasWarnings: boolean;
   rejectedCount: number;
   lastCaptureTime: number | null;
+  isKicked: boolean;
 }
 
 // Component to display a player with monitoring info
@@ -168,6 +169,7 @@ function PlayerMonitorCard({
 
   // Activity indicator color
   const getActivityColor = () => {
+    if (stats.isKicked) return 'bg-red-500';
     switch (activityStatus) {
       case 'active': return 'bg-green-500';
       case 'idle': return 'bg-yellow-500';
@@ -177,6 +179,7 @@ function PlayerMonitorCard({
 
   // Determine status color based on trust score and flags
   const getTrustColor = () => {
+    if (stats.isKicked) return 'text-gray-500';
     if (stats.rejectedCount > 0) return 'text-red-500';
     if (stats.hasWarnings) return 'text-yellow-500';
     if (stats.avgTrustScore !== null && stats.avgTrustScore < 80) return 'text-yellow-500';
@@ -184,6 +187,7 @@ function PlayerMonitorCard({
   };
 
   const getStatusBg = () => {
+    if (stats.isKicked) return 'bg-gray-500/10 border-gray-500/30 opacity-60';
     if (stats.rejectedCount > 0) return 'bg-red-500/10 border-red-500/30';
     if (stats.hasWarnings) return 'bg-yellow-500/10 border-yellow-500/30';
     return 'bg-muted/30 border-border';
@@ -217,7 +221,7 @@ function PlayerMonitorCard({
             )}
           </div>
           <p className="text-xs text-muted-foreground">
-            {stats.captureCount} captured • {formatSats(stats.totalSats)} sats • <span className={activityStatus === 'active' ? 'text-green-500' : activityStatus === 'idle' ? 'text-yellow-500' : 'text-gray-500'}>{activityLabel}</span>
+            {stats.captureCount} captured • {formatSats(stats.totalSats)} sats • <span className={stats.isKicked ? 'text-red-500 font-medium' : activityStatus === 'active' ? 'text-green-500' : activityStatus === 'idle' ? 'text-yellow-500' : 'text-gray-500'}>{stats.isKicked ? 'Kicked' : activityLabel}</span>
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -252,51 +256,53 @@ function PlayerMonitorCard({
             </div>
           )}
 
-          {/* Kick button */}
-          <div className="flex justify-end">
-            {confirmingKick ? (
-              <div className="flex items-center gap-2">
-                <span className="text-xs text-muted-foreground">Kick player?</span>
-                <Button
-                  variant="destructive"
-                  size="sm"
-                  className="h-7 text-xs"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    onKick(stats.pubkey);
-                    setConfirmingKick(false);
-                  }}
-                  disabled={isKicking}
-                >
-                  {isKicking ? 'Kicking...' : 'Confirm'}
-                </Button>
+          {/* Kick button - only show if not already kicked */}
+          {!stats.isKicked && (
+            <div className="flex justify-end">
+              {confirmingKick ? (
+                <div className="flex items-center gap-2">
+                  <span className="text-xs text-muted-foreground">Kick player?</span>
+                  <Button
+                    variant="destructive"
+                    size="sm"
+                    className="h-7 text-xs"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onKick(stats.pubkey);
+                      setConfirmingKick(false);
+                    }}
+                    disabled={isKicking}
+                  >
+                    {isKicking ? 'Kicking...' : 'Confirm'}
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="h-7 text-xs"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setConfirmingKick(false);
+                    }}
+                  >
+                    Cancel
+                  </Button>
+                </div>
+              ) : (
                 <Button
                   variant="ghost"
                   size="sm"
-                  className="h-7 text-xs"
+                  className="h-7 text-xs text-muted-foreground hover:text-red-500"
                   onClick={(e) => {
                     e.stopPropagation();
-                    setConfirmingKick(false);
+                    setConfirmingKick(true);
                   }}
                 >
-                  Cancel
+                  <UserMinus className="w-3 h-3 mr-1" />
+                  Kick
                 </Button>
-              </div>
-            ) : (
-              <Button
-                variant="ghost"
-                size="sm"
-                className="h-7 text-xs text-muted-foreground hover:text-red-500"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  setConfirmingKick(true);
-                }}
-              >
-                <UserMinus className="w-3 h-3 mr-1" />
-                Kick
-              </Button>
-            )}
-          </div>
+              )}
+            </div>
+          )}
         </div>
       )}
     </div>
@@ -339,6 +345,7 @@ export function HostDashboard() {
   const { toast } = useToast();
   const { publishKick } = usePublishKick();
   const [kickingPlayer, setKickingPlayer] = useState<string | null>(null);
+  const [kickedPlayers, setKickedPlayers] = useState<Set<string>>(new Set());
 
   // Handle kicking a player
   const handleKickPlayer = useCallback(async (playerPubkey: string) => {
@@ -358,12 +365,8 @@ export function HostDashboard() {
           title: 'Player kicked',
           description: 'The player has been removed from the hunt.',
         });
-        // Remove player from local tracking
-        setSyncedPlayers(prev => {
-          const next = new Set(prev);
-          next.delete(playerPubkey);
-          return next;
-        });
+        // Mark player as kicked (keep them in the list with kicked status)
+        setKickedPlayers(prev => new Set(prev).add(playerPubkey));
       } else {
         toast({
           title: 'Failed to kick player',
@@ -937,6 +940,7 @@ export function HostDashboard() {
                     hasWarnings: allFlags.length > 0,
                     rejectedCount: rejectedForPlayer,
                     lastCaptureTime,
+                    isKicked: kickedPlayers.has(pubkey),
                   };
 
                   return (
