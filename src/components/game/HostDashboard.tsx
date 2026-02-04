@@ -17,7 +17,6 @@ import {
   QrCode,
   Copy,
   Check,
-  Navigation,
   RefreshCw,
   ShieldAlert,
   Wifi,
@@ -25,6 +24,10 @@ import {
   UserCheck,
   UserX,
   ShieldCheck,
+  AlertTriangle,
+  Activity,
+  ChevronDown,
+  ChevronUp,
 } from 'lucide-react';
 import QRCode from 'qrcode';
 import { useHuntSync } from '@/hooks/useHuntSync';
@@ -106,6 +109,102 @@ function PlayerRequestCard({
           <UserX className="w-4 h-4" />
         </Button>
       </div>
+    </div>
+  );
+}
+
+// Aggregated player stats for monitoring
+interface PlayerMonitorStats {
+  pubkey: string;
+  captureCount: number;
+  totalSats: number;
+  avgTrustScore: number | null;
+  allFlags: string[];
+  hasWarnings: boolean;
+  rejectedCount: number;
+}
+
+// Component to display a player with monitoring info
+function PlayerMonitorCard({
+  stats,
+}: {
+  stats: PlayerMonitorStats;
+}) {
+  const [expanded, setExpanded] = useState(false);
+  const metadata = usePlayerMetadata(stats.pubkey);
+  const displayName = metadata?.name || genUserName(stats.pubkey);
+
+  // Determine status color based on trust score and flags
+  const getStatusColor = () => {
+    if (stats.rejectedCount > 0) return 'text-red-500';
+    if (stats.hasWarnings) return 'text-yellow-500';
+    if (stats.avgTrustScore !== null && stats.avgTrustScore < 80) return 'text-yellow-500';
+    return 'text-green-500';
+  };
+
+  const getStatusBg = () => {
+    if (stats.rejectedCount > 0) return 'bg-red-500/10 border-red-500/30';
+    if (stats.hasWarnings) return 'bg-yellow-500/10 border-yellow-500/30';
+    return 'bg-muted/30 border-border';
+  };
+
+  return (
+    <div className={`rounded-lg border ${getStatusBg()}`}>
+      <div
+        className="flex items-center gap-3 p-3 cursor-pointer"
+        onClick={() => setExpanded(!expanded)}
+      >
+        <Avatar className="w-8 h-8">
+          <AvatarImage src={metadata?.picture} alt={displayName} />
+          <AvatarFallback className="text-xs">{displayName.charAt(0).toUpperCase()}</AvatarFallback>
+        </Avatar>
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-2">
+            <p className="font-medium text-sm truncate">{displayName}</p>
+            {stats.hasWarnings && (
+              <AlertTriangle className="w-3 h-3 text-yellow-500 flex-shrink-0" />
+            )}
+            {stats.rejectedCount > 0 && (
+              <ShieldAlert className="w-3 h-3 text-red-500 flex-shrink-0" />
+            )}
+          </div>
+          <p className="text-xs text-muted-foreground">
+            {stats.captureCount} captured • {formatSats(stats.totalSats)} sats
+          </p>
+        </div>
+        <div className="flex items-center gap-2">
+          {stats.avgTrustScore !== null && (
+            <div className={`text-xs font-mono ${getStatusColor()}`}>
+              <Activity className="w-3 h-3 inline mr-1" />
+              {Math.round(stats.avgTrustScore)}
+            </div>
+          )}
+          {stats.allFlags.length > 0 && (
+            expanded ? <ChevronUp className="w-4 h-4 text-muted-foreground" /> : <ChevronDown className="w-4 h-4 text-muted-foreground" />
+          )}
+        </div>
+      </div>
+
+      {/* Expanded details */}
+      {expanded && stats.allFlags.length > 0 && (
+        <div className="px-3 pb-3 pt-0">
+          <div className="text-xs space-y-1 bg-background/50 rounded p-2">
+            <p className="text-muted-foreground font-medium mb-1">Activity Flags:</p>
+            {stats.allFlags.map((flag, i) => (
+              <div key={i} className="flex items-start gap-1 text-yellow-500">
+                <AlertTriangle className="w-3 h-3 mt-0.5 flex-shrink-0" />
+                <span className="break-all">{flag}</span>
+              </div>
+            ))}
+            {stats.rejectedCount > 0 && (
+              <div className="flex items-center gap-1 text-red-500 mt-2 pt-2 border-t border-border">
+                <ShieldAlert className="w-3 h-3" />
+                <span>{stats.rejectedCount} capture{stats.rejectedCount !== 1 ? 's' : ''} blocked by anti-cheat</span>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -603,13 +702,13 @@ export function HostDashboard() {
         </CardContent>
       </Card>
 
-      {/* Player List */}
+      {/* Player Monitoring */}
       <Card className="border-border">
         <CardHeader className="pb-2">
           <CardTitle className="text-sm flex items-center justify-between">
             <span className="flex items-center gap-2">
-              <Users className="w-4 h-4" />
-              Players ({playerCount})
+              <Eye className="w-4 h-4" />
+              Player Monitor ({playerCount})
             </span>
             <Button
               variant="ghost"
@@ -628,33 +727,62 @@ export function HostDashboard() {
               No players have joined yet. Share the code above!
             </p>
           ) : (
-            <ScrollArea className="h-32">
+            <ScrollArea className="h-64">
               <div className="space-y-2">
-                {Array.from(allPlayerPubkeys).map((pubkey, i) => {
+                {Array.from(allPlayerPubkeys).map((pubkey) => {
                   // Get local participant data if available
                   const localParticipant = activeHunt.participants.find(p => p.pubkey === pubkey);
+
                   // Calculate synced stats for this player
                   const playerCaptures = Array.from(syncedCaptures.entries())
                     .filter(([, data]) => data.playerPubkey === pubkey);
                   const syncedCaptureCount = playerCaptures.length;
                   const syncedSats = playerCaptures.reduce((sum, [, data]) => sum + data.satAmount, 0);
+
+                  // Aggregate trust scores and flags
+                  const trustScores: number[] = [];
+                  const allFlags: string[] = [];
+                  playerCaptures.forEach(([, data]) => {
+                    if (data.antiCheat?.trustScore !== undefined) {
+                      trustScores.push(data.antiCheat.trustScore);
+                    }
+                    if (data.antiCheat?.trustFlags) {
+                      allFlags.push(...data.antiCheat.trustFlags);
+                    }
+                  });
+
+                  // Count rejected captures for this player
+                  const rejectedForPlayer = Array.from(rejectedCaptures.entries())
+                    .filter(([monsterId]) => {
+                      // Check if this monster was attempted by this player
+                      const capture = syncedCaptures.get(monsterId);
+                      return capture?.playerPubkey === pubkey;
+                    }).length;
+
+                  // Calculate average trust score
+                  const avgTrustScore = trustScores.length > 0
+                    ? trustScores.reduce((a, b) => a + b, 0) / trustScores.length
+                    : null;
+
                   // Combine stats
                   const totalCaptured = Math.max(localParticipant?.totalCaptured || 0, syncedCaptureCount);
                   const totalSats = Math.max(localParticipant?.totalSatsEarned || 0, syncedSats);
 
+                  const stats: PlayerMonitorStats = {
+                    pubkey,
+                    captureCount: totalCaptured,
+                    totalSats,
+                    avgTrustScore,
+                    allFlags: [...new Set(allFlags)], // Dedupe flags
+                    hasWarnings: allFlags.length > 0,
+                    rejectedCount: rejectedForPlayer,
+                  };
+
                   return (
-                    <div
+                    <PlayerMonitorCard
                       key={pubkey}
-                      className="flex items-center justify-between text-sm p-2 bg-muted/30 rounded"
-                    >
-                      <span className="flex items-center gap-2">
-                        <Navigation className="w-3 h-3 text-blue-500" />
-                        Player {i + 1}
-                      </span>
-                      <span className="text-xs text-muted-foreground">
-                        {totalCaptured} caught • {formatSats(totalSats)} sats
-                      </span>
-                    </div>
+                      stats={stats}
+                    />
                   );
                 })}
               </div>
