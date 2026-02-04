@@ -38,6 +38,42 @@ interface UseHostP2PResult {
   stopHosting: () => void;
 }
 
+// Helper to get/set processed offers from localStorage
+function getProcessedOffers(huntId: string): Set<string> {
+  try {
+    const stored = localStorage.getItem(`sathunter:p2p-offers:${huntId}`);
+    return stored ? new Set(JSON.parse(stored)) : new Set();
+  } catch {
+    return new Set();
+  }
+}
+
+function saveProcessedOffer(huntId: string, offerId: string): void {
+  try {
+    const current = getProcessedOffers(huntId);
+    current.add(offerId);
+    localStorage.setItem(`sathunter:p2p-offers:${huntId}`, JSON.stringify([...current]));
+  } catch {
+    // Ignore storage errors
+  }
+}
+
+function getSentDataCount(huntId: string): number {
+  try {
+    return parseInt(localStorage.getItem(`sathunter:p2p-sent:${huntId}`) || '0', 10);
+  } catch {
+    return 0;
+  }
+}
+
+function saveSentDataCount(huntId: string, count: number): void {
+  try {
+    localStorage.setItem(`sathunter:p2p-sent:${huntId}`, count.toString());
+  } catch {
+    // Ignore storage errors
+  }
+}
+
 export function useHostP2P(hunt: HuntEvent | null): UseHostP2PResult {
   const { nostr } = useNostr();
   const { user } = useCurrentUser();
@@ -45,21 +81,35 @@ export function useHostP2P(hunt: HuntEvent | null): UseHostP2PResult {
   const [isActive, setIsActive] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // Track player connections
+  // Track player connections (in-memory only, not persisted)
   const connectionsRef = useRef<Map<string, PlayerConnection>>(new Map());
   const [connectedPlayers, setConnectedPlayers] = useState(0);
-  const [sentDataTo, setSentDataTo] = useState(0);
+
+  // Initialize sentDataTo from localStorage
+  const [sentDataTo, setSentDataTo] = useState(() =>
+    hunt?.id ? getSentDataCount(hunt.id) : 0
+  );
 
   // Hunt data to send
   const huntDataRef = useRef<HuntLocationData | null>(null);
 
-  // Track processed offer IDs to avoid duplicates
-  const processedOffersRef = useRef<Set<string>>(new Set());
+  // Track processed offer IDs - initialized from localStorage
+  const processedOffersRef = useRef<Set<string>>(
+    hunt?.id ? getProcessedOffers(hunt.id) : new Set()
+  );
 
   // Track if we're being cleaned up to avoid state updates after unmount
   const isCleaningUpRef = useRef(false);
 
-  // Cleanup function
+  // Update refs when hunt changes
+  useEffect(() => {
+    if (hunt?.id) {
+      processedOffersRef.current = getProcessedOffers(hunt.id);
+      setSentDataTo(getSentDataCount(hunt.id));
+    }
+  }, [hunt?.id]);
+
+  // Cleanup function - closes connections but preserves processed offers in localStorage
   const cleanup = useCallback(() => {
     if (isCleaningUpRef.current) return; // Already cleaning up
     isCleaningUpRef.current = true;
@@ -73,10 +123,10 @@ export function useHostP2P(hunt: HuntEvent | null): UseHostP2PResult {
       }
     });
     connectionsRef.current.clear();
-    processedOffersRef.current.clear();
+    // Don't clear processedOffersRef - it's persisted in localStorage
     setIsActive(false);
     setConnectedPlayers(0);
-    setSentDataTo(0);
+    // Don't reset sentDataTo - it's persisted in localStorage
     isCleaningUpRef.current = false;
   }, []);
 
@@ -85,11 +135,16 @@ export function useHostP2P(hunt: HuntEvent | null): UseHostP2PResult {
     async (offerSdp: string, playerPubkey: string, eventId: string) => {
       if (!hunt || !user?.signer) return;
 
-      // Check if we already processed this offer
+      // Check if we already processed this offer (checks localStorage too)
       if (processedOffersRef.current.has(eventId)) {
+        console.log('[P2P Host] Skipping already-processed offer', eventId.slice(0, 8));
         return;
       }
       processedOffersRef.current.add(eventId);
+      // Persist to localStorage so we don't re-process after navigation/refresh
+      if (hunt.id) {
+        saveProcessedOffer(hunt.id, eventId);
+      }
 
       // Check if we already have a connection for this player
       if (connectionsRef.current.has(playerPubkey)) {
@@ -152,7 +207,14 @@ export function useHostP2P(hunt: HuntEvent | null): UseHostP2PResult {
               try {
                 sendHuntData(channel, huntDataRef.current);
                 connection.state = 'sent';
-                setSentDataTo((prev) => prev + 1);
+                setSentDataTo((prev) => {
+                  const newCount = prev + 1;
+                  // Persist to localStorage
+                  if (hunt.id) {
+                    saveSentDataCount(hunt.id, newCount);
+                  }
+                  return newCount;
+                });
                 console.log('[P2P Host] Sent hunt data to', playerPubkey.slice(0, 8));
               } catch (err) {
                 console.error('[P2P Host] Failed to send data:', err);
