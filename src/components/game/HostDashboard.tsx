@@ -369,10 +369,24 @@ export function HostDashboard() {
     addParticipant(playerPubkey);
   }, [addParticipant]);
 
+  const onPlayerLeft = useCallback((playerPubkey: string) => {
+    console.log('[HostDashboard] Player left:', playerPubkey.slice(0, 8));
+    setSyncedPlayers(prev => {
+      const next = new Set(prev);
+      next.delete(playerPubkey);
+      return next;
+    });
+    toast({
+      title: 'Player left',
+      description: `A player has left the hunt`,
+    });
+  }, [toast]);
+
   // Subscribe to hunt updates via Nostr
   const { refresh: refreshSync } = useHuntSync(activeHunt, {
     onMonsterCaptured,
     onPlayerJoined,
+    onPlayerLeft,
   });
 
   // Update time remaining

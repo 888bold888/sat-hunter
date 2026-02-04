@@ -10,6 +10,7 @@ import type {
 } from '@/lib/gameTypes';
 import { useLocalStorage } from '@/hooks/useLocalStorage';
 import { useCurrentUser } from '@/hooks/useCurrentUser';
+import { usePublishLeave } from '@/hooks/usePublishLeave';
 import {
   generateMonstersAsync,
   generateSatStopsAsync,
@@ -292,6 +293,7 @@ const GameContext = createContext<GameContextType | null>(null);
 export function GameProvider({ children }: { children: ReactNode }) {
   const [state, dispatch] = useReducer(gameReducer, initialState);
   const { user } = useCurrentUser();
+  const { publishLeave } = usePublishLeave();
   const [savedStats, setSavedStats] = useLocalStorage<PlayerStats | null>('sathunter:player-stats', null);
   const [savedHunt, setSavedHunt] = useLocalStorage<HuntEvent | null>('sathunter:active-hunt', null);
   const watchIdRef = useRef<number | null>(null); // Use ref to avoid re-renders when watchId changes
@@ -485,8 +487,12 @@ export function GameProvider({ children }: { children: ReactNode }) {
 
   // Leave the current hunt
   const leaveHunt = useCallback(() => {
-    // Save hunt to history before leaving (only if player, not host)
+    // Publish leave event to Nostr (only if player, not host)
     if (state.activeHunt && user?.pubkey && state.activeHunt.hostPubkey !== user.pubkey) {
+      // Fire and forget - don't block UI
+      publishLeave(state.activeHunt.id, state.activeHunt.shareCode, state.activeHunt.hostPubkey);
+
+      // Save hunt to history before leaving
       const huntEntry: HuntHistoryEntry = {
         huntId: state.activeHunt.id,
         huntName: state.activeHunt.name,
@@ -509,7 +515,7 @@ export function GameProvider({ children }: { children: ReactNode }) {
     clearCooldownState();
     clearLocationHistory();
     dispatch({ type: 'SET_ACTIVE_HUNT', hunt: null });
-  }, [state.activeHunt, state.playerStats, user?.pubkey]);
+  }, [state.activeHunt, state.playerStats, user?.pubkey, publishLeave]);
 
   // Add participant to hunt
   const addParticipant = useCallback((pubkey: string) => {

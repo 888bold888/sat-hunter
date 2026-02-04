@@ -6,6 +6,7 @@ import { useCurrentUser } from './useCurrentUser';
 const HUNT_EVENT_KIND = 32959;
 const CLAIM_EVENT_KIND = 32960;
 const JOIN_EVENT_KIND = 32961;
+const PLAYER_LEAVE_KIND = 32964;
 
 // Anti-cheat data included in capture events
 interface CaptureAntiCheatData {
@@ -22,6 +23,7 @@ interface HuntSyncCallbacks {
     antiCheat?: CaptureAntiCheatData
   ) => void;
   onPlayerJoined: (playerPubkey: string) => void;
+  onPlayerLeft?: (playerPubkey: string) => void;
   onHuntEnded?: () => void;
 }
 
@@ -109,6 +111,26 @@ export function useHuntSync(
         if (processedEventsRef.current.has(event.id)) continue;
         processedEventsRef.current.add(event.id);
         callbacks.onPlayerJoined(event.pubkey);
+      }
+
+      // Query for leave events
+      if (callbacks.onPlayerLeft) {
+        const leaveEvents = await nostr.query(
+          [
+            {
+              kinds: [PLAYER_LEAVE_KIND],
+              '#e': [hunt.id],
+              since: Math.floor((hunt.startTime || Date.now() - 3600000) / 1000),
+            },
+          ],
+          { signal: AbortSignal.timeout(10000) }
+        );
+
+        for (const event of leaveEvents) {
+          if (processedEventsRef.current.has(event.id)) continue;
+          processedEventsRef.current.add(event.id);
+          callbacks.onPlayerLeft(event.pubkey);
+        }
       }
 
       // Check for hunt status updates (host may have ended the hunt)
