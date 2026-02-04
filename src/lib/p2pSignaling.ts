@@ -93,11 +93,28 @@ export async function createHostConnection(): Promise<{
   console.log('[P2P] createHostConnection: creating offer with data channel');
   const peerConnection = createPeerConnection();
 
+  // Set up ALL handlers BEFORE any SDP operations
+  peerConnection.onconnectionstatechange = () => {
+    console.log('[P2P createHostConnection] Connection state:', peerConnection.connectionState);
+  };
+
+  peerConnection.oniceconnectionstatechange = () => {
+    console.log('[P2P createHostConnection] ICE state:', peerConnection.iceConnectionState);
+  };
+
   // Create data channel for sending hunt data
   const dataChannel = peerConnection.createDataChannel('hunt-data', {
     ordered: true,
   });
   console.log('[P2P] Data channel created');
+
+  dataChannel.onopen = () => {
+    console.log('[P2P] Data channel opened (player side)');
+  };
+
+  dataChannel.onerror = (e) => {
+    console.log('[P2P] Data channel error (player side):', e);
+  };
 
   // Create offer
   const offer = await peerConnection.createOffer();
@@ -131,8 +148,20 @@ export async function createPlayerConnection(
   console.log('[P2P] createPlayerConnection: processing offer and creating answer');
   const peerConnection = createPeerConnection();
 
-  // IMPORTANT: Set up ondatachannel handler BEFORE setRemoteDescription
-  // The event fires when the remote offer contains a data channel
+  // Set up ALL handlers BEFORE any SDP operations
+  // This ensures we don't miss any state changes
+
+  // Connection state handler
+  peerConnection.onconnectionstatechange = () => {
+    console.log('[P2P createPlayerConnection] Connection state:', peerConnection.connectionState);
+  };
+
+  // ICE connection state handler
+  peerConnection.oniceconnectionstatechange = () => {
+    console.log('[P2P createPlayerConnection] ICE state:', peerConnection.iceConnectionState);
+  };
+
+  // Data channel handler - fires when remote offer contains a data channel
   if (onDataChannel) {
     peerConnection.ondatachannel = (event) => {
       console.log('[P2P] Data channel received in createPlayerConnection');
@@ -173,7 +202,10 @@ export async function applyAnswer(
   peerConnection: RTCPeerConnection,
   answer: RTCSessionDescriptionInit
 ): Promise<void> {
+  const answerCandidates = answer.sdp?.match(/a=candidate/g)?.length || 0;
+  console.log('[P2P] Applying answer with', answerCandidates, 'ICE candidate lines');
   await peerConnection.setRemoteDescription(answer);
+  console.log('[P2P] Remote description (answer) applied');
 }
 
 /**
