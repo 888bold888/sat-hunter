@@ -89,17 +89,30 @@ export async function createHostConnection(): Promise<{
 }
 
 /**
- * Player: Connect to host using their offer
+ * Host: Process player's offer and create answer
+ *
+ * IMPORTANT: Sets up ondatachannel handler BEFORE setRemoteDescription
+ * to avoid race condition where the event fires before handler is attached.
  */
 export async function createPlayerConnection(
   offer: RTCSessionDescriptionInit
 ): Promise<{
   peerConnection: RTCPeerConnection;
   answer: RTCSessionDescriptionInit;
+  dataChannelPromise: Promise<RTCDataChannel>;
 }> {
   const peerConnection = createPeerConnection();
 
-  // Set remote description (host's offer)
+  // Set up data channel handler BEFORE setRemoteDescription to avoid race condition
+  // The ondatachannel event fires when the remote offer includes a data channel
+  const dataChannelPromise = new Promise<RTCDataChannel>((resolve) => {
+    peerConnection.ondatachannel = (event) => {
+      console.log('[P2P] Data channel received, state:', event.channel.readyState);
+      resolve(event.channel);
+    };
+  });
+
+  // Set remote description (player's offer) - this may trigger ondatachannel
   await peerConnection.setRemoteDescription(offer);
 
   // Create answer
@@ -112,6 +125,7 @@ export async function createPlayerConnection(
   return {
     peerConnection,
     answer: peerConnection.localDescription!,
+    dataChannelPromise,
   };
 }
 
