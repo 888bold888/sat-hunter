@@ -19,27 +19,27 @@ const ICE_SERVERS: RTCIceServer[] = [
   // STUN servers
   { urls: 'stun:stun.l.google.com:19302' },
   { urls: 'stun:stun1.l.google.com:19302' },
-  { urls: 'stun:stun.cloudflare.com:3478' },
-  // Free TURN from Metered (more reliable)
+  // Free TURN from Xirsys (backup)
   {
-    urls: 'turn:a.relay.metered.ca:80',
-    username: 'e8dd65b92f6755f2e12e7a18',
-    credential: 'uWdWNmkhvyqTEuTB',
+    urls: 'turn:turn.bistri.com:80',
+    username: 'homeo',
+    credential: 'homeo',
+  },
+  // Free TURN from OpenRelay
+  {
+    urls: 'turn:openrelay.metered.ca:80',
+    username: 'openrelayproject',
+    credential: 'openrelayproject',
   },
   {
-    urls: 'turn:a.relay.metered.ca:80?transport=tcp',
-    username: 'e8dd65b92f6755f2e12e7a18',
-    credential: 'uWdWNmkhvyqTEuTB',
+    urls: 'turn:openrelay.metered.ca:443',
+    username: 'openrelayproject',
+    credential: 'openrelayproject',
   },
   {
-    urls: 'turn:a.relay.metered.ca:443',
-    username: 'e8dd65b92f6755f2e12e7a18',
-    credential: 'uWdWNmkhvyqTEuTB',
-  },
-  {
-    urls: 'turns:a.relay.metered.ca:443?transport=tcp',
-    username: 'e8dd65b92f6755f2e12e7a18',
-    credential: 'uWdWNmkhvyqTEuTB',
+    urls: 'turn:openrelay.metered.ca:443?transport=tcp',
+    username: 'openrelayproject',
+    credential: 'openrelayproject',
   },
 ];
 
@@ -76,6 +76,7 @@ export interface SignalCandidate {
  * Create a WebRTC peer connection with standard config
  */
 export function createPeerConnection(): RTCPeerConnection {
+  console.log('[P2P] Creating peer connection with', ICE_SERVERS.length, 'ICE servers');
   return new RTCPeerConnection({
     iceServers: ICE_SERVERS,
   });
@@ -89,24 +90,31 @@ export async function createHostConnection(): Promise<{
   dataChannel: RTCDataChannel;
   offer: RTCSessionDescriptionInit;
 }> {
+  console.log('[P2P] createHostConnection: creating offer with data channel');
   const peerConnection = createPeerConnection();
 
   // Create data channel for sending hunt data
   const dataChannel = peerConnection.createDataChannel('hunt-data', {
     ordered: true,
   });
+  console.log('[P2P] Data channel created');
 
   // Create offer
   const offer = await peerConnection.createOffer();
   await peerConnection.setLocalDescription(offer);
+  console.log('[P2P] Local description set, waiting for ICE gathering');
 
   // Wait for ICE gathering to complete (or timeout)
   await waitForIceGathering(peerConnection);
 
+  const finalSdp = peerConnection.localDescription!;
+  const candidateLines = finalSdp.sdp?.match(/a=candidate/g)?.length || 0;
+  console.log('[P2P] Offer ready with', candidateLines, 'ICE candidate lines in SDP');
+
   return {
     peerConnection,
     dataChannel,
-    offer: peerConnection.localDescription!,
+    offer: finalSdp,
   };
 }
 
@@ -120,6 +128,7 @@ export async function createPlayerConnection(
   peerConnection: RTCPeerConnection;
   answer: RTCSessionDescriptionInit;
 }> {
+  console.log('[P2P] createPlayerConnection: processing offer and creating answer');
   const peerConnection = createPeerConnection();
 
   // IMPORTANT: Set up ondatachannel handler BEFORE setRemoteDescription
@@ -131,19 +140,29 @@ export async function createPlayerConnection(
     };
   }
 
+  // Log offer candidate count
+  const offerCandidates = offer.sdp?.match(/a=candidate/g)?.length || 0;
+  console.log('[P2P] Offer has', offerCandidates, 'ICE candidate lines');
+
   // Set remote description (player's offer) - may trigger ondatachannel
   await peerConnection.setRemoteDescription(offer);
+  console.log('[P2P] Remote description set');
 
   // Create answer
   const answer = await peerConnection.createAnswer();
   await peerConnection.setLocalDescription(answer);
+  console.log('[P2P] Local description set, waiting for ICE gathering');
 
   // Wait for ICE gathering
   await waitForIceGathering(peerConnection);
 
+  const finalSdp = peerConnection.localDescription!;
+  const answerCandidates = finalSdp.sdp?.match(/a=candidate/g)?.length || 0;
+  console.log('[P2P] Answer ready with', answerCandidates, 'ICE candidate lines in SDP');
+
   return {
     peerConnection,
-    answer: peerConnection.localDescription!,
+    answer: finalSdp,
   };
 }
 
@@ -212,15 +231,30 @@ function waitForIceGathering(
 ): Promise<void> {
   return new Promise((resolve) => {
     if (peerConnection.iceGatheringState === 'complete') {
+      console.log('[P2P] ICE gathering already complete');
       resolve();
       return;
     }
 
+    let candidateCount = 0;
+
+    // Log each ICE candidate as it's gathered
+    peerConnection.onicecandidate = (event) => {
+      if (event.candidate) {
+        candidateCount++;
+        console.log('[P2P] ICE candidate gathered:', event.candidate.type, event.candidate.protocol);
+      } else {
+        console.log('[P2P] ICE gathering complete, total candidates:', candidateCount);
+      }
+    };
+
     const timeout = setTimeout(() => {
+      console.log('[P2P] ICE gathering timeout, candidates so far:', candidateCount);
       resolve(); // Resolve anyway after timeout, we'll use what we have
     }, timeoutMs);
 
     peerConnection.onicegatheringstatechange = () => {
+      console.log('[P2P] ICE gathering state:', peerConnection.iceGatheringState);
       if (peerConnection.iceGatheringState === 'complete') {
         clearTimeout(timeout);
         resolve();
