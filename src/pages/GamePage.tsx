@@ -31,13 +31,28 @@ import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Target, ArrowLeft, LogOut, Sparkles, QrCode, BarChart3, Zap, Clock, RefreshCw, Radio, Loader2, X, Trash2 } from 'lucide-react';
 import { formatSats, formatTimeRemaining } from '@/lib/gameUtils';
 import { Link, useNavigate } from 'react-router-dom';
+import { useToast } from '@/hooks/useToast';
 
 export default function GamePage() {
-  const { state, leaveHunt, joinHunt, startLocationTracking, stopLocationTracking, isHost } = useGame();
+  const { state, leaveHunt, joinHunt, startLocationTracking, stopLocationTracking, isHost, clearKicked } = useGame();
   const { activeHunt } = state;
   const { user } = useCurrentUser();
   const navigate = useNavigate();
+  const { toast } = useToast();
   const { data: myHunts, isLoading: isLoadingMyHunts, refetch: refetchMyHunts } = useMyHunts();
+
+  // Handle being kicked from the hunt
+  useEffect(() => {
+    if (state.wasKicked) {
+      toast({
+        title: 'Removed from Hunt',
+        description: state.kickReason || 'You have been removed from the hunt by the host.',
+        variant: 'destructive',
+      });
+      clearKicked();
+      navigate('/');
+    }
+  }, [state.wasKicked, state.kickReason, clearKicked, navigate, toast]);
 
   const [selectedMonster, setSelectedMonster] = useState<Monster | null>(null);
   const [selectedStop, setSelectedStop] = useState<SatStop | null>(null);

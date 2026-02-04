@@ -20,6 +20,7 @@ interface HuntSyncCallbacks {
     monsterId: string,
     playerPubkey: string,
     satAmount: number,
+    capturedAt: number,
     antiCheat?: CaptureAntiCheatData
   ) => void;
   onPlayerJoined: (playerPubkey: string) => void;
@@ -88,6 +89,7 @@ export function useHuntSync(
             content.monsterId,
             playerPubkey,
             content.satAmount,
+            content.capturedAt,
             antiCheat
           );
         } catch (err) {

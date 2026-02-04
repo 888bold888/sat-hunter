@@ -28,6 +28,7 @@ import {
   Activity,
   ChevronDown,
   ChevronUp,
+  UserMinus,
 } from 'lucide-react';
 import QRCode from 'qrcode';
 import { useHuntSync } from '@/hooks/useHuntSync';
@@ -37,6 +38,7 @@ import { ANTI_CHEAT_CONFIG } from '@/lib/antiCheat';
 import { useHostP2P } from '@/hooks/useHostP2P';
 import { useHostApprovals, usePlayerMetadata } from '@/hooks/useHostApprovals';
 import { useLocalStorage } from '@/hooks/useLocalStorage';
+import { usePublishKick } from '@/hooks/usePublishKick';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { genUserName } from '@/lib/genUserName';
 
@@ -113,6 +115,26 @@ function PlayerRequestCard({
   );
 }
 
+// Activity status based on last capture time
+type ActivityStatus = 'active' | 'idle' | 'inactive';
+
+function getActivityStatus(lastCaptureTime: number | null): ActivityStatus {
+  if (!lastCaptureTime) return 'inactive';
+  const minutesAgo = (Date.now() - lastCaptureTime) / 60000;
+  if (minutesAgo < 2) return 'active';
+  if (minutesAgo < 10) return 'idle';
+  return 'inactive';
+}
+
+function getActivityLabel(lastCaptureTime: number | null): string {
+  if (!lastCaptureTime) return 'No activity';
+  const minutesAgo = Math.floor((Date.now() - lastCaptureTime) / 60000);
+  if (minutesAgo < 1) return 'Active now';
+  if (minutesAgo < 60) return `${minutesAgo}m ago`;
+  const hoursAgo = Math.floor(minutesAgo / 60);
+  return `${hoursAgo}h ago`;
+}
+
 // Aggregated player stats for monitoring
 interface PlayerMonitorStats {
   pubkey: string;
@@ -122,20 +144,39 @@ interface PlayerMonitorStats {
   allFlags: string[];
   hasWarnings: boolean;
   rejectedCount: number;
+  lastCaptureTime: number | null;
 }
 
 // Component to display a player with monitoring info
 function PlayerMonitorCard({
   stats,
+  onKick,
+  isKicking,
 }: {
   stats: PlayerMonitorStats;
+  onKick: (pubkey: string) => void;
+  isKicking: boolean;
 }) {
   const [expanded, setExpanded] = useState(false);
+  const [confirmingKick, setConfirmingKick] = useState(false);
   const metadata = usePlayerMetadata(stats.pubkey);
   const displayName = metadata?.name || genUserName(stats.pubkey);
 
+  // Activity status
+  const activityStatus = getActivityStatus(stats.lastCaptureTime);
+  const activityLabel = getActivityLabel(stats.lastCaptureTime);
+
+  // Activity indicator color
+  const getActivityColor = () => {
+    switch (activityStatus) {
+      case 'active': return 'bg-green-500';
+      case 'idle': return 'bg-yellow-500';
+      case 'inactive': return 'bg-gray-500';
+    }
+  };
+
   // Determine status color based on trust score and flags
-  const getStatusColor = () => {
+  const getTrustColor = () => {
     if (stats.rejectedCount > 0) return 'text-red-500';
     if (stats.hasWarnings) return 'text-yellow-500';
     if (stats.avgTrustScore !== null && stats.avgTrustScore < 80) return 'text-yellow-500';
@@ -154,10 +195,17 @@ function PlayerMonitorCard({
         className="flex items-center gap-3 p-3 cursor-pointer"
         onClick={() => setExpanded(!expanded)}
       >
-        <Avatar className="w-8 h-8">
-          <AvatarImage src={metadata?.picture} alt={displayName} />
-          <AvatarFallback className="text-xs">{displayName.charAt(0).toUpperCase()}</AvatarFallback>
-        </Avatar>
+        {/* Activity indicator dot */}
+        <div className="relative">
+          <Avatar className="w-8 h-8">
+            <AvatarImage src={metadata?.picture} alt={displayName} />
+            <AvatarFallback className="text-xs">{displayName.charAt(0).toUpperCase()}</AvatarFallback>
+          </Avatar>
+          <div
+            className={`absolute -bottom-0.5 -right-0.5 w-3 h-3 rounded-full border-2 border-background ${getActivityColor()}`}
+            title={activityLabel}
+          />
+        </div>
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2">
             <p className="font-medium text-sm truncate">{displayName}</p>
@@ -169,38 +217,84 @@ function PlayerMonitorCard({
             )}
           </div>
           <p className="text-xs text-muted-foreground">
-            {stats.captureCount} captured • {formatSats(stats.totalSats)} sats
+            {stats.captureCount} captured • {formatSats(stats.totalSats)} sats • <span className={activityStatus === 'active' ? 'text-green-500' : activityStatus === 'idle' ? 'text-yellow-500' : 'text-gray-500'}>{activityLabel}</span>
           </p>
         </div>
         <div className="flex items-center gap-2">
           {stats.avgTrustScore !== null && (
-            <div className={`text-xs font-mono ${getStatusColor()}`}>
+            <div className={`text-xs font-mono ${getTrustColor()}`}>
               <Activity className="w-3 h-3 inline mr-1" />
               {Math.round(stats.avgTrustScore)}
             </div>
           )}
-          {stats.allFlags.length > 0 && (
-            expanded ? <ChevronUp className="w-4 h-4 text-muted-foreground" /> : <ChevronDown className="w-4 h-4 text-muted-foreground" />
-          )}
+          {expanded ? <ChevronUp className="w-4 h-4 text-muted-foreground" /> : <ChevronDown className="w-4 h-4 text-muted-foreground" />}
         </div>
       </div>
 
       {/* Expanded details */}
-      {expanded && stats.allFlags.length > 0 && (
+      {expanded && (
         <div className="px-3 pb-3 pt-0">
-          <div className="text-xs space-y-1 bg-background/50 rounded p-2">
-            <p className="text-muted-foreground font-medium mb-1">Activity Flags:</p>
-            {stats.allFlags.map((flag, i) => (
-              <div key={i} className="flex items-start gap-1 text-yellow-500">
-                <AlertTriangle className="w-3 h-3 mt-0.5 flex-shrink-0" />
-                <span className="break-all">{flag}</span>
+          {stats.allFlags.length > 0 && (
+            <div className="text-xs space-y-1 bg-background/50 rounded p-2 mb-2">
+              <p className="text-muted-foreground font-medium mb-1">Activity Flags:</p>
+              {stats.allFlags.map((flag, i) => (
+                <div key={i} className="flex items-start gap-1 text-yellow-500">
+                  <AlertTriangle className="w-3 h-3 mt-0.5 flex-shrink-0" />
+                  <span className="break-all">{flag}</span>
+                </div>
+              ))}
+              {stats.rejectedCount > 0 && (
+                <div className="flex items-center gap-1 text-red-500 mt-2 pt-2 border-t border-border">
+                  <ShieldAlert className="w-3 h-3" />
+                  <span>{stats.rejectedCount} capture{stats.rejectedCount !== 1 ? 's' : ''} blocked by anti-cheat</span>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Kick button */}
+          <div className="flex justify-end">
+            {confirmingKick ? (
+              <div className="flex items-center gap-2">
+                <span className="text-xs text-muted-foreground">Kick player?</span>
+                <Button
+                  variant="destructive"
+                  size="sm"
+                  className="h-7 text-xs"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onKick(stats.pubkey);
+                    setConfirmingKick(false);
+                  }}
+                  disabled={isKicking}
+                >
+                  {isKicking ? 'Kicking...' : 'Confirm'}
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="h-7 text-xs"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setConfirmingKick(false);
+                  }}
+                >
+                  Cancel
+                </Button>
               </div>
-            ))}
-            {stats.rejectedCount > 0 && (
-              <div className="flex items-center gap-1 text-red-500 mt-2 pt-2 border-t border-border">
-                <ShieldAlert className="w-3 h-3" />
-                <span>{stats.rejectedCount} capture{stats.rejectedCount !== 1 ? 's' : ''} blocked by anti-cheat</span>
-              </div>
+            ) : (
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-7 text-xs text-muted-foreground hover:text-red-500"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setConfirmingKick(true);
+                }}
+              >
+                <UserMinus className="w-3 h-3 mr-1" />
+                Kick
+              </Button>
             )}
           </div>
         </div>
@@ -218,6 +312,7 @@ export function HostDashboard() {
   const [syncedCaptures, setSyncedCaptures] = useState<Map<string, {
     playerPubkey: string;
     satAmount: number;
+    capturedAt: number;
     antiCheat?: CaptureAntiCheat;
   }>>(new Map());
   const [syncedPlayers, setSyncedPlayers] = useState<Set<string>>(new Set());
@@ -242,6 +337,51 @@ export function HostDashboard() {
 
   const { payPlayer } = usePayPlayer();
   const { toast } = useToast();
+  const { publishKick } = usePublishKick();
+  const [kickingPlayer, setKickingPlayer] = useState<string | null>(null);
+
+  // Handle kicking a player
+  const handleKickPlayer = useCallback(async (playerPubkey: string) => {
+    if (!activeHunt) return;
+
+    setKickingPlayer(playerPubkey);
+    try {
+      const success = await publishKick({
+        huntId: activeHunt.id,
+        shareCode: activeHunt.shareCode,
+        playerPubkey,
+        reason: 'Removed by host',
+      });
+
+      if (success) {
+        toast({
+          title: 'Player kicked',
+          description: 'The player has been removed from the hunt.',
+        });
+        // Remove player from local tracking
+        setSyncedPlayers(prev => {
+          const next = new Set(prev);
+          next.delete(playerPubkey);
+          return next;
+        });
+      } else {
+        toast({
+          title: 'Failed to kick player',
+          description: 'Could not remove the player. Please try again.',
+          variant: 'destructive',
+        });
+      }
+    } catch (err) {
+      console.error('Error kicking player:', err);
+      toast({
+        title: 'Error',
+        description: 'An error occurred while kicking the player.',
+        variant: 'destructive',
+      });
+    } finally {
+      setKickingPlayer(null);
+    }
+  }, [activeHunt, publishKick, toast]);
 
   // P2P hosting for secure location data transfer
   const {
@@ -336,11 +476,12 @@ export function HostDashboard() {
     monsterId: string,
     playerPubkey: string,
     satAmount: number,
+    capturedAt: number,
     antiCheat?: CaptureAntiCheat
   ) => {
     setSyncedCaptures(prev => {
       const next = new Map(prev);
-      next.set(monsterId, { playerPubkey, satAmount, antiCheat });
+      next.set(monsterId, { playerPubkey, satAmount, capturedAt, antiCheat });
       return next;
     });
     // Also track player if not already in participants
@@ -778,6 +919,11 @@ export function HostDashboard() {
                     ? trustScores.reduce((a, b) => a + b, 0) / trustScores.length
                     : null;
 
+                  // Calculate last capture time (most recent capture)
+                  const lastCaptureTime = playerCaptures.length > 0
+                    ? Math.max(...playerCaptures.map(([, data]) => data.capturedAt))
+                    : null;
+
                   // Combine stats
                   const totalCaptured = Math.max(localParticipant?.totalCaptured || 0, syncedCaptureCount);
                   const totalSats = Math.max(localParticipant?.totalSatsEarned || 0, syncedSats);
@@ -790,12 +936,15 @@ export function HostDashboard() {
                     allFlags: [...new Set(allFlags)], // Dedupe flags
                     hasWarnings: allFlags.length > 0,
                     rejectedCount: rejectedForPlayer,
+                    lastCaptureTime,
                   };
 
                   return (
                     <PlayerMonitorCard
                       key={pubkey}
                       stats={stats}
+                      onKick={handleKickPlayer}
+                      isKicking={kickingPlayer === pubkey}
                     />
                   );
                 })}

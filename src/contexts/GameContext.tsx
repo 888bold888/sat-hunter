@@ -11,6 +11,7 @@ import type {
 import { useLocalStorage } from '@/hooks/useLocalStorage';
 import { useCurrentUser } from '@/hooks/useCurrentUser';
 import { usePublishLeave } from '@/hooks/usePublishLeave';
+import { useKickSubscription } from '@/hooks/useKickSubscription';
 import {
   generateMonstersAsync,
   generateSatStopsAsync,
@@ -45,6 +46,8 @@ interface GameState {
   nearbySatStops: SatStop[];
   isCapturing: boolean;
   watchId: number | null;
+  wasKicked: boolean;
+  kickReason: string | null;
 }
 
 type GameAction =
@@ -63,7 +66,9 @@ type GameAction =
   | { type: 'RESET_PLAYER_STATS' }
   | { type: 'LOAD_PLAYER_STATS'; stats: PlayerStats }
   | { type: 'START_HUNT_SESSION'; huntId: string }
-  | { type: 'END_HUNT_SESSION'; huntEntry: HuntHistoryEntry };
+  | { type: 'END_HUNT_SESSION'; huntEntry: HuntHistoryEntry }
+  | { type: 'PLAYER_KICKED'; reason: string }
+  | { type: 'CLEAR_KICKED' };
 
 const initialPlayerStats: PlayerStats = {
   pubkey: '',
@@ -93,6 +98,8 @@ const initialState: GameState = {
   nearbySatStops: [],
   isCapturing: false,
   watchId: null,
+  wasKicked: false,
+  kickReason: null,
 };
 
 function gameReducer(state: GameState, action: GameAction): GameState {
@@ -242,6 +249,15 @@ function gameReducer(state: GameState, action: GameAction): GameState {
       return { ...state, playerStats: initialPlayerStats };
     case 'LOAD_PLAYER_STATS':
       return { ...state, playerStats: action.stats };
+    case 'PLAYER_KICKED':
+      return {
+        ...state,
+        wasKicked: true,
+        kickReason: action.reason,
+        activeHunt: null, // Clear the hunt immediately
+      };
+    case 'CLEAR_KICKED':
+      return { ...state, wasKicked: false, kickReason: null };
     default:
       return state;
   }
@@ -286,6 +302,7 @@ interface GameContextType {
   getAvailableStops: () => SatStop[];
   refundUnclaimed: () => void; // Added for refunds
   updateHuntId: (newId: string, preserveStatus?: { status: HuntEvent['status']; paymentStatus: HuntEvent['paymentStatus'] }) => void; // Update hunt ID after Nostr publish
+  clearKicked: () => void; // Clear kicked state after user acknowledges
 }
 
 const GameContext = createContext<GameContextType | null>(null);
@@ -341,6 +358,23 @@ export function GameProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     setSavedHunt(state.activeHunt);
   }, [state.activeHunt, setSavedHunt]);
+
+  // Handle being kicked from a hunt
+  const handleKicked = useCallback((reason: string) => {
+    console.log('[GameContext] Player was kicked:', reason);
+    dispatch({ type: 'PLAYER_KICKED', reason });
+  }, []);
+
+  // Subscribe to kick events (only when player is in a hunt and not the host)
+  useKickSubscription({
+    hunt: state.activeHunt,
+    onKicked: handleKicked,
+  });
+
+  // Clear kicked state (called after user acknowledges)
+  const clearKicked = useCallback(() => {
+    dispatch({ type: 'CLEAR_KICKED' });
+  }, []);
 
   // Update nearby entities when location changes
   useEffect(() => {
@@ -728,6 +762,7 @@ export function GameProvider({ children }: { children: ReactNode }) {
         getAvailableStops,
         refundUnclaimed,
         updateHuntId,
+        clearKicked,
       }}
     >
       {children}

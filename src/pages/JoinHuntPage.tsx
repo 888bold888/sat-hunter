@@ -41,7 +41,7 @@ export default function JoinHuntPage() {
   const { toast } = useToast();
   const { code } = useParams<{ code?: string }>();
   const navigate = useNavigate();
-  const { state, joinHunt, addParticipant, startLocationTracking } = useGame();
+  const { state, joinHunt, addParticipant, startLocationTracking, clearKicked } = useGame();
   const { user } = useCurrentUser();
   const { publishJoin } = usePublishJoin();
   const { connections } = useNWC();
@@ -104,6 +104,19 @@ export default function JoinHuntPage() {
       navigate('/play');
     }
   }, [code, state.activeHunt, navigate]);
+
+  // Handle being kicked from the hunt
+  useEffect(() => {
+    if (state.wasKicked) {
+      toast({
+        title: 'Removed from Hunt',
+        description: state.kickReason || 'You have been removed from the hunt by the host.',
+        variant: 'destructive',
+      });
+      clearKicked();
+      navigate('/');
+    }
+  }, [state.wasKicked, state.kickReason, clearKicked, navigate, toast]);
 
   const handleSearch = () => {
     if (!inputCode || inputCode.length < 6) return;
