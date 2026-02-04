@@ -10,9 +10,10 @@
  * 3. Sends hunt location data when the data channel opens
  */
 
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { useNostr } from '@nostrify/react';
 import { useCurrentUser } from './useCurrentUser';
+import { useLocalStorage } from './useLocalStorage';
 import type { HuntEvent } from '@/lib/gameTypes';
 import {
   P2P_OFFER_KIND,
@@ -22,6 +23,12 @@ import {
   parseOfferFromEvent,
   type HuntLocationData,
 } from '@/lib/p2pSignaling';
+
+// Serializer for Set in localStorage
+const setSerializer = {
+  serialize: (value: Set<string>) => JSON.stringify([...value]),
+  deserialize: (value: string) => new Set<string>(JSON.parse(value)),
+};
 
 interface PlayerConnection {
   pubkey: string;
@@ -53,10 +60,18 @@ export function useHostP2P(hunt: HuntEvent | null): UseHostP2PResult {
   // Hunt data to send
   const huntDataRef = useRef<HuntLocationData | null>(null);
 
-  // Track processed offer IDs to avoid duplicates
-  const processedOffersRef = useRef<Set<string>>(new Set());
+  // Persist processed offer IDs to localStorage to survive navigation/refresh
+  const processedOffersKey = useMemo(
+    () => `sathunter:p2p-processed-offers:${hunt?.id ?? 'no-hunt'}`,
+    [hunt?.id]
+  );
+  const [processedOffers, setProcessedOffers] = useLocalStorage<Set<string>>(
+    processedOffersKey,
+    new Set(),
+    setSerializer
+  );
 
-  // Cleanup function
+  // Cleanup function (doesn't clear processedOffers - they persist in localStorage)
   const cleanup = useCallback(() => {
     connectionsRef.current.forEach((conn) => {
       try {
@@ -66,7 +81,6 @@ export function useHostP2P(hunt: HuntEvent | null): UseHostP2PResult {
       }
     });
     connectionsRef.current.clear();
-    processedOffersRef.current.clear();
     setIsActive(false);
     setConnectedPlayers(0);
     setSentDataTo(0);
@@ -77,11 +91,13 @@ export function useHostP2P(hunt: HuntEvent | null): UseHostP2PResult {
     async (offerSdp: string, playerPubkey: string, eventId: string) => {
       if (!hunt || !user?.signer) return;
 
-      // Check if we already processed this offer
-      if (processedOffersRef.current.has(eventId)) {
+      // Check if we already processed this offer (persisted in localStorage)
+      if (processedOffers.has(eventId)) {
         return;
       }
-      processedOffersRef.current.add(eventId);
+
+      // Mark as processed immediately to prevent duplicate processing
+      setProcessedOffers(prev => new Set(prev).add(eventId));
 
       // Check if we already have a connection for this player
       if (connectionsRef.current.has(playerPubkey)) {
@@ -157,7 +173,7 @@ export function useHostP2P(hunt: HuntEvent | null): UseHostP2PResult {
         console.error('[P2P Host] Error handling offer:', err);
       }
     },
-    [hunt, user, nostr]
+    [hunt, user, nostr, processedOffers, setProcessedOffers]
   );
 
   // Start hosting - prepare hunt data and start listening for offers
