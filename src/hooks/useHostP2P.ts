@@ -156,8 +156,7 @@ export function useHostP2P(hunt: HuntEvent | null): UseHostP2PResult {
         console.log('[P2P Host] Processing offer from', playerPubkey.slice(0, 8));
 
         // Create answer for this player's offer
-        // dataChannelPromise resolves when the data channel is received (handler set up before setRemoteDescription)
-        const { peerConnection, answer, dataChannelPromise } = await createPlayerConnection({
+        const { peerConnection, answer } = await createPlayerConnection({
           type: 'offer',
           sdp: offerSdp,
         });
@@ -169,18 +168,6 @@ export function useHostP2P(hunt: HuntEvent | null): UseHostP2PResult {
           state: 'connecting',
         };
         connectionsRef.current.set(playerPubkey, connection);
-
-        // Set up connection state handlers
-        peerConnection.onconnectionstatechange = () => {
-          console.log('[P2P Host] Connection state:', peerConnection.connectionState, 'for', playerPubkey.slice(0, 8));
-          if (peerConnection.connectionState === 'failed') {
-            connection.state = 'failed';
-          }
-        };
-
-        peerConnection.oniceconnectionstatechange = () => {
-          console.log('[P2P Host] ICE state:', peerConnection.iceConnectionState, 'for', playerPubkey.slice(0, 8));
-        };
 
         // Publish answer to Nostr
         const answerEvent = buildAnswerEvent(
@@ -200,66 +187,79 @@ export function useHostP2P(hunt: HuntEvent | null): UseHostP2PResult {
         await nostr.event(signedEvent);
         console.log('[P2P Host] Published answer for', playerPubkey.slice(0, 8));
 
-        // Wait for data channel (already set up before setRemoteDescription to avoid race condition)
-        const channel = await dataChannelPromise;
-        console.log('[P2P Host] Data channel received from', playerPubkey.slice(0, 8), 'state:', channel.readyState);
+        // Wait for data channel (player created it in their offer)
+        peerConnection.ondatachannel = (event) => {
+          const channel = event.channel;
+          console.log('[P2P Host] Data channel received from', playerPubkey.slice(0, 8), 'state:', channel.readyState);
 
-        const markConnected = () => {
-          // Guard against double-counting
-          if (connection.state === 'connecting') {
-            connection.state = 'connected';
-            setConnectedPlayers((prev) => prev + 1);
-          }
-        };
-
-        const sendData = () => {
-          // Guard against double-sending
-          if (connection.state === 'sent') return;
-          if (huntDataRef.current && channel.readyState === 'open') {
-            try {
-              sendHuntData(channel, huntDataRef.current);
-              connection.state = 'sent';
-              setSentDataTo((prev) => {
-                const newCount = prev + 1;
-                // Persist to localStorage
-                if (hunt.id) {
-                  saveSentDataCount(hunt.id, newCount);
-                }
-                return newCount;
-              });
-              console.log('[P2P Host] Sent hunt data to', playerPubkey.slice(0, 8));
-            } catch (err) {
-              console.error('[P2P Host] Failed to send data:', err);
-              connection.state = 'failed';
+          const markConnected = () => {
+            // Guard against double-counting
+            if (connection.state === 'connecting') {
+              connection.state = 'connected';
+              setConnectedPlayers((prev) => prev + 1);
             }
+          };
+
+          const sendData = () => {
+            // Guard against double-sending
+            if (connection.state === 'sent') return;
+            if (huntDataRef.current && channel.readyState === 'open') {
+              try {
+                sendHuntData(channel, huntDataRef.current);
+                connection.state = 'sent';
+                setSentDataTo((prev) => {
+                  const newCount = prev + 1;
+                  // Persist to localStorage
+                  if (hunt.id) {
+                    saveSentDataCount(hunt.id, newCount);
+                  }
+                  return newCount;
+                });
+                console.log('[P2P Host] Sent hunt data to', playerPubkey.slice(0, 8));
+              } catch (err) {
+                console.error('[P2P Host] Failed to send data:', err);
+                connection.state = 'failed';
+              }
+            }
+          };
+
+          // Channel might already be open
+          if (channel.readyState === 'open') {
+            console.log('[P2P Host] Data channel already open for', playerPubkey.slice(0, 8));
+            markConnected();
+            sendData();
           }
+
+          channel.onopen = () => {
+            console.log('[P2P Host] Data channel open for', playerPubkey.slice(0, 8));
+            markConnected();
+            sendData();
+          };
+
+          channel.onerror = (err) => {
+            // Only log as error if we haven't sent data yet - otherwise it's just cleanup
+            if (connection.state !== 'sent') {
+              console.error('[P2P Host] Data channel error:', err);
+              connection.state = 'failed';
+            } else {
+              console.log('[P2P Host] Data channel closed after sending data to', playerPubkey.slice(0, 8));
+            }
+          };
+
+          channel.onclose = () => {
+            console.log('[P2P Host] Data channel closed for', playerPubkey.slice(0, 8), 'state was:', connection.state);
+          };
         };
 
-        // Channel might already be open
-        if (channel.readyState === 'open') {
-          console.log('[P2P Host] Data channel already open for', playerPubkey.slice(0, 8));
-          markConnected();
-          sendData();
-        }
-
-        channel.onopen = () => {
-          console.log('[P2P Host] Data channel open for', playerPubkey.slice(0, 8));
-          markConnected();
-          sendData();
-        };
-
-        channel.onerror = (err) => {
-          // Only log as error if we haven't sent data yet - otherwise it's just cleanup
-          if (connection.state !== 'sent') {
-            console.error('[P2P Host] Data channel error:', err);
+        peerConnection.onconnectionstatechange = () => {
+          console.log('[P2P Host] Connection state:', peerConnection.connectionState, 'for', playerPubkey.slice(0, 8));
+          if (peerConnection.connectionState === 'failed') {
             connection.state = 'failed';
-          } else {
-            console.log('[P2P Host] Data channel closed after sending data to', playerPubkey.slice(0, 8));
           }
         };
 
-        channel.onclose = () => {
-          console.log('[P2P Host] Data channel closed for', playerPubkey.slice(0, 8), 'state was:', connection.state);
+        peerConnection.oniceconnectionstatechange = () => {
+          console.log('[P2P Host] ICE state:', peerConnection.iceConnectionState, 'for', playerPubkey.slice(0, 8));
         };
 
       } catch (err) {
