@@ -525,9 +525,17 @@ export function HostDashboard() {
       next.add(playerPubkey);
       return next;
     });
+    // Remove from leftPlayers if they're rejoining
+    if (leftPlayers.has(playerPubkey)) {
+      setLeftPlayers(prev => {
+        const next = new Set(prev);
+        next.delete(playerPubkey);
+        return next;
+      });
+    }
     // Add to game context participants
     addParticipant(playerPubkey);
-  }, [addParticipant]);
+  }, [addParticipant, leftPlayers, setLeftPlayers]);
 
   const onPlayerLeft = useCallback((playerPubkey: string) => {
     // Skip if already tracked as left (prevents duplicate toasts on refresh)
