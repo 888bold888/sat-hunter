@@ -55,7 +55,6 @@ export function useHostP2P(hunt: HuntEvent | null): UseHostP2PResult {
   // Track player connections
   const connectionsRef = useRef<Map<string, PlayerConnection>>(new Map());
   const [connectedPlayers, setConnectedPlayers] = useState(0);
-  const [sentDataTo, setSentDataTo] = useState(0);
 
   // Hunt data to send
   const huntDataRef = useRef<HuntLocationData | null>(null);
@@ -71,7 +70,17 @@ export function useHostP2P(hunt: HuntEvent | null): UseHostP2PResult {
     setSerializer
   );
 
-  // Cleanup function (doesn't clear processedOffers - they persist in localStorage)
+  // Persist sent data count to localStorage
+  const sentDataKey = useMemo(
+    () => `sathunter:p2p-sent-data:${hunt?.id ?? 'no-hunt'}`,
+    [hunt?.id]
+  );
+  const [persistedSentDataTo, setPersistedSentDataTo] = useLocalStorage<number>(
+    sentDataKey,
+    0
+  );
+
+  // Cleanup function (doesn't clear persisted data - they survive in localStorage)
   const cleanup = useCallback(() => {
     connectionsRef.current.forEach((conn) => {
       try {
@@ -83,7 +92,6 @@ export function useHostP2P(hunt: HuntEvent | null): UseHostP2PResult {
     connectionsRef.current.clear();
     setIsActive(false);
     setConnectedPlayers(0);
-    setSentDataTo(0);
   }, []);
 
   // Handle incoming offer from a player
@@ -122,7 +130,7 @@ export function useHostP2P(hunt: HuntEvent | null): UseHostP2PResult {
               try {
                 sendHuntData(channel, huntDataRef.current);
                 connection.state = 'sent';
-                setSentDataTo((prev) => prev + 1);
+                setPersistedSentDataTo((prev) => prev + 1);
               } catch (err) {
                 console.error('[P2P Host] Failed to send data:', err);
                 connection.state = 'failed';
@@ -173,7 +181,7 @@ export function useHostP2P(hunt: HuntEvent | null): UseHostP2PResult {
         console.error('[P2P Host] Error handling offer:', err);
       }
     },
-    [hunt, user, nostr, processedOffers, setProcessedOffers]
+    [hunt, user, nostr, processedOffers, setProcessedOffers, setPersistedSentDataTo]
   );
 
   // Start hosting - prepare hunt data and start listening for offers
@@ -256,7 +264,7 @@ export function useHostP2P(hunt: HuntEvent | null): UseHostP2PResult {
   return {
     isActive,
     connectedPlayers,
-    sentDataTo,
+    sentDataTo: persistedSentDataTo,
     error,
     startHosting,
     stopHosting,
