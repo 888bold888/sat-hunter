@@ -130,17 +130,21 @@ export function useJoinP2P(): UseJoinP2PResult {
         console.log('[P2P Player] Got answer from host');
         setState('connecting');
 
-        // Apply answer
+        // Set up data handler BEFORE applying answer to avoid race condition
+        // The host may send data as soon as the connection is established
+        const dataPromise = waitForDataOnChannel(dataChannel, 30000);
+
+        // Apply answer - this triggers ICE negotiation and may open the channel
         await applyAnswer(peerConnection, {
           type: 'answer',
           sdp: answerSdp,
         });
 
-        console.log('[P2P Player] Applied answer, waiting for data channel');
+        console.log('[P2P Player] Applied answer, waiting for data');
         setState('waiting-data');
 
-        // Wait for hunt data from host on our data channel
-        const data = await waitForDataOnChannel(dataChannel, 30000);
+        // Wait for hunt data from host
+        const data = await dataPromise;
 
         console.log('[P2P Player] Received hunt data:', {
           monsters: data.monsters.length,
