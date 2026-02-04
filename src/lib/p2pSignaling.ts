@@ -19,27 +19,27 @@ const ICE_SERVERS: RTCIceServer[] = [
   // STUN servers
   { urls: 'stun:stun.l.google.com:19302' },
   { urls: 'stun:stun1.l.google.com:19302' },
-  // Free TURN from Xirsys (backup)
+  { urls: 'stun:stun.cloudflare.com:3478' },
+  // Free TURN from Metered.ca (reliable, tested)
   {
-    urls: 'turn:turn.bistri.com:80',
-    username: 'homeo',
-    credential: 'homeo',
-  },
-  // Free TURN from OpenRelay
-  {
-    urls: 'turn:openrelay.metered.ca:80',
-    username: 'openrelayproject',
-    credential: 'openrelayproject',
+    urls: 'turn:standard.relay.metered.ca:80',
+    username: 'e8dd65b92f6755f2e12e7a18',
+    credential: 'uWdWNmkhvyqTEuTB',
   },
   {
-    urls: 'turn:openrelay.metered.ca:443',
-    username: 'openrelayproject',
-    credential: 'openrelayproject',
+    urls: 'turn:standard.relay.metered.ca:80?transport=tcp',
+    username: 'e8dd65b92f6755f2e12e7a18',
+    credential: 'uWdWNmkhvyqTEuTB',
   },
   {
-    urls: 'turn:openrelay.metered.ca:443?transport=tcp',
-    username: 'openrelayproject',
-    credential: 'openrelayproject',
+    urls: 'turn:standard.relay.metered.ca:443',
+    username: 'e8dd65b92f6755f2e12e7a18',
+    credential: 'uWdWNmkhvyqTEuTB',
+  },
+  {
+    urls: 'turns:standard.relay.metered.ca:443?transport=tcp',
+    username: 'e8dd65b92f6755f2e12e7a18',
+    credential: 'uWdWNmkhvyqTEuTB',
   },
 ];
 
@@ -256,12 +256,12 @@ export function waitForHuntData(
 
 /**
  * Wait for ICE gathering to complete
- * Note: Short timeout is intentional - we want to send SDP quickly
- * so remote peer can start ICE checks before local ICE times out
+ * 5 seconds gives TURN servers time to allocate relay candidates
+ * while still being fast enough for responsive UX
  */
 function waitForIceGathering(
   peerConnection: RTCPeerConnection,
-  timeoutMs: number = 3000
+  timeoutMs: number = 5000
 ): Promise<void> {
   return new Promise((resolve) => {
     if (peerConnection.iceGatheringState === 'complete') {
