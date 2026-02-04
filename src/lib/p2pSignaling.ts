@@ -15,32 +15,16 @@ export const P2P_OFFER_KIND = 29001;  // Ephemeral: Player publishes WebRTC offe
 export const P2P_ANSWER_KIND = 29002; // Ephemeral: Host responds with answer
 
 // ICE servers for NAT traversal
+// Note: Without working TURN credentials, P2P only works on same local network
 const ICE_SERVERS: RTCIceServer[] = [
-  // STUN servers
+  // STUN servers (for discovering public IP)
   { urls: 'stun:stun.l.google.com:19302' },
   { urls: 'stun:stun1.l.google.com:19302' },
+  { urls: 'stun:stun2.l.google.com:19302' },
+  { urls: 'stun:stun3.l.google.com:19302' },
+  { urls: 'stun:stun4.l.google.com:19302' },
+  { urls: 'stun:global.stun.twilio.com:3478' },
   { urls: 'stun:stun.cloudflare.com:3478' },
-  // Free TURN from Metered.ca (reliable, tested)
-  {
-    urls: 'turn:standard.relay.metered.ca:80',
-    username: 'e8dd65b92f6755f2e12e7a18',
-    credential: 'uWdWNmkhvyqTEuTB',
-  },
-  {
-    urls: 'turn:standard.relay.metered.ca:80?transport=tcp',
-    username: 'e8dd65b92f6755f2e12e7a18',
-    credential: 'uWdWNmkhvyqTEuTB',
-  },
-  {
-    urls: 'turn:standard.relay.metered.ca:443',
-    username: 'e8dd65b92f6755f2e12e7a18',
-    credential: 'uWdWNmkhvyqTEuTB',
-  },
-  {
-    urls: 'turns:standard.relay.metered.ca:443?transport=tcp',
-    username: 'e8dd65b92f6755f2e12e7a18',
-    credential: 'uWdWNmkhvyqTEuTB',
-  },
 ];
 
 // Data sent from host to player via P2P
