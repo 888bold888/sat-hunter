@@ -256,10 +256,12 @@ export function waitForHuntData(
 
 /**
  * Wait for ICE gathering to complete
+ * Note: Short timeout is intentional - we want to send SDP quickly
+ * so remote peer can start ICE checks before local ICE times out
  */
 function waitForIceGathering(
   peerConnection: RTCPeerConnection,
-  timeoutMs: number = 10000
+  timeoutMs: number = 3000
 ): Promise<void> {
   return new Promise((resolve) => {
     if (peerConnection.iceGatheringState === 'complete') {
