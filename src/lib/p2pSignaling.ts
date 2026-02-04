@@ -16,24 +16,30 @@ export const P2P_ANSWER_KIND = 29002; // Ephemeral: Host responds with answer
 
 // ICE servers for NAT traversal
 const ICE_SERVERS: RTCIceServer[] = [
-  // STUN servers (work for ~80% of connections)
+  // STUN servers
   { urls: 'stun:stun.l.google.com:19302' },
   { urls: 'stun:stun1.l.google.com:19302' },
-  // Free TURN servers as fallback for restrictive NATs (Open Relay Project)
+  { urls: 'stun:stun.cloudflare.com:3478' },
+  // Free TURN from Metered (more reliable)
   {
-    urls: 'turn:openrelay.metered.ca:80',
-    username: 'openrelayproject',
-    credential: 'openrelayproject',
+    urls: 'turn:a.relay.metered.ca:80',
+    username: 'e8dd65b92f6755f2e12e7a18',
+    credential: 'uWdWNmkhvyqTEuTB',
   },
   {
-    urls: 'turn:openrelay.metered.ca:443',
-    username: 'openrelayproject',
-    credential: 'openrelayproject',
+    urls: 'turn:a.relay.metered.ca:80?transport=tcp',
+    username: 'e8dd65b92f6755f2e12e7a18',
+    credential: 'uWdWNmkhvyqTEuTB',
   },
   {
-    urls: 'turn:openrelay.metered.ca:443?transport=tcp',
-    username: 'openrelayproject',
-    credential: 'openrelayproject',
+    urls: 'turn:a.relay.metered.ca:443',
+    username: 'e8dd65b92f6755f2e12e7a18',
+    credential: 'uWdWNmkhvyqTEuTB',
+  },
+  {
+    urls: 'turns:a.relay.metered.ca:443?transport=tcp',
+    username: 'e8dd65b92f6755f2e12e7a18',
+    credential: 'uWdWNmkhvyqTEuTB',
   },
 ];
 
@@ -192,7 +198,7 @@ export function waitForHuntData(
  */
 function waitForIceGathering(
   peerConnection: RTCPeerConnection,
-  timeoutMs: number = 5000
+  timeoutMs: number = 10000
 ): Promise<void> {
   return new Promise((resolve) => {
     if (peerConnection.iceGatheringState === 'complete') {
