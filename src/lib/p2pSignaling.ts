@@ -14,11 +14,27 @@ import type { GeoFence, Monster, SatStop } from './gameTypes';
 export const P2P_OFFER_KIND = 29001;  // Ephemeral: Player publishes WebRTC offer
 export const P2P_ANSWER_KIND = 29002; // Ephemeral: Host responds with answer
 
-// ICE servers for NAT traversal (using public STUN servers)
+// ICE servers for NAT traversal
 const ICE_SERVERS: RTCIceServer[] = [
+  // STUN servers (work for ~80% of connections)
   { urls: 'stun:stun.l.google.com:19302' },
   { urls: 'stun:stun1.l.google.com:19302' },
-  { urls: 'stun:stun2.l.google.com:19302' },
+  // Free TURN servers as fallback for restrictive NATs (Open Relay Project)
+  {
+    urls: 'turn:openrelay.metered.ca:80',
+    username: 'openrelayproject',
+    credential: 'openrelayproject',
+  },
+  {
+    urls: 'turn:openrelay.metered.ca:443',
+    username: 'openrelayproject',
+    credential: 'openrelayproject',
+  },
+  {
+    urls: 'turn:openrelay.metered.ca:443?transport=tcp',
+    username: 'openrelayproject',
+    credential: 'openrelayproject',
+  },
 ];
 
 // Data sent from host to player via P2P
