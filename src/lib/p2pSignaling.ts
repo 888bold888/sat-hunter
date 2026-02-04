@@ -114,14 +114,24 @@ export async function createHostConnection(): Promise<{
  * Player: Connect to host using their offer
  */
 export async function createPlayerConnection(
-  offer: RTCSessionDescriptionInit
+  offer: RTCSessionDescriptionInit,
+  onDataChannel?: (channel: RTCDataChannel) => void
 ): Promise<{
   peerConnection: RTCPeerConnection;
   answer: RTCSessionDescriptionInit;
 }> {
   const peerConnection = createPeerConnection();
 
-  // Set remote description (host's offer)
+  // IMPORTANT: Set up ondatachannel handler BEFORE setRemoteDescription
+  // The event fires when the remote offer contains a data channel
+  if (onDataChannel) {
+    peerConnection.ondatachannel = (event) => {
+      console.log('[P2P] Data channel received in createPlayerConnection');
+      onDataChannel(event.channel);
+    };
+  }
+
+  // Set remote description (player's offer) - may trigger ondatachannel
   await peerConnection.setRemoteDescription(offer);
 
   // Create answer

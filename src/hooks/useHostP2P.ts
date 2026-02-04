@@ -92,41 +92,15 @@ export function useHostP2P(hunt: HuntEvent | null): UseHostP2PResult {
       try {
         console.log('[P2P Host] Processing offer from', playerPubkey.slice(0, 8));
 
-        // Create answer for this player's offer
-        const { peerConnection, answer } = await createPlayerConnection({
-          type: 'offer',
-          sdp: offerSdp,
-        });
-
-        // Store connection
+        // Pre-create connection object so it can be referenced in the callback
         const connection: PlayerConnection = {
           pubkey: playerPubkey,
-          peerConnection,
+          peerConnection: null as unknown as RTCPeerConnection, // Will be set after createPlayerConnection
           state: 'connecting',
         };
-        connectionsRef.current.set(playerPubkey, connection);
 
-        // Publish answer to Nostr
-        const answerEvent = buildAnswerEvent(
-          hunt.id,
-          hunt.shareCode,
-          answer,
-          playerPubkey
-        );
-
-        const signedEvent = await user.signer.signEvent({
-          kind: answerEvent.kind,
-          created_at: Math.floor(Date.now() / 1000),
-          content: answerEvent.content,
-          tags: answerEvent.tags,
-        });
-
-        await nostr.event(signedEvent);
-        console.log('[P2P Host] Published answer for', playerPubkey.slice(0, 8));
-
-        // Wait for data channel (player created it in their offer)
-        peerConnection.ondatachannel = (event) => {
-          const channel = event.channel;
+        // Handler for when data channel is received (called BEFORE setRemoteDescription returns)
+        const handleDataChannel = (channel: RTCDataChannel) => {
           console.log('[P2P Host] Data channel received from', playerPubkey.slice(0, 8));
 
           channel.onopen = () => {
@@ -153,6 +127,18 @@ export function useHostP2P(hunt: HuntEvent | null): UseHostP2PResult {
           };
         };
 
+        // Create answer for this player's offer
+        // Pass the data channel handler so it's set up BEFORE setRemoteDescription
+        const { peerConnection, answer } = await createPlayerConnection(
+          { type: 'offer', sdp: offerSdp },
+          handleDataChannel
+        );
+
+        // Update connection with actual peer connection
+        connection.peerConnection = peerConnection;
+        connectionsRef.current.set(playerPubkey, connection);
+
+        // Set up ICE state handlers
         peerConnection.onconnectionstatechange = () => {
           console.log('[P2P Host] Connection state:', peerConnection.connectionState, 'for', playerPubkey.slice(0, 8));
           if (peerConnection.connectionState === 'failed') {
@@ -163,6 +149,24 @@ export function useHostP2P(hunt: HuntEvent | null): UseHostP2PResult {
         peerConnection.oniceconnectionstatechange = () => {
           console.log('[P2P Host] ICE state:', peerConnection.iceConnectionState, 'for', playerPubkey.slice(0, 8));
         };
+
+        // Publish answer to Nostr
+        const answerEvent = buildAnswerEvent(
+          hunt.id,
+          hunt.shareCode,
+          answer,
+          playerPubkey
+        );
+
+        const signedEvent = await user.signer.signEvent({
+          kind: answerEvent.kind,
+          created_at: Math.floor(Date.now() / 1000),
+          content: answerEvent.content,
+          tags: answerEvent.tags,
+        });
+
+        await nostr.event(signedEvent);
+        console.log('[P2P Host] Published answer for', playerPubkey.slice(0, 8));
 
       } catch (err) {
         console.error('[P2P Host] Error handling offer:', err);
