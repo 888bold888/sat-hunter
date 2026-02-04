@@ -891,7 +891,7 @@ export function HostDashboard() {
           <CardTitle className="text-sm flex items-center justify-between">
             <span className="flex items-center gap-2">
               <Eye className="w-4 h-4" />
-              Player Monitor ({activePlayerCount}{inactivePlayers.size > 0 ? ` + ${inactivePlayers.size} left/kicked` : ''})
+              Player Monitor ({activePlayerCount} active)
             </span>
             <Button
               variant="ghost"
