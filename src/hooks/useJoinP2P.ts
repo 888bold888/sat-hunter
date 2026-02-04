@@ -91,6 +91,20 @@ export function useJoinP2P(): UseJoinP2PResult {
         peerConnectionRef.current = peerConnection;
         dataChannelRef.current = dataChannel;
 
+        // Add ICE state logging for debugging
+        peerConnection.oniceconnectionstatechange = () => {
+          console.log('[P2P Player] ICE state:', peerConnection.iceConnectionState);
+        };
+        peerConnection.onconnectionstatechange = () => {
+          console.log('[P2P Player] Connection state:', peerConnection.connectionState);
+        };
+        dataChannel.onopen = () => {
+          console.log('[P2P Player] Data channel opened');
+        };
+        dataChannel.onerror = (e) => {
+          console.log('[P2P Player] Data channel error:', e);
+        };
+
         // Publish offer to Nostr
         const offerEvent = buildOfferEvent(
           huntId,
