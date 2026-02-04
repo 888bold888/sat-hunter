@@ -15,16 +15,11 @@ export const P2P_OFFER_KIND = 29001;  // Ephemeral: Player publishes WebRTC offe
 export const P2P_ANSWER_KIND = 29002; // Ephemeral: Host responds with answer
 
 // ICE servers for NAT traversal
-// Note: Without working TURN credentials, P2P only works on same local network
+// Note: Without TURN, P2P only works on same local network
 const ICE_SERVERS: RTCIceServer[] = [
-  // STUN servers (for discovering public IP)
   { urls: 'stun:stun.l.google.com:19302' },
   { urls: 'stun:stun1.l.google.com:19302' },
   { urls: 'stun:stun2.l.google.com:19302' },
-  { urls: 'stun:stun3.l.google.com:19302' },
-  { urls: 'stun:stun4.l.google.com:19302' },
-  { urls: 'stun:global.stun.twilio.com:3478' },
-  { urls: 'stun:stun.cloudflare.com:3478' },
 ];
 
 // Data sent from host to player via P2P
@@ -60,7 +55,6 @@ export interface SignalCandidate {
  * Create a WebRTC peer connection with standard config
  */
 export function createPeerConnection(): RTCPeerConnection {
-  console.log('[P2P] Creating peer connection with', ICE_SERVERS.length, 'ICE servers');
   return new RTCPeerConnection({
     iceServers: ICE_SERVERS,
   });
@@ -74,48 +68,24 @@ export async function createHostConnection(): Promise<{
   dataChannel: RTCDataChannel;
   offer: RTCSessionDescriptionInit;
 }> {
-  console.log('[P2P] createHostConnection: creating offer with data channel');
   const peerConnection = createPeerConnection();
-
-  // Set up ALL handlers BEFORE any SDP operations
-  peerConnection.onconnectionstatechange = () => {
-    console.log('[P2P createHostConnection] Connection state:', peerConnection.connectionState);
-  };
-
-  peerConnection.oniceconnectionstatechange = () => {
-    console.log('[P2P createHostConnection] ICE state:', peerConnection.iceConnectionState);
-  };
 
   // Create data channel for sending hunt data
   const dataChannel = peerConnection.createDataChannel('hunt-data', {
     ordered: true,
   });
-  console.log('[P2P] Data channel created');
-
-  dataChannel.onopen = () => {
-    console.log('[P2P] Data channel opened (player side)');
-  };
-
-  dataChannel.onerror = (e) => {
-    console.log('[P2P] Data channel error (player side):', e);
-  };
 
   // Create offer
   const offer = await peerConnection.createOffer();
   await peerConnection.setLocalDescription(offer);
-  console.log('[P2P] Local description set, waiting for ICE gathering');
 
   // Wait for ICE gathering to complete (or timeout)
   await waitForIceGathering(peerConnection);
 
-  const finalSdp = peerConnection.localDescription!;
-  const candidateLines = finalSdp.sdp?.match(/a=candidate/g)?.length || 0;
-  console.log('[P2P] Offer ready with', candidateLines, 'ICE candidate lines in SDP');
-
   return {
     peerConnection,
     dataChannel,
-    offer: finalSdp,
+    offer: peerConnection.localDescription!,
   };
 }
 
@@ -129,53 +99,29 @@ export async function createPlayerConnection(
   peerConnection: RTCPeerConnection;
   answer: RTCSessionDescriptionInit;
 }> {
-  console.log('[P2P] createPlayerConnection: processing offer and creating answer');
   const peerConnection = createPeerConnection();
 
-  // Set up ALL handlers BEFORE any SDP operations
-  // This ensures we don't miss any state changes
-
-  // Connection state handler
-  peerConnection.onconnectionstatechange = () => {
-    console.log('[P2P createPlayerConnection] Connection state:', peerConnection.connectionState);
-  };
-
-  // ICE connection state handler
-  peerConnection.oniceconnectionstatechange = () => {
-    console.log('[P2P createPlayerConnection] ICE state:', peerConnection.iceConnectionState);
-  };
-
-  // Data channel handler - fires when remote offer contains a data channel
+  // Set up data channel handler BEFORE setRemoteDescription
+  // The event fires when the remote offer contains a data channel
   if (onDataChannel) {
     peerConnection.ondatachannel = (event) => {
-      console.log('[P2P] Data channel received in createPlayerConnection');
       onDataChannel(event.channel);
     };
   }
 
-  // Log offer candidate count
-  const offerCandidates = offer.sdp?.match(/a=candidate/g)?.length || 0;
-  console.log('[P2P] Offer has', offerCandidates, 'ICE candidate lines');
-
-  // Set remote description (player's offer) - may trigger ondatachannel
+  // Set remote description (player's offer)
   await peerConnection.setRemoteDescription(offer);
-  console.log('[P2P] Remote description set');
 
   // Create answer
   const answer = await peerConnection.createAnswer();
   await peerConnection.setLocalDescription(answer);
-  console.log('[P2P] Local description set, waiting for ICE gathering');
 
   // Wait for ICE gathering
   await waitForIceGathering(peerConnection);
 
-  const finalSdp = peerConnection.localDescription!;
-  const answerCandidates = finalSdp.sdp?.match(/a=candidate/g)?.length || 0;
-  console.log('[P2P] Answer ready with', answerCandidates, 'ICE candidate lines in SDP');
-
   return {
     peerConnection,
-    answer: finalSdp,
+    answer: peerConnection.localDescription!,
   };
 }
 
@@ -186,10 +132,7 @@ export async function applyAnswer(
   peerConnection: RTCPeerConnection,
   answer: RTCSessionDescriptionInit
 ): Promise<void> {
-  const answerCandidates = answer.sdp?.match(/a=candidate/g)?.length || 0;
-  console.log('[P2P] Applying answer with', answerCandidates, 'ICE candidate lines');
   await peerConnection.setRemoteDescription(answer);
-  console.log('[P2P] Remote description (answer) applied');
 }
 
 /**
@@ -240,8 +183,6 @@ export function waitForHuntData(
 
 /**
  * Wait for ICE gathering to complete
- * 5 seconds gives TURN servers time to allocate relay candidates
- * while still being fast enough for responsive UX
  */
 function waitForIceGathering(
   peerConnection: RTCPeerConnection,
@@ -249,30 +190,15 @@ function waitForIceGathering(
 ): Promise<void> {
   return new Promise((resolve) => {
     if (peerConnection.iceGatheringState === 'complete') {
-      console.log('[P2P] ICE gathering already complete');
       resolve();
       return;
     }
 
-    let candidateCount = 0;
-
-    // Log each ICE candidate as it's gathered
-    peerConnection.onicecandidate = (event) => {
-      if (event.candidate) {
-        candidateCount++;
-        console.log('[P2P] ICE candidate gathered:', event.candidate.type, event.candidate.protocol);
-      } else {
-        console.log('[P2P] ICE gathering complete, total candidates:', candidateCount);
-      }
-    };
-
     const timeout = setTimeout(() => {
-      console.log('[P2P] ICE gathering timeout, candidates so far:', candidateCount);
       resolve(); // Resolve anyway after timeout, we'll use what we have
     }, timeoutMs);
 
     peerConnection.onicegatheringstatechange = () => {
-      console.log('[P2P] ICE gathering state:', peerConnection.iceGatheringState);
       if (peerConnection.iceGatheringState === 'complete') {
         clearTimeout(timeout);
         resolve();

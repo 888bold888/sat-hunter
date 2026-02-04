@@ -85,26 +85,20 @@ export function useHostP2P(hunt: HuntEvent | null): UseHostP2PResult {
 
       // Check if we already have a connection for this player
       if (connectionsRef.current.has(playerPubkey)) {
-        console.log('[P2P Host] Already have connection for', playerPubkey.slice(0, 8));
         return;
       }
 
       try {
-        console.log('[P2P Host] Processing offer from', playerPubkey.slice(0, 8));
-
         // Pre-create connection object so it can be referenced in the callback
         const connection: PlayerConnection = {
           pubkey: playerPubkey,
-          peerConnection: null as unknown as RTCPeerConnection, // Will be set after createPlayerConnection
+          peerConnection: null as unknown as RTCPeerConnection,
           state: 'connecting',
         };
 
-        // Handler for when data channel is received (called BEFORE setRemoteDescription returns)
+        // Handler for when data channel is received
         const handleDataChannel = (channel: RTCDataChannel) => {
-          console.log('[P2P Host] Data channel received from', playerPubkey.slice(0, 8));
-
           channel.onopen = () => {
-            console.log('[P2P Host] Data channel open for', playerPubkey.slice(0, 8));
             connection.state = 'connected';
             setConnectedPlayers((prev) => prev + 1);
 
@@ -113,7 +107,6 @@ export function useHostP2P(hunt: HuntEvent | null): UseHostP2PResult {
                 sendHuntData(channel, huntDataRef.current);
                 connection.state = 'sent';
                 setSentDataTo((prev) => prev + 1);
-                console.log('[P2P Host] Sent hunt data to', playerPubkey.slice(0, 8));
               } catch (err) {
                 console.error('[P2P Host] Failed to send data:', err);
                 connection.state = 'failed';
@@ -121,14 +114,12 @@ export function useHostP2P(hunt: HuntEvent | null): UseHostP2PResult {
             }
           };
 
-          channel.onerror = (err) => {
-            console.error('[P2P Host] Data channel error:', err);
+          channel.onerror = () => {
             connection.state = 'failed';
           };
         };
 
         // Create answer for this player's offer
-        // Pass the data channel handler so it's set up BEFORE setRemoteDescription
         const { peerConnection, answer } = await createPlayerConnection(
           { type: 'offer', sdp: offerSdp },
           handleDataChannel
@@ -138,16 +129,11 @@ export function useHostP2P(hunt: HuntEvent | null): UseHostP2PResult {
         connection.peerConnection = peerConnection;
         connectionsRef.current.set(playerPubkey, connection);
 
-        // Set up ICE state handlers
+        // Track connection failures
         peerConnection.onconnectionstatechange = () => {
-          console.log('[P2P Host] Connection state:', peerConnection.connectionState, 'for', playerPubkey.slice(0, 8));
           if (peerConnection.connectionState === 'failed') {
             connection.state = 'failed';
           }
-        };
-
-        peerConnection.oniceconnectionstatechange = () => {
-          console.log('[P2P Host] ICE state:', peerConnection.iceConnectionState, 'for', playerPubkey.slice(0, 8));
         };
 
         // Publish answer to Nostr
@@ -166,7 +152,6 @@ export function useHostP2P(hunt: HuntEvent | null): UseHostP2PResult {
         });
 
         await nostr.event(signedEvent);
-        console.log('[P2P Host] Published answer for', playerPubkey.slice(0, 8));
 
       } catch (err) {
         console.error('[P2P Host] Error handling offer:', err);
@@ -184,7 +169,6 @@ export function useHostP2P(hunt: HuntEvent | null): UseHostP2PResult {
 
     try {
       setError(null);
-      console.log('[P2P Host] Starting P2P hosting for hunt', hunt.shareCode);
 
       // Prepare hunt data to send
       huntDataRef.current = {
@@ -194,7 +178,6 @@ export function useHostP2P(hunt: HuntEvent | null): UseHostP2PResult {
       };
 
       setIsActive(true);
-      console.log('[P2P Host] Ready to receive player offers');
     } catch (err) {
       console.error('[P2P Host] Failed to start hosting:', err);
       setError(err instanceof Error ? err.message : 'Failed to start P2P hosting');
@@ -203,15 +186,12 @@ export function useHostP2P(hunt: HuntEvent | null): UseHostP2PResult {
 
   // Stop hosting
   const stopHosting = useCallback(() => {
-    console.log('[P2P Host] Stopping P2P hosting');
     cleanup();
   }, [cleanup]);
 
   // Subscribe to offer events from players
   useEffect(() => {
     if (!isActive || !hunt || !user) return;
-
-    console.log('[P2P Host] Subscribing to offer events for hunt', hunt.shareCode);
 
     const controller = new AbortController();
 

@@ -84,26 +84,11 @@ export function useJoinP2P(): UseJoinP2PResult {
       try {
         setError(null);
         setState('creating-offer');
-        console.log('[P2P Player] Creating offer for hunt', shareCode);
 
         // Create offer with data channel
         const { peerConnection, dataChannel, offer } = await createHostConnection();
         peerConnectionRef.current = peerConnection;
         dataChannelRef.current = dataChannel;
-
-        // Add ICE state logging for debugging
-        peerConnection.oniceconnectionstatechange = () => {
-          console.log('[P2P Player] ICE state:', peerConnection.iceConnectionState);
-        };
-        peerConnection.onconnectionstatechange = () => {
-          console.log('[P2P Player] Connection state:', peerConnection.connectionState);
-        };
-        dataChannel.onopen = () => {
-          console.log('[P2P Player] Data channel opened');
-        };
-        dataChannel.onerror = (e) => {
-          console.log('[P2P Player] Data channel error:', e);
-        };
 
         // Publish offer to Nostr
         const offerEvent = buildOfferEvent(
@@ -122,7 +107,6 @@ export function useJoinP2P(): UseJoinP2PResult {
         });
 
         await nostr.event(signedOffer);
-        console.log('[P2P Player] Published offer to Nostr');
 
         setState('waiting-answer');
 
@@ -141,7 +125,6 @@ export function useJoinP2P(): UseJoinP2PResult {
           return null;
         }
 
-        console.log('[P2P Player] Got answer from host');
         setState('connecting');
 
         // Apply answer
@@ -150,16 +133,10 @@ export function useJoinP2P(): UseJoinP2PResult {
           sdp: answerSdp,
         });
 
-        console.log('[P2P Player] Applied answer, waiting for data channel');
         setState('waiting-data');
 
         // Wait for hunt data from host on our data channel
         const data = await waitForDataOnChannel(dataChannel, 30000);
-
-        console.log('[P2P Player] Received hunt data:', {
-          monsters: data.monsters.length,
-          satStops: data.satStops.length,
-        });
 
         setHuntData(data);
         setState('complete');
@@ -216,8 +193,8 @@ async function pollForAnswer(
         const parsed = JSON.parse(events[0].content);
         return parsed.sdp;
       }
-    } catch (err) {
-      console.warn('[P2P Player] Poll error:', err);
+    } catch {
+      // Poll error, will retry
     }
 
     // Wait before next poll
@@ -239,11 +216,6 @@ function waitForDataOnChannel(
       reject(new Error('Timeout waiting for hunt data'));
     }, timeoutMs);
 
-    // Channel might already be open
-    if (dataChannel.readyState === 'open') {
-      console.log('[P2P Player] Data channel already open');
-    }
-
     dataChannel.onmessage = (event) => {
       clearTimeout(timeout);
       try {
@@ -254,9 +226,8 @@ function waitForDataOnChannel(
       }
     };
 
-    dataChannel.onerror = (err) => {
+    dataChannel.onerror = () => {
       clearTimeout(timeout);
-      console.error('[P2P Player] Data channel error:', err);
       reject(new Error('Data channel error'));
     };
 
