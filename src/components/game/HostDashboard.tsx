@@ -594,7 +594,8 @@ export function HostDashboard() {
     ...activeHunt.participants.map(p => p.pubkey),
     ...syncedPlayers,
   ]);
-  const playerCount = allPlayerPubkeys.size;
+  // Active player count excludes kicked players
+  const activePlayerCount = Array.from(allPlayerPubkeys).filter(p => !kickedPlayers.has(p)).length;
 
   const handleCopyLink = () => {
     if (activeHunt.shareUrl) {
@@ -621,7 +622,7 @@ export function HostDashboard() {
           <CardContent className="p-3 text-center">
             <Users className="w-5 h-5 mx-auto text-secondary mb-1" />
             <p className="font-display text-xl font-bold text-secondary">
-              {playerCount}
+              {activePlayerCount}
             </p>
             <p className="text-xs text-muted-foreground">Players</p>
           </CardContent>
@@ -866,7 +867,7 @@ export function HostDashboard() {
           <CardTitle className="text-sm flex items-center justify-between">
             <span className="flex items-center gap-2">
               <Eye className="w-4 h-4" />
-              Player Monitor ({playerCount})
+              Player Monitor ({activePlayerCount}{kickedPlayers.size > 0 ? ` + ${kickedPlayers.size} kicked` : ''})
             </span>
             <Button
               variant="ghost"
@@ -880,7 +881,7 @@ export function HostDashboard() {
           </CardTitle>
         </CardHeader>
         <CardContent>
-          {playerCount === 0 ? (
+          {allPlayerPubkeys.size === 0 ? (
             <p className="text-sm text-muted-foreground text-center py-4">
               No players have joined yet. Share the code above!
             </p>
