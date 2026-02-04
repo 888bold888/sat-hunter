@@ -146,6 +146,7 @@ interface PlayerMonitorStats {
   rejectedCount: number;
   lastCaptureTime: number | null;
   isKicked: boolean;
+  isLeft: boolean;
 }
 
 // Component to display a player with monitoring info
@@ -170,6 +171,7 @@ function PlayerMonitorCard({
   // Activity indicator color
   const getActivityColor = () => {
     if (stats.isKicked) return 'bg-red-500';
+    if (stats.isLeft) return 'bg-gray-400';
     switch (activityStatus) {
       case 'active': return 'bg-green-500';
       case 'idle': return 'bg-yellow-500';
@@ -177,9 +179,12 @@ function PlayerMonitorCard({
     }
   };
 
+  // Check if player is inactive (kicked or left)
+  const isInactive = stats.isKicked || stats.isLeft;
+
   // Determine status color based on trust score and flags
   const getTrustColor = () => {
-    if (stats.isKicked) return 'text-gray-500';
+    if (isInactive) return 'text-gray-500';
     if (stats.rejectedCount > 0) return 'text-red-500';
     if (stats.hasWarnings) return 'text-yellow-500';
     if (stats.avgTrustScore !== null && stats.avgTrustScore < 80) return 'text-yellow-500';
@@ -187,7 +192,7 @@ function PlayerMonitorCard({
   };
 
   const getStatusBg = () => {
-    if (stats.isKicked) return 'bg-gray-500/10 border-gray-500/30 opacity-60';
+    if (isInactive) return 'bg-gray-500/10 border-gray-500/30 opacity-60';
     if (stats.rejectedCount > 0) return 'bg-red-500/10 border-red-500/30';
     if (stats.hasWarnings) return 'bg-yellow-500/10 border-yellow-500/30';
     return 'bg-muted/30 border-border';
@@ -221,7 +226,7 @@ function PlayerMonitorCard({
             )}
           </div>
           <p className="text-xs text-muted-foreground">
-            {stats.captureCount} captured • {formatSats(stats.totalSats)} sats • <span className={stats.isKicked ? 'text-red-500 font-medium' : activityStatus === 'active' ? 'text-green-500' : activityStatus === 'idle' ? 'text-yellow-500' : 'text-gray-500'}>{stats.isKicked ? 'Kicked' : activityLabel}</span>
+            {stats.captureCount} captured • {formatSats(stats.totalSats)} sats • <span className={stats.isKicked ? 'text-red-500 font-medium' : stats.isLeft ? 'text-gray-400 font-medium' : activityStatus === 'active' ? 'text-green-500' : activityStatus === 'idle' ? 'text-yellow-500' : 'text-gray-500'}>{stats.isKicked ? 'Kicked' : stats.isLeft ? 'Left' : activityLabel}</span>
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -256,8 +261,8 @@ function PlayerMonitorCard({
             </div>
           )}
 
-          {/* Kick button - only show if not already kicked */}
-          {!stats.isKicked && (
+          {/* Kick button - only show if player is still active */}
+          {!stats.isKicked && !stats.isLeft && (
             <div className="flex justify-end">
               {confirmingKick ? (
                 <div className="flex items-center gap-2">
@@ -324,10 +329,12 @@ export function HostDashboard() {
   const [syncedPlayers, setSyncedPlayers] = useState<Set<string>>(new Set());
   const [processingRequests, setProcessingRequests] = useState<Set<string>>(new Set());
 
-  // Persist paid captures to localStorage to prevent duplicate payments on refresh
+  // Persist state to localStorage to prevent duplicate actions on refresh
   const huntId = activeHunt?.id ?? 'no-hunt';
   const paidCapturesKey = useMemo(() => `sathunter:paid-captures:${huntId}`, [huntId]);
   const rejectedCapturesKey = useMemo(() => `sathunter:rejected-captures:${huntId}`, [huntId]);
+  const kickedPlayersKey = useMemo(() => `sathunter:kicked-players:${huntId}`, [huntId]);
+  const leftPlayersKey = useMemo(() => `sathunter:left-players:${huntId}`, [huntId]);
 
   const [paidCaptures, setPaidCaptures] = useLocalStorage<Set<string>>(
     paidCapturesKey,
@@ -345,7 +352,16 @@ export function HostDashboard() {
   const { toast } = useToast();
   const { publishKick } = usePublishKick();
   const [kickingPlayer, setKickingPlayer] = useState<string | null>(null);
-  const [kickedPlayers, setKickedPlayers] = useState<Set<string>>(new Set());
+  const [kickedPlayers, setKickedPlayers] = useLocalStorage<Set<string>>(
+    kickedPlayersKey,
+    new Set(),
+    setSerializer
+  );
+  const [leftPlayers, setLeftPlayers] = useLocalStorage<Set<string>>(
+    leftPlayersKey,
+    new Set(),
+    setSerializer
+  );
 
   // Handle kicking a player
   const handleKickPlayer = useCallback(async (playerPubkey: string) => {
@@ -384,7 +400,7 @@ export function HostDashboard() {
     } finally {
       setKickingPlayer(null);
     }
-  }, [activeHunt, publishKick, toast]);
+  }, [activeHunt, publishKick, toast, setKickedPlayers]);
 
   // P2P hosting for secure location data transfer
   const {
@@ -514,17 +530,16 @@ export function HostDashboard() {
   }, [addParticipant]);
 
   const onPlayerLeft = useCallback((playerPubkey: string) => {
-    console.log('[HostDashboard] Player left:', playerPubkey.slice(0, 8));
-    setSyncedPlayers(prev => {
-      const next = new Set(prev);
-      next.delete(playerPubkey);
-      return next;
-    });
+    // Skip if already tracked as left (prevents duplicate toasts on refresh)
+    if (leftPlayers.has(playerPubkey)) return;
+
+    // Mark player as left (don't remove from list, just track status)
+    setLeftPlayers(prev => new Set(prev).add(playerPubkey));
     toast({
       title: 'Player left',
       description: `A player has left the hunt`,
     });
-  }, [toast]);
+  }, [leftPlayers, setLeftPlayers, toast]);
 
   // Subscribe to hunt updates via Nostr
   const { refresh: refreshSync } = useHuntSync(activeHunt, {
@@ -594,8 +609,9 @@ export function HostDashboard() {
     ...activeHunt.participants.map(p => p.pubkey),
     ...syncedPlayers,
   ]);
-  // Active player count excludes kicked players
-  const activePlayerCount = Array.from(allPlayerPubkeys).filter(p => !kickedPlayers.has(p)).length;
+  // Active player count excludes kicked and left players
+  const inactivePlayers = new Set([...kickedPlayers, ...leftPlayers]);
+  const activePlayerCount = Array.from(allPlayerPubkeys).filter(p => !inactivePlayers.has(p)).length;
 
   const handleCopyLink = () => {
     if (activeHunt.shareUrl) {
@@ -867,7 +883,7 @@ export function HostDashboard() {
           <CardTitle className="text-sm flex items-center justify-between">
             <span className="flex items-center gap-2">
               <Eye className="w-4 h-4" />
-              Player Monitor ({activePlayerCount}{kickedPlayers.size > 0 ? ` + ${kickedPlayers.size} kicked` : ''})
+              Player Monitor ({activePlayerCount}{inactivePlayers.size > 0 ? ` + ${inactivePlayers.size} left/kicked` : ''})
             </span>
             <Button
               variant="ghost"
@@ -942,6 +958,7 @@ export function HostDashboard() {
                     rejectedCount: rejectedForPlayer,
                     lastCaptureTime,
                     isKicked: kickedPlayers.has(pubkey),
+                    isLeft: leftPlayers.has(pubkey),
                   };
 
                   return (
