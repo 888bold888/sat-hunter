@@ -42,17 +42,20 @@ export function PaymentConfirmation() {
       confirmPayment();
 
       // Get the updated hunt with paid status for publishing
-      // Hunt is immediately active once paid - no separate "start" step needed
+      // Check if hunt is scheduled for the future
+      const isScheduled = activeHunt.startTime > Date.now();
+      const huntStatus = isScheduled ? 'ready' : 'active';
+
       const paidHunt = {
         ...activeHunt,
-        status: 'active' as const,
+        status: huntStatus as 'ready' | 'active',
         paymentStatus: 'paid' as const,
       };
       const signedEvent = await publishHunt(paidHunt) as NostrEvent;
       // Critical: Update local hunt ID to match Nostr event ID for sync
       // Pass status to avoid race condition with confirmPayment
       if (signedEvent?.id) {
-        updateHuntId(signedEvent.id, { status: 'active', paymentStatus: 'paid' });
+        updateHuntId(signedEvent.id, { status: huntStatus, paymentStatus: 'paid' });
       }
     } catch (error) {
       setPaymentError(error instanceof Error ? error.message : 'Payment failed');
@@ -70,17 +73,20 @@ export function PaymentConfirmation() {
       confirmPayment();
 
       // Publish with updated status
-      // Hunt is immediately active once paid - no separate "start" step needed
+      // Check if hunt is scheduled for the future
+      const isScheduled = activeHunt.startTime > Date.now();
+      const huntStatus = isScheduled ? 'ready' : 'active';
+
       const paidHunt = {
         ...activeHunt,
-        status: 'active' as const,
+        status: huntStatus as 'ready' | 'active',
         paymentStatus: 'paid' as const,
       };
       const signedEvent = await publishHunt(paidHunt) as NostrEvent;
       // Critical: Update local hunt ID to match Nostr event ID for sync
       // Pass status to avoid race condition with confirmPayment
       if (signedEvent?.id) {
-        updateHuntId(signedEvent.id, { status: 'active', paymentStatus: 'paid' });
+        updateHuntId(signedEvent.id, { status: huntStatus, paymentStatus: 'paid' });
       }
     } catch (error) {
       setPaymentError(error instanceof Error ? error.message : 'Failed to activate hunt');
