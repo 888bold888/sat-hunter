@@ -603,6 +603,12 @@ export function HostDashboard() {
   ]);
   const capturedCount = capturedMonsterIds.size;
 
+  // Merge monsters with synced capture status for map display
+  const monstersForMap = activeHunt.monsters.map(m => ({
+    ...m,
+    captured: m.captured || syncedCaptures.has(m.id),
+  }));
+
   // Calculate sats - combine but avoid double counting using monster IDs
   const satsCollected = activeHunt.monsters
     .filter(m => capturedMonsterIds.has(m.id))
@@ -834,7 +840,7 @@ export function HostDashboard() {
               center={activeHunt.geoFence.center}
               radiusMeters={activeHunt.geoFence.radiusMeters}
               playerLocation={playerLocation}
-              monsters={activeHunt.monsters}
+              monsters={monstersForMap}
               satStops={activeHunt.satStops}
               showAllMonsters={true}
               boundaryType={activeHunt.geoFence.boundaryType}
