@@ -209,13 +209,16 @@ function waitForIceGathering(
 
 /**
  * Build Nostr event for signaling offer (from player to host)
+ *
+ * @param realPlayerPubkey - The player's actual Nostr identity (for verification)
+ *                           This may differ from event.pubkey if using session keys
  */
 export function buildOfferEvent(
   huntId: string,
   shareCode: string,
   offer: RTCSessionDescriptionInit,
   hostPubkey: string,
-  playerPubkey: string
+  realPlayerPubkey: string
 ): {
   kind: number;
   content: string;
@@ -228,22 +231,26 @@ export function buildOfferEvent(
       sdp: offer.sdp,
     }),
     tags: [
-      ['d', `p2p-offer-${shareCode}-${playerPubkey.slice(0, 8)}`],
+      ['d', `p2p-offer-${shareCode}-${realPlayerPubkey.slice(0, 8)}`],
       ['h', huntId],
       ['p', hostPubkey], // Tag host so they receive it
-      ['player', playerPubkey],
+      ['player', realPlayerPubkey], // Real player identity for verification
     ],
   };
 }
 
 /**
  * Build Nostr event for signaling answer (from host to player)
+ *
+ * @param realHostPubkey - The host's actual Nostr identity (for verification)
+ *                         This may differ from event.pubkey if using session keys
  */
 export function buildAnswerEvent(
   huntId: string,
   shareCode: string,
   answer: RTCSessionDescriptionInit,
-  playerPubkey: string
+  playerPubkey: string,
+  realHostPubkey: string
 ): {
   kind: number;
   content: string;
@@ -259,6 +266,7 @@ export function buildAnswerEvent(
       ['d', `p2p-answer-${shareCode}-${playerPubkey.slice(0, 8)}`],
       ['h', huntId],
       ['p', playerPubkey], // Tag player so they receive it
+      ['host', realHostPubkey], // Real host identity for verification
     ],
   };
 }

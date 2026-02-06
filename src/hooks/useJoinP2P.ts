@@ -22,6 +22,7 @@ import {
   buildOfferEvent,
   type HuntLocationData,
 } from '@/lib/p2pSignaling';
+import { signWithSessionKey } from '@/lib/sessionKeys';
 
 type ConnectionState = 'idle' | 'creating-offer' | 'waiting-answer' | 'connecting' | 'waiting-data' | 'complete' | 'error';
 
@@ -75,7 +76,7 @@ export function useJoinP2P(): UseJoinP2PResult {
   // Connect to host and receive hunt data
   const connect = useCallback(
     async (huntId: string, shareCode: string, hostPubkey: string): Promise<HuntLocationData | null> => {
-      if (!user?.signer) {
+      if (!user) {
         setError('Please log in first');
         setState('error');
         return null;
@@ -90,16 +91,16 @@ export function useJoinP2P(): UseJoinP2PResult {
         peerConnectionRef.current = peerConnection;
         dataChannelRef.current = dataChannel;
 
-        // Publish offer to Nostr
+        // Publish offer to Nostr using session key (no browser extension prompt)
         const offerEvent = buildOfferEvent(
           huntId,
           shareCode,
           offer,
           hostPubkey,
-          user.pubkey
+          user.pubkey // Real player identity for verification
         );
 
-        const signedOffer = await user.signer.signEvent({
+        const signedOffer = signWithSessionKey({
           kind: offerEvent.kind,
           created_at: Math.floor(Date.now() / 1000),
           content: offerEvent.content,

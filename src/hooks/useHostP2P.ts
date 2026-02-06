@@ -23,6 +23,7 @@ import {
   parseOfferFromEvent,
   type HuntLocationData,
 } from '@/lib/p2pSignaling';
+import { signWithSessionKey } from '@/lib/sessionKeys';
 
 // Serializer for Set in localStorage
 const setSerializer = {
@@ -97,7 +98,7 @@ export function useHostP2P(hunt: HuntEvent | null): UseHostP2PResult {
   // Handle incoming offer from a player
   const handleOffer = useCallback(
     async (offerSdp: string, playerPubkey: string, eventId: string) => {
-      if (!hunt || !user?.signer) return;
+      if (!hunt || !user) return;
 
       // Check if we already processed this offer (persisted in localStorage)
       if (processedOffers.has(eventId)) {
@@ -160,15 +161,16 @@ export function useHostP2P(hunt: HuntEvent | null): UseHostP2PResult {
           }
         };
 
-        // Publish answer to Nostr
+        // Publish answer to Nostr using session key (no browser extension prompt)
         const answerEvent = buildAnswerEvent(
           hunt.id,
           hunt.shareCode,
           answer,
-          playerPubkey
+          playerPubkey,
+          user.pubkey // Real host identity for verification
         );
 
-        const signedEvent = await user.signer.signEvent({
+        const signedEvent = signWithSessionKey({
           kind: answerEvent.kind,
           created_at: Math.floor(Date.now() / 1000),
           content: answerEvent.content,
@@ -186,7 +188,7 @@ export function useHostP2P(hunt: HuntEvent | null): UseHostP2PResult {
 
   // Start hosting - prepare hunt data and start listening for offers
   const startHosting = useCallback(() => {
-    if (!hunt || !user?.signer) {
+    if (!hunt || !user) {
       setError('No hunt or user available');
       return;
     }
