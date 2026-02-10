@@ -34,7 +34,7 @@ Think Pokémon GO meets Bitcoin treasure hunting with a cypherpunk aesthetic!
 - 🗺️ **Real-time map** (OpenStreetMap) showing nearby creatures and collection stops
 - 📱 **QR Code Scanner** - Scan hunt QR codes with your camera to join instantly
 - 🔮 **5 Rarity tiers** - Common to Mythic creatures with escalating rewards
-- 🟢 **SatBalls** - Collect at designated stops to catch more creatures
+- 🟢 **SatCubes** - Collect at designated stops to catch more creatures
 - 📊 **Live stats** - Track your captures, earnings, and ranking
 - 🎉 **Capture celebrations** - Confetti and animations for successful catches
 - 🏆 **Leaderboards** - See top hunters in real-time
@@ -159,7 +159,7 @@ Sat Hunter features **exactly 11 unique creature types**, each with fixed rarity
 3. Creatures spawn at random locations within geofence
 4. Players join hunt → Start GPS tracking
 5. Players walk to creature locations
-6. Within range → Spend SatBall → Catch creature
+6. Within range → Spend SatCube → Catch creature
 7. Instant Lightning payout of creature's sats
 8. Repeat until hunt ends or all creatures caught
 ```

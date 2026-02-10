@@ -179,7 +179,7 @@ export function GameHUD({ onOpenLeaderboard, onOpenInventory, onOpenStats }: Gam
       >
         <Card className="bg-card/90 backdrop-blur-md border-secondary/30 shadow-glow-green">
           <div className="p-3 flex items-center justify-between">
-            {/* SatBalls Count */}
+            {/* SatCubes Count */}
             <div className="flex items-center gap-2">
               <div className="relative">
                 <div className="w-10 h-10 rounded-full bg-gradient-to-br from-secondary to-green-600 flex items-center justify-center border-2 border-secondary/50">
@@ -190,7 +190,7 @@ export function GameHUD({ onOpenLeaderboard, onOpenInventory, onOpenStats }: Gam
                 </Badge>
               </div>
               <div className="text-xs">
-                <p className="font-display font-bold text-secondary">SatBalls</p>
+                <p className="font-display font-bold text-secondary">SatCubes</p>
                 <p className="text-muted-foreground">Tap stops to collect</p>
               </div>
             </div>

@@ -66,8 +66,8 @@ export function GameMap({ selectedMonster, selectedStop, onSelectMonster, onSele
     const success = collectBalls(stop);
     if (success) {
       toast({
-        title: 'SatBalls Collected! 🟢',
-        description: `+${stop.ballsPerCollection} SatBalls added to your inventory!`,
+        title: 'SatCubes Collected! 🟢',
+        description: `+${stop.ballsPerCollection} SatCubes added to your inventory!`,
       });
       onSelectStop(null);
     }
