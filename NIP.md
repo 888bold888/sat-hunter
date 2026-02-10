@@ -56,7 +56,7 @@ JSON object containing:
 - `description` - Hunt description
 - `geoFence` - Geographic boundary with center, bounds, and radius
 - `monsters` - Array of monster spawns with locations and sat amounts
-- `satStops` - Array of collection points for SatBalls
+- `satStops` - Array of collection points for SatCubes
 
 ### Monster Capture Event (kind 1)
 

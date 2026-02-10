@@ -117,7 +117,7 @@ export function MonsterCard({
         >
           <Target className="w-4 h-4 mr-2" />
           {!hasBalls
-            ? 'No SatBalls'
+            ? 'No SatCubes'
             : !isInRange
               ? 'Get Closer'
               : isCapturing

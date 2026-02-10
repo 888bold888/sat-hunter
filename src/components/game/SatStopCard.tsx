@@ -92,7 +92,7 @@ export function SatStopCard({ stop, onCollect, isInRange, onClose }: SatStopCard
           <h3 className="font-display font-bold text-sm text-secondary">{stop.name}</h3>
           <Badge variant="outline" className="text-xs border-secondary/50 text-secondary">
             <Circle className="w-3 h-3 mr-1 fill-secondary" />
-            {stop.ballsPerCollection} SatBalls
+            {stop.ballsPerCollection} SatCubes
           </Badge>
         </div>
 
@@ -116,7 +116,7 @@ export function SatStopCard({ stop, onCollect, isInRange, onClose }: SatStopCard
             variant={canCollect ? 'default' : 'secondary'}
           >
             <Circle className="w-4 h-4 mr-2" />
-            {!isInRange ? 'Get Closer' : isCollecting ? 'Collecting...' : 'Collect SatBalls!'}
+            {!isInRange ? 'Get Closer' : isCollecting ? 'Collecting...' : 'Collect SatCubes!'}
           </Button>
         )}
       </CardContent>

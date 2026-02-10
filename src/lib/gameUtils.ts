@@ -701,7 +701,7 @@ export async function generateSatStopsAsync(geoFence: GeoFence): Promise<SatStop
     stops.push({
       id: generateId(),
       name: generateSatStopName(poi.name, poi.type),
-      description: `Collect SatBalls at ${poi.name}!`,
+      description: `Collect SatCubes at ${poi.name}!`,
       location: { lat: poi.lat, lng: poi.lng },
       cooldownMs: 5 * 60 * 1000, // 5 minute cooldown per stop
       ballsPerCollection: 3 + Math.floor(Math.random() * 3), // 3-5 balls
@@ -724,7 +724,7 @@ export async function generateSatStopsAsync(geoFence: GeoFence): Promise<SatStop
       stops.push({
         id: generateId(),
         name,
-        description: `Collect SatBalls at ${name} to capture more creatures!`,
+        description: `Collect SatCubes at ${name} to capture more creatures!`,
         location: randomPointInGeoFence(geoFence),
         cooldownMs: 5 * 60 * 1000,
         ballsPerCollection: 3 + Math.floor(Math.random() * 3),
@@ -762,7 +762,7 @@ export function generateSatStops(geoFence: GeoFence, count: number = 5): SatStop
     stops.push({
       id: generateId(),
       name: stopNames[i],
-      description: `Collect SatBalls at ${stopNames[i]} to capture more creatures!`,
+      description: `Collect SatCubes at ${stopNames[i]} to capture more creatures!`,
       location: randomPointInGeoFence(geoFence),
       cooldownMs: 5 * 60 * 1000, // 5 minutes cooldown
       ballsPerCollection: 3 + Math.floor(Math.random() * 3), // 3-5 balls

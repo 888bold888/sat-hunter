@@ -227,7 +227,7 @@ export function HuntMap({
               <div style="text-align: center;">
                 <p style="font-weight: bold; color: #22c55e;">${stop.name}</p>
                 <p style="font-size: 12px; color: #666;">${stop.description}</p>
-                <p style="font-weight: bold;">🟢 ${stop.ballsPerCollection} SatBalls</p>
+                <p style="font-weight: bold;">🟢 ${stop.ballsPerCollection} SatCubes</p>
               </div>
             `)
             .addTo(map);

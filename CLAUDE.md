@@ -78,7 +78,7 @@ The app wraps in this order: AppProvider > QueryClientProvider > NostrLoginProvi
 1. Host creates hunt: deploys sats + creatures within geofenced area
 2. Pays Lightning invoice to activate hunt
 3. Players join via 6-character share code
-4. Players collect SatBalls from SatStops, catch creatures within range
+4. Players collect SatCubes from SatStops, catch creatures within range
 5. Catches trigger instant Lightning payments to player wallets
 
 ## Nostr Integration
