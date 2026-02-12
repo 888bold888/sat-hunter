@@ -1,0 +1,420 @@
+/**
+ * Unified Hunt Connection Hook
+ *
+ * Attempts P2P connection first, falls back to zero-trust relay if P2P fails.
+ * Provides a single interface for connecting to hunts regardless of method.
+ */
+
+import { useState, useCallback, useRef, useEffect } from 'react';
+import { useNostr } from '@nostrify/react';
+import { useCurrentUser } from './useCurrentUser';
+import { generateSecretKey, getPublicKey } from 'nostr-tools';
+import {
+  P2P_ANSWER_KIND,
+  createHostConnection,
+  applyAnswer,
+  buildOfferEvent,
+  type HuntLocationData,
+} from '@/lib/p2pSignaling';
+import { signWithSessionKey } from '@/lib/sessionKeys';
+import {
+  createSession,
+  setTheirThrowaway,
+  buildZeroTrustMessage,
+  decryptZeroTrustMessage,
+  destroySession,
+  getThrowawayPubkey,
+  ZERO_TRUST_OUTER_KIND,
+  type ZeroTrustSession,
+} from '@/lib/zeroTrustRelay';
+
+type ConnectionMethod = 'p2p' | 'relay' | null;
+type ConnectionState =
+  | 'idle'
+  | 'p2p-connecting'
+  | 'p2p-waiting'
+  | 'relay-fallback'
+  | 'relay-connecting'
+  | 'complete'
+  | 'error';
+
+interface UseHuntConnectionResult {
+  state: ConnectionState;
+  method: ConnectionMethod;
+  error: string | null;
+  huntData: HuntLocationData | null;
+  connect: (huntId: string, shareCode: string, hostPubkey: string, hostThrowaway?: string) => Promise<HuntLocationData | null>;
+  reset: () => void;
+}
+
+// Timeouts
+const P2P_TIMEOUT_MS = 15000; // 15 seconds for P2P before fallback
+const RELAY_TIMEOUT_MS = 30000; // 30 seconds for relay
+
+// Default relays for zero-trust messaging (reserved for future multi-relay support)
+const _ZERO_TRUST_RELAYS = [
+  'wss://relay.damus.io',
+  'wss://nos.lol',
+  'wss://relay.nostr.band',
+];
+
+export function useHuntConnection(): UseHuntConnectionResult {
+  const { nostr } = useNostr();
+  const { user } = useCurrentUser();
+
+  const [state, setState] = useState<ConnectionState>('idle');
+  const [method, setMethod] = useState<ConnectionMethod>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [huntData, setHuntData] = useState<HuntLocationData | null>(null);
+
+  // P2P refs
+  const peerConnectionRef = useRef<RTCPeerConnection | null>(null);
+  const dataChannelRef = useRef<RTCDataChannel | null>(null);
+
+  // Zero-trust refs
+  const sessionRef = useRef<ZeroTrustSession | null>(null);
+  const sessionPrivkeyRef = useRef<Uint8Array | null>(null);
+
+  // Cleanup P2P resources
+  const cleanupP2P = useCallback(() => {
+    if (dataChannelRef.current) {
+      try {
+        dataChannelRef.current.close();
+      } catch {
+        // Ignore
+      }
+      dataChannelRef.current = null;
+    }
+    if (peerConnectionRef.current) {
+      try {
+        peerConnectionRef.current.close();
+      } catch {
+        // Ignore
+      }
+      peerConnectionRef.current = null;
+    }
+  }, []);
+
+  // Cleanup zero-trust resources
+  const cleanupZeroTrust = useCallback(() => {
+    if (sessionRef.current) {
+      destroySession(sessionRef.current);
+      sessionRef.current = null;
+    }
+    if (sessionPrivkeyRef.current) {
+      sessionPrivkeyRef.current.fill(0);
+      sessionPrivkeyRef.current = null;
+    }
+  }, []);
+
+  // Full cleanup
+  const cleanup = useCallback(() => {
+    cleanupP2P();
+    cleanupZeroTrust();
+  }, [cleanupP2P, cleanupZeroTrust]);
+
+  // Reset state
+  const reset = useCallback(() => {
+    cleanup();
+    setState('idle');
+    setMethod(null);
+    setError(null);
+    setHuntData(null);
+  }, [cleanup]);
+
+  // Attempt P2P connection
+  const attemptP2P = async (
+    huntId: string,
+    shareCode: string,
+    hostPubkey: string
+  ): Promise<HuntLocationData | null> => {
+    if (!user || !nostr) return null;
+
+    try {
+      // Create offer with data channel
+      const { peerConnection, dataChannel, offer } = await createHostConnection();
+      peerConnectionRef.current = peerConnection;
+      dataChannelRef.current = dataChannel;
+
+      // Publish offer to Nostr
+      const offerEvent = buildOfferEvent(
+        huntId,
+        shareCode,
+        offer,
+        hostPubkey,
+        user.pubkey
+      );
+
+      const signedOffer = signWithSessionKey({
+        kind: offerEvent.kind,
+        created_at: Math.floor(Date.now() / 1000),
+        content: offerEvent.content,
+        tags: offerEvent.tags,
+      });
+
+      await nostr.event(signedOffer);
+
+      // Poll for host's answer with shorter timeout
+      const answerSdp = await pollForAnswer(nostr, huntId, user.pubkey, P2P_TIMEOUT_MS);
+
+      if (!answerSdp) {
+        return null; // P2P failed, caller will try fallback
+      }
+
+      // Apply answer
+      await applyAnswer(peerConnection, { type: 'answer', sdp: answerSdp });
+
+      // Wait for data
+      const data = await waitForDataOnChannel(dataChannel, 15000);
+
+      return data;
+    } catch (err) {
+      console.log('[HuntConnection] P2P failed:', err);
+      return null;
+    }
+  };
+
+  // Attempt zero-trust relay fallback
+  const attemptZeroTrust = async (
+    huntId: string,
+    hostPubkey: string,
+    hostThrowaway?: string
+  ): Promise<HuntLocationData | null> => {
+    if (!nostr) return null;
+
+    try {
+      // Generate session keypair
+      const sessionPrivkey = generateSecretKey();
+      const _sessionPubkey = getPublicKey(sessionPrivkey); // Used internally by createSession
+      sessionPrivkeyRef.current = sessionPrivkey;
+
+      // Create session
+      const session = createSession(huntId, sessionPrivkey, hostPubkey);
+      sessionRef.current = session;
+
+      // If we have host's throwaway from QR, use it
+      // Otherwise, we need to get it from the hunt metadata or signaling
+      if (hostThrowaway) {
+        setTheirThrowaway(session, hostThrowaway);
+      } else {
+        // Use host's session pubkey as initial throwaway (not ideal, but works)
+        setTheirThrowaway(session, hostPubkey);
+      }
+
+      // Get our throwaway for host to respond to
+      const ourThrowaway = getThrowawayPubkey(session);
+
+      // Send hello message with our throwaway
+      const { event: helloEvent } = buildZeroTrustMessage(session, {
+        type: 'player_hello',
+        throwaway: ourThrowaway,
+        huntId,
+      }, true);
+
+      await nostr.event(helloEvent);
+
+      // Wait for hunt data
+      const data = await waitForZeroTrustData(nostr, session, ourThrowaway, RELAY_TIMEOUT_MS);
+
+      return data;
+    } catch (err) {
+      console.error('[HuntConnection] Zero-trust failed:', err);
+      return null;
+    }
+  };
+
+  // Main connect function
+  const connect = useCallback(
+    async (
+      huntId: string,
+      shareCode: string,
+      hostPubkey: string,
+      hostThrowaway?: string
+    ): Promise<HuntLocationData | null> => {
+      if (!user) {
+        setError('Please log in first');
+        setState('error');
+        return null;
+      }
+
+      reset();
+      setError(null);
+
+      // 1. Try P2P first
+      setState('p2p-connecting');
+      setMethod('p2p');
+
+      console.log('[HuntConnection] Attempting P2P connection...');
+      const p2pData = await attemptP2P(huntId, shareCode, hostPubkey);
+
+      if (p2pData) {
+        console.log('[HuntConnection] P2P succeeded!');
+        setHuntData(p2pData);
+        setState('complete');
+        return p2pData;
+      }
+
+      // 2. P2P failed, clean up and try zero-trust relay
+      console.log('[HuntConnection] P2P failed, falling back to zero-trust relay...');
+      cleanupP2P();
+
+      setState('relay-fallback');
+      await new Promise(resolve => setTimeout(resolve, 500)); // Brief pause for UI
+
+      setState('relay-connecting');
+      setMethod('relay');
+
+      const relayData = await attemptZeroTrust(huntId, hostPubkey, hostThrowaway);
+
+      if (relayData) {
+        console.log('[HuntConnection] Zero-trust relay succeeded!');
+        setHuntData(relayData);
+        setState('complete');
+        return relayData;
+      }
+
+      // 3. Both methods failed
+      console.error('[HuntConnection] All connection methods failed');
+      setError('Could not connect to host. Please ensure they have the hunt open and try again.');
+      setState('error');
+      cleanup();
+      return null;
+    },
+    [user, reset, cleanupP2P, cleanup]
+  );
+
+  // Cleanup on unmount
+  useEffect(() => {
+    return cleanup;
+  }, [cleanup]);
+
+  return {
+    state,
+    method,
+    error,
+    huntData,
+    connect,
+    reset,
+  };
+}
+
+/**
+ * Poll Nostr for the host's P2P answer
+ */
+async function pollForAnswer(
+  nostr: ReturnType<typeof useNostr>['nostr'],
+  huntId: string,
+  playerPubkey: string,
+  timeoutMs: number
+): Promise<string | null> {
+  const startTime = Date.now();
+  const pollInterval = 1000;
+
+  while (Date.now() - startTime < timeoutMs) {
+    try {
+      const events = await nostr.query(
+        [
+          {
+            kinds: [P2P_ANSWER_KIND],
+            '#h': [huntId],
+            '#p': [playerPubkey],
+            since: Math.floor(startTime / 1000) - 10,
+            limit: 1,
+          },
+        ],
+        { signal: AbortSignal.timeout(5000) }
+      );
+
+      if (events.length > 0) {
+        const parsed = JSON.parse(events[0].content);
+        return parsed.sdp;
+      }
+    } catch {
+      // Poll error, will retry
+    }
+
+    await new Promise(resolve => setTimeout(resolve, pollInterval));
+  }
+
+  return null;
+}
+
+/**
+ * Wait for data on P2P data channel
+ */
+function waitForDataOnChannel(
+  dataChannel: RTCDataChannel,
+  timeoutMs: number
+): Promise<HuntLocationData> {
+  return new Promise((resolve, reject) => {
+    const timeout = setTimeout(() => {
+      reject(new Error('Timeout waiting for hunt data'));
+    }, timeoutMs);
+
+    dataChannel.onmessage = (event) => {
+      clearTimeout(timeout);
+      try {
+        const data = JSON.parse(event.data) as HuntLocationData;
+        resolve(data);
+      } catch {
+        reject(new Error('Invalid hunt data received'));
+      }
+    };
+
+    dataChannel.onerror = () => {
+      clearTimeout(timeout);
+      reject(new Error('Data channel error'));
+    };
+
+    dataChannel.onclose = () => {
+      clearTimeout(timeout);
+      reject(new Error('Data channel closed'));
+    };
+  });
+}
+
+/**
+ * Wait for hunt data via zero-trust relay
+ */
+async function waitForZeroTrustData(
+  nostr: ReturnType<typeof useNostr>['nostr'],
+  session: ZeroTrustSession,
+  myThrowaway: string,
+  timeoutMs: number
+): Promise<HuntLocationData | null> {
+  const startTime = Date.now();
+  const pollInterval = 1000;
+
+  while (Date.now() - startTime < timeoutMs) {
+    try {
+      const events = await nostr.query(
+        [
+          {
+            kinds: [ZERO_TRUST_OUTER_KIND],
+            '#p': [myThrowaway],
+            since: Math.floor(startTime / 1000) - 60,
+            limit: 10,
+          },
+        ],
+        { signal: AbortSignal.timeout(5000) }
+      );
+
+      for (const event of events) {
+        const result = decryptZeroTrustMessage(session, event);
+        if (result?.payload) {
+          const payload = result.payload as Record<string, unknown>;
+          // Check if this is hunt data
+          if (payload.geoFence && payload.monsters && payload.satStops) {
+            return payload as unknown as HuntLocationData;
+          }
+        }
+      }
+    } catch {
+      // Query failed, will retry
+    }
+
+    await new Promise(resolve => setTimeout(resolve, pollInterval));
+  }
+
+  return null;
+}
