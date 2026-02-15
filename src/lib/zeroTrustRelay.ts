@@ -133,12 +133,13 @@ function decrypt(key: Uint8Array, data: Uint8Array): Uint8Array {
 }
 
 /**
- * Randomize timestamp within ±24 hours to prevent timing correlation
+ * Randomize timestamp into the past to prevent timing correlation
+ * Only goes backward since relays reject future timestamps
  */
 function randomizeTimestamp(): number {
   const now = Math.floor(Date.now() / 1000);
-  const offset = Math.floor(Math.random() * 172800) - 86400; // ±24 hours
-  return now + offset;
+  const offset = Math.floor(Math.random() * 3600); // 0-60 minutes into the past
+  return now - offset;
 }
 
 /**
