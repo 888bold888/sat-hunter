@@ -1,5 +1,6 @@
 import { useEffect, useCallback, useRef } from 'react';
 import { useNostr } from '@nostrify/react';
+import { verifyEvent } from 'nostr-tools';
 import type { HuntEvent } from '@/lib/gameTypes';
 import { useCurrentUser } from './useCurrentUser';
 
@@ -70,6 +71,12 @@ export function useHuntSync(
       for (const event of events) {
         if (processedEventsRef.current.has(event.id)) continue;
         processedEventsRef.current.add(event.id);
+
+        // Verify cryptographic signature to prevent forged capture events
+        if (!verifyEvent(event)) {
+          console.warn('Rejecting capture event with invalid signature:', event.id);
+          continue;
+        }
 
         try {
           const content: ClaimEventContent = JSON.parse(event.content);

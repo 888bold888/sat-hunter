@@ -506,7 +506,8 @@ export function HostDashboard() {
     if (activeHunt) {
       const monster = activeHunt.monsters.find(m => m.id === monsterId);
       if (monster && !paidCaptures.has(monsterId)) {
-        processPayment(monsterId, playerPubkey, satAmount, monster.name, antiCheat);
+        // Use host-side monster value, NOT player-reported satAmount
+        processPayment(monsterId, playerPubkey, monster.satAmount, monster.name, antiCheat);
       }
     }
   }, [activeHunt, paidCaptures, processPayment]);
