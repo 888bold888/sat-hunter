@@ -84,40 +84,15 @@ export function usePayPlayer() {
       const comment = `Sat Hunter: Captured ${monsterName}! 🎯⚡`;
       const lnurlUrl = `${zapEndpoint}?amount=${amountMillisats}&comment=${encodeURIComponent(comment)}`;
 
-      // Try direct fetch first, then fallback to CORS proxy
-      let data: { pr?: string; reason?: string };
-      try {
-        const response = await fetch(lnurlUrl);
-        if (!response.ok) {
-          const errorData = await response.json().catch(() => ({}));
-          return {
-            success: false,
-            error: `Lightning service error: ${errorData.reason || response.statusText}`,
-          };
-        }
-        data = await response.json();
-      } catch (corsError) {
-        // CORS error - try using a proxy
-        console.warn('Direct LNURL fetch failed (likely CORS), trying proxy:', corsError);
-        try {
-          const proxyUrl = `https://corsproxy.io/?${encodeURIComponent(lnurlUrl)}`;
-          const proxyResponse = await fetch(proxyUrl);
-          if (!proxyResponse.ok) {
-            const errorData = await proxyResponse.json().catch(() => ({}));
-            return {
-              success: false,
-              error: `Lightning service error: ${errorData.reason || proxyResponse.statusText}`,
-            };
-          }
-          data = await proxyResponse.json();
-        } catch (proxyError) {
-          console.error('CORS proxy also failed:', proxyError);
-          return {
-            success: false,
-            error: 'Could not reach Lightning service. The player\'s Lightning provider may be temporarily unavailable.',
-          };
-        }
+      const response = await fetch(lnurlUrl);
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        return {
+          success: false,
+          error: `Lightning service error: ${errorData.reason || response.statusText}`,
+        };
       }
+      const data: { pr?: string; reason?: string } = await response.json();
 
       const invoice = data.pr;
 
