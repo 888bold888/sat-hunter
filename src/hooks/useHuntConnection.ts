@@ -235,8 +235,13 @@ export function useHuntConnection(): UseHuntConnectionResult {
 
       await nostr.event(helloEvent);
 
+      // After buildZeroTrustMessage, our throwaway rotated. The host will encrypt
+      // to our next_throwaway (included in the hello's inner tags), so poll with
+      // the post-rotation throwaway that matches our current privkey.
+      const postRotationThrowaway = getThrowawayPubkey(session);
+
       // Wait for hunt data
-      const data = await waitForZeroTrustData(nostr, session, ourThrowaway, RELAY_TIMEOUT_MS);
+      const data = await waitForZeroTrustData(nostr, session, postRotationThrowaway, RELAY_TIMEOUT_MS);
 
       return data;
     } catch (err) {

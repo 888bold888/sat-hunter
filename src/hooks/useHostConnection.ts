@@ -22,7 +22,6 @@ import {
 import { signWithSessionKey } from '@/lib/sessionKeys';
 import {
   createSessionFromPSK,
-  setTheirThrowaway,
   buildZeroTrustMessage,
   decryptZeroTrustMessage,
   destroySession,
@@ -238,8 +237,8 @@ export function useHostConnection(
       console.log('[Host ZeroTrust] Received hello from player, sending hunt data...');
 
       try {
-        // Set player's throwaway
-        setTheirThrowaway(zeroTrustSessionRef.current, playerThrowaway);
+        // Player's next throwaway was already set by decryptZeroTrustMessage
+        // from the next_throwaway tag in the inner event. Don't override it.
 
         // Send hunt data
         const { event } = buildZeroTrustMessage(
