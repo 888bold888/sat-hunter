@@ -3,6 +3,9 @@ import { useNostr } from '@nostrify/react';
 import { useNWC } from '@/hooks/useNWCContext';
 import { useToast } from '@/hooks/useToast';
 import { nip57 } from 'nostr-tools';
+import { decode as decodeBolt11 } from 'light-bolt11-decoder';
+import { sha256 } from '@noble/hashes/sha2.js';
+import { bytesToHex, hexToBytes } from '@noble/hashes/utils.js';
 
 interface PayPlayerResult {
   success: boolean;
@@ -105,6 +108,29 @@ export function usePayPlayer() {
 
       // Pay the invoice using NWC
       const paymentResult = await sendPayment(connection, invoice);
+
+      // Verify preimage: sha256(preimage) must match the invoice's payment hash
+      if (paymentResult.preimage) {
+        try {
+          const sections = decodeBolt11(invoice);
+          const paymentHashSection = sections.sections.find(
+            (s: { name: string }) => s.name === 'payment_hash'
+          );
+          if (paymentHashSection && 'value' in paymentHashSection) {
+            const expectedHash = paymentHashSection.value as string;
+            const actualHash = bytesToHex(sha256(hexToBytes(paymentResult.preimage)));
+            if (actualHash !== expectedHash) {
+              console.error('Payment preimage verification failed!', { expectedHash, actualHash });
+              return {
+                success: false,
+                error: 'Payment verification failed: preimage does not match payment hash.',
+              };
+            }
+          }
+        } catch (verifyError) {
+          console.warn('Could not verify preimage (non-fatal):', verifyError);
+        }
+      }
 
       toast({
         title: `Paid ${satAmount} sats! ⚡`,

@@ -65,6 +65,7 @@
     "input-otp": "^1.2.4",
     "leaflet": "^1.9.4",
     "leaflet-draw": "^1.0.4",
+    "light-bolt11-decoder": "^3.2.0",
     "lucide-react": "^0.462.0",
     "ngeohash": "^0.6.3",
     "nostr-tools": "^2.13.0",
