@@ -373,27 +373,28 @@ export function useHostConnection(
     };
   }, [isActive, hunt, user, nostr, handleP2POffer]);
 
-  // Poll for zero-trust hello messages
+  // Subscribe to zero-trust hello messages (streaming, not polling)
   useEffect(() => {
     if (!isActive || !hunt || !nostr || !zeroTrustSessionRef.current || !zeroTrustHandshake) return;
 
-    const controller = new AbortController();
+    let isSubscribed = true;
     const processedHellos = new Set<string>();
 
-    const pollForHellos = async () => {
-      try {
-        const events = await nostr.query(
-          [
-            {
-              kinds: [ZERO_TRUST_OUTER_KIND],
-              '#p': [zeroTrustHandshake.throwawayPubkey],
-              since: Math.floor(Date.now() / 1000) - 300,
-            },
-          ],
-          { signal: controller.signal }
-        );
+    const subscription = nostr.req([
+      {
+        kinds: [ZERO_TRUST_OUTER_KIND],
+        '#p': [zeroTrustHandshake.throwawayPubkey],
+        since: Math.floor(Date.now() / 1000) - 300,
+      },
+    ]);
 
-        for (const event of events) {
+    (async () => {
+      try {
+        for await (const msg of subscription) {
+          if (!isSubscribed) break;
+          if (msg[0] !== 'EVENT') continue;
+
+          const event = msg[2];
           if (processedHellos.has(event.id)) continue;
           processedHellos.add(event.id);
 
@@ -408,18 +409,14 @@ export function useHostConnection(
           }
         }
       } catch (err) {
-        if (!controller.signal.aborted) {
-          console.error('[Host] Error polling for zero-trust hellos:', err);
+        if (isSubscribed) {
+          console.error('[Host] Zero-trust subscription error:', err);
         }
       }
-    };
-
-    pollForHellos();
-    const interval = setInterval(pollForHellos, 2000);
+    })();
 
     return () => {
-      controller.abort();
-      clearInterval(interval);
+      isSubscribed = false;
     };
   }, [isActive, hunt, nostr, zeroTrustHandshake, handleZeroTrustHello]);
 

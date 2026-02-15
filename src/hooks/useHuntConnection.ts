@@ -406,7 +406,7 @@ function waitForDataOnChannel(
 }
 
 /**
- * Wait for hunt data via zero-trust relay
+ * Wait for hunt data via zero-trust relay (subscription-based for ephemeral events)
  */
 async function waitForZeroTrustData(
   nostr: ReturnType<typeof useNostr>['nostr'],
@@ -414,39 +414,53 @@ async function waitForZeroTrustData(
   myThrowaway: string,
   timeoutMs: number
 ): Promise<HuntLocationData | null> {
-  const startTime = Date.now();
-  const pollInterval = 1000;
+  return new Promise<HuntLocationData | null>((resolve) => {
+    let resolved = false;
 
-  while (Date.now() - startTime < timeoutMs) {
-    try {
-      const events = await nostr.query(
-        [
-          {
-            kinds: [ZERO_TRUST_OUTER_KIND],
-            '#p': [myThrowaway],
-            since: Math.floor(startTime / 1000) - 60,
-            limit: 10,
-          },
-        ],
-        { signal: AbortSignal.timeout(5000) }
-      );
+    const timeout = setTimeout(() => {
+      if (!resolved) {
+        resolved = true;
+        isActive = false;
+        resolve(null);
+      }
+    }, timeoutMs);
 
-      for (const event of events) {
-        const result = decryptZeroTrustMessage(session, event);
-        if (result?.payload) {
-          const payload = result.payload as Record<string, unknown>;
-          // Check if this is hunt data
-          if (payload.geoFence && payload.monsters && payload.satStops) {
-            return payload as unknown as HuntLocationData;
+    let isActive = true;
+
+    const subscription = nostr.req([
+      {
+        kinds: [ZERO_TRUST_OUTER_KIND],
+        '#p': [myThrowaway],
+        since: Math.floor(Date.now() / 1000) - 60,
+      },
+    ]);
+
+    (async () => {
+      try {
+        for await (const msg of subscription) {
+          if (!isActive) break;
+          if (msg[0] !== 'EVENT') continue;
+
+          const event = msg[2];
+          const result = decryptZeroTrustMessage(session, event);
+          if (result?.payload) {
+            const payload = result.payload as Record<string, unknown>;
+            if (payload.geoFence && payload.monsters && payload.satStops) {
+              if (!resolved) {
+                resolved = true;
+                isActive = false;
+                clearTimeout(timeout);
+                resolve(payload as unknown as HuntLocationData);
+              }
+              break;
+            }
           }
         }
+      } catch (err) {
+        if (isActive) {
+          console.error('[HuntConnection] Subscription error:', err);
+        }
       }
-    } catch {
-      // Query failed, will retry
-    }
-
-    await new Promise(resolve => setTimeout(resolve, pollInterval));
-  }
-
-  return null;
+    })();
+  });
 }

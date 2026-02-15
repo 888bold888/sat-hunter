@@ -19,9 +19,11 @@ import { sha256 } from '@noble/hashes/sha2.js';
 import { generateSecretKey, getPublicKey, finalizeEvent } from 'nostr-tools';
 import type { NostrEvent } from '@nostrify/nostrify';
 
-// Event kinds for zero-trust relay (regular range so relays store them for polling)
-export const ZERO_TRUST_OUTER_KIND = 3491;
-export const ZERO_TRUST_INNER_KIND = 3492;
+// Event kinds for zero-trust relay
+// Outer/inner are ephemeral (relays forward but don't store) — requires subscriptions
+export const ZERO_TRUST_OUTER_KIND = 21111;
+export const ZERO_TRUST_INNER_KIND = 21112;
+// Handshake is regular (relays store it) — players need to query for it after host publishes
 export const ZERO_TRUST_HANDSHAKE_KIND = 3493;
 
 // Utility functions
