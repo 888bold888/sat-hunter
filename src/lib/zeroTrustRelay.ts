@@ -16,6 +16,7 @@ import { xchacha20poly1305 } from '@noble/ciphers/chacha.js';
 import { randomBytes } from '@noble/ciphers/utils.js';
 import { hkdf } from '@noble/hashes/hkdf.js';
 import { sha256 } from '@noble/hashes/sha2.js';
+import { pbkdf2 } from '@noble/hashes/pbkdf2.js';
 import { generateSecretKey, getPublicKey, finalizeEvent } from 'nostr-tools';
 import type { NostrEvent } from '@nostrify/nostrify';
 
@@ -197,8 +198,10 @@ export function createSessionFromPSK(
 ): ZeroTrustSession {
   const myPubkey = getPublicKey(myPrivkey);
 
-  // Derive session key from PSK instead of ECDH
-  const sharedSecret = sha256(stringToBytes(preSharedKey));
+  // Derive session key from PSK with PBKDF2 key stretching (100k iterations)
+  // Prevents brute-force of the 30-bit share code space
+  const salt = sha256(stringToBytes(sessionId));
+  const sharedSecret = pbkdf2(sha256, stringToBytes(preSharedKey), salt, { c: 100_000, dkLen: 32 });
   const sessionKey = deriveSessionKey(sharedSecret, sessionId);
 
   // Generate first throwaway keypair
@@ -359,7 +362,7 @@ export function decryptZeroTrustMessage(
     }
 
     if (!innerEvent || successSeq < 0) {
-      console.error('[ZeroTrust] Failed to decrypt with any expected sequence number');
+      console.debug('[ZeroTrust] Failed to decrypt with any expected sequence number');
       secureDelete(outerSharedSecret);
       return null;
     }
@@ -383,7 +386,9 @@ export function decryptZeroTrustMessage(
 
     return { payload, senderNextThrowaway };
   } catch (error) {
-    console.error('[ZeroTrust] Decryption failed:', error);
+    // Expected when receiving messages not meant for this session
+    // (own echoed messages, other sessions, stale events)
+    console.debug('[ZeroTrust] Decryption failed (expected for non-matching messages):', error);
     return null;
   }
 }

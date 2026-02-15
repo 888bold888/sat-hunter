@@ -27,6 +27,7 @@ export interface HuntLocationData {
   geoFence: GeoFence;
   monsters: Monster[];
   satStops: SatStop[];
+  captureSecret?: string; // HMAC key for capture proof — only sent via encrypted channel
 }
 
 // Signaling message types

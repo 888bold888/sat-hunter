@@ -2,7 +2,7 @@ import { useMutation } from '@tanstack/react-query';
 import { useNostr } from '@nostrify/react';
 import type { Monster, GeoLocation } from '@/lib/gameTypes';
 import { useCurrentUser } from './useCurrentUser';
-import { encodeCoarseGeohash } from '@/lib/antiCheat';
+import { encodeCoarseGeohash, computeCaptureProof } from '@/lib/antiCheat';
 
 const CLAIM_EVENT_KIND = 32960;
 
@@ -15,6 +15,8 @@ interface CaptureEventData {
   playerLocation?: GeoLocation;
   trustScore?: number;
   trustFlags?: string[];
+  // Capture proof (HMAC token from hunt secret)
+  captureSecret?: string;
 }
 
 export function usePublishCapture() {
@@ -33,17 +35,25 @@ export function usePublishCapture() {
         ? encodeCoarseGeohash(data.playerLocation)
         : undefined;
 
+      // Compute capture proof if secret is available
+      const capturedAt = Date.now();
+      const captureProof = data.captureSecret
+        ? computeCaptureProof(data.captureSecret, data.monster.id, data.playerPubkey, capturedAt)
+        : undefined;
+
       // Prepare content with anti-cheat data
       const content = JSON.stringify({
         monsterId: data.monster.id,
         monsterName: data.monster.name,
         satAmount: data.monster.satAmount,
         rarity: data.monster.rarity,
-        capturedAt: Date.now(),
+        capturedAt,
         // Anti-cheat fields (coarse location for privacy)
         geohash,
         trustScore: data.trustScore,
         trustFlags: data.trustFlags,
+        // HMAC capture proof (proves player received hunt data via authenticated channel)
+        captureProof,
       });
 
       // Build tags

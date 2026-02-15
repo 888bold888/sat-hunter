@@ -354,9 +354,14 @@ export function GameProvider({ children }: { children: ReactNode }) {
     }
   }, [state.playerStats, setSavedStats]);
 
-  // Save hunt when it changes
+  // Save hunt when it changes (strip captureSecret — must never be persisted)
   useEffect(() => {
-    setSavedHunt(state.activeHunt);
+    if (state.activeHunt) {
+      const { captureSecret: _, ...huntWithoutSecret } = state.activeHunt;
+      setSavedHunt(huntWithoutSecret as HuntEvent);
+    } else {
+      setSavedHunt(null);
+    }
   }, [state.activeHunt, setSavedHunt]);
 
   // Handle being kicked from a hunt

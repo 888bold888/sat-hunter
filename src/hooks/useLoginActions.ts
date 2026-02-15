@@ -32,9 +32,12 @@ export function useLoginActions() {
       }
       // Clear session keys from sessionStorage
       clearSessionKey();
-      // Clear NWC credentials from localStorage
+      // Clear NWC credentials from localStorage (both encrypted and legacy)
+      localStorage.removeItem('nwc-connections-encrypted');
       localStorage.removeItem('nwc-connections');
       localStorage.removeItem('nwc-active-connection');
+      // Clear wrapped encryption key
+      localStorage.removeItem('sathunter:wrapped-storage-key');
     }
   };
 }

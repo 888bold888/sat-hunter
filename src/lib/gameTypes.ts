@@ -85,6 +85,7 @@ export interface HuntEvent {
   maxConcurrentMonsters?: number; // Only for 'scattered_replacement' mode
   // Security settings
   requiresApproval?: boolean; // Host must approve players before they can join
+  captureSecret?: string; // HMAC key for capture proof (received via encrypted channel, never persisted)
 }
 
 export interface HuntParticipant {

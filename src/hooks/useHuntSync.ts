@@ -15,6 +15,7 @@ interface CaptureAntiCheatData {
   trustScore?: number;
   trustFlags?: string[];
   geohash?: string;
+  captureProof?: string;
 }
 
 interface HuntSyncCallbacks {
@@ -40,6 +41,8 @@ interface ClaimEventContent {
   trustScore?: number;
   trustFlags?: string[];
   geohash?: string;
+  // HMAC capture proof
+  captureProof?: string;
 }
 
 export function useHuntSync(
@@ -92,11 +95,12 @@ export function useHuntSync(
 
           // Extract anti-cheat data from capture event
           const antiCheat: CaptureAntiCheatData | undefined =
-            content.trustScore !== undefined
+            (content.trustScore !== undefined || content.captureProof)
               ? {
                   trustScore: content.trustScore,
                   trustFlags: content.trustFlags,
                   geohash: content.geohash,
+                  captureProof: content.captureProof,
                 }
               : undefined;
 
