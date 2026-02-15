@@ -36,6 +36,8 @@ export function useLoginActions() {
       localStorage.removeItem('nwc-connections-encrypted');
       localStorage.removeItem('nwc-connections');
       localStorage.removeItem('nwc-active-connection');
+      // Clear wrapped encryption key
+      localStorage.removeItem('sathunter:wrapped-storage-key');
     }
   };
 }
