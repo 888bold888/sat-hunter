@@ -20,7 +20,7 @@
 ## Round 3 — Architectural Security Fixes
 
 - [x] **1. PBKDF2 + crypto RNG** (ff8ec9a)
-- [x] **2. CSP wss: whitelist + relay allowlist** (64cc047)
+- [x] **2. CSP wss: whitelist + relay allowlist** (64cc047, CSP wss: reverted in c48e31e — see note)
 - [x] **3. Encrypted NWC storage** (01f4324)
 - [x] **4. HMAC capture proof tokens** (518fa2a)
 
@@ -48,9 +48,9 @@
 - `index.html` (line 6, CSP meta tag)
 - `src/components/RelayListManager.tsx` (~line 59-85)
 
-**Fix A — CSP**: Split `wss:` out of the wildcard. Replace `connect-src 'self' blob: https: wss:` with `connect-src 'self' blob: https: wss://nos.lol wss://relay.damus.io wss://relay.nostr.band`. Keep `https:` open (required for dynamic Lightning LNURL endpoints).
+**Fix A — CSP**: ~~Split `wss:` out of the wildcard.~~ **Reverted (c48e31e)**: NWC connection strings embed arbitrary relay URLs (e.g., `wss://relay.getalby.com/v1`) that can't be whitelisted in CSP. The specific whitelist blocked all NWC payments. Reverted to `wss:` wildcard. Residual risk is minimal since `https:` is also open (required for LNURL), so the `wss:` wildcard doesn't meaningfully widen the attack surface beyond what `https:` already allows.
 
-**Fix B — Relay validation**: Add approved relay allowlist in `RelayListManager.tsx`. Reject relay URLs not on the list with a toast explaining why.
+**Fix B — Relay validation** (still active): Approved relay allowlist in `RelayListManager.tsx`. Rejects relay URLs not on the list. This is the effective defense against rogue Nostr relays.
 
 ### 3. Encrypted credential storage (Audit #1 + #4)
 
