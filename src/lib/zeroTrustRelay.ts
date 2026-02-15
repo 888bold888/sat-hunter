@@ -24,10 +24,6 @@ export const ZERO_TRUST_OUTER_KIND = 21111;
 export const ZERO_TRUST_INNER_KIND = 21112;
 
 // Utility functions
-function bytesToHex(bytes: Uint8Array): string {
-  return Array.from(bytes).map(b => b.toString(16).padStart(2, '0')).join('');
-}
-
 function hexToBytes(hex: string): Uint8Array {
   const bytes = new Uint8Array(hex.length / 2);
   for (let i = 0; i < bytes.length; i++) {
@@ -74,7 +70,12 @@ function deriveSharedSecret(
   myPrivkey: Uint8Array,
   theirPubkey: Uint8Array
 ): Uint8Array {
-  const sharedPoint = secp256k1.getSharedSecret(myPrivkey, theirPubkey);
+  // Ensure pubkey is compressed (33 bytes with 02 prefix)
+  // nostr-tools returns x-only 32-byte keys, but ECDH needs compressed format
+  const compressedPubkey = theirPubkey.length === 32
+    ? concatBytes(new Uint8Array([0x02]), theirPubkey)
+    : theirPubkey;
+  const sharedPoint = secp256k1.getSharedSecret(myPrivkey, compressedPubkey);
   // Remove the prefix byte and hash
   return sha256(sharedPoint.slice(1));
 }
@@ -162,7 +163,7 @@ export function createSession(
   myPrivkey: Uint8Array,
   theirPubkey: string
 ): ZeroTrustSession {
-  const myPubkey = bytesToHex(secp256k1.getPublicKey(myPrivkey, true));
+  const myPubkey = getPublicKey(myPrivkey);
   const theirPubkeyBytes = hexToBytes(theirPubkey);
 
   // Derive session key
