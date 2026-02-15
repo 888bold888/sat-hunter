@@ -16,6 +16,13 @@ interface Relay {
   write: boolean;
 }
 
+// Approved relay domains — must match CSP wss: whitelist in index.html
+const APPROVED_RELAY_DOMAINS = [
+  'nos.lol',
+  'relay.damus.io',
+  'relay.nostr.band',
+];
+
 export function RelayListManager() {
   const { config, updateConfig } = useAppContext();
   const { user } = useCurrentUser();
@@ -49,8 +56,11 @@ export function RelayListManager() {
 
     const normalized = normalizeRelayUrl(trimmed);
     try {
-      new URL(normalized);
-      return true;
+      const parsed = new URL(normalized);
+      if (parsed.protocol !== 'wss:') return false;
+      return APPROVED_RELAY_DOMAINS.some(domain =>
+        parsed.hostname === domain
+      );
     } catch {
       return false;
     }
@@ -59,8 +69,8 @@ export function RelayListManager() {
   const handleAddRelay = () => {
     if (!isValidRelayUrl(newRelayUrl)) {
       toast({
-        title: 'Invalid relay URL',
-        description: 'Please enter a valid relay URL (e.g., wss://relay.example.com)',
+        title: 'Relay not allowed',
+        description: `Only approved relays are allowed: ${APPROVED_RELAY_DOMAINS.join(', ')}`,
         variant: 'destructive',
       });
       return;
