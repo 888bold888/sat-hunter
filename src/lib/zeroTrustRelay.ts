@@ -362,7 +362,7 @@ export function decryptZeroTrustMessage(
     }
 
     if (!innerEvent || successSeq < 0) {
-      console.error('[ZeroTrust] Failed to decrypt with any expected sequence number');
+      console.debug('[ZeroTrust] Failed to decrypt with any expected sequence number');
       secureDelete(outerSharedSecret);
       return null;
     }
@@ -386,7 +386,9 @@ export function decryptZeroTrustMessage(
 
     return { payload, senderNextThrowaway };
   } catch (error) {
-    console.error('[ZeroTrust] Decryption failed:', error);
+    // Expected when receiving messages not meant for this session
+    // (own echoed messages, other sessions, stale events)
+    console.debug('[ZeroTrust] Decryption failed (expected for non-matching messages):', error);
     return null;
   }
 }
