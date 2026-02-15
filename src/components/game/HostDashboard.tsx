@@ -35,7 +35,7 @@ import { useHuntSync } from '@/hooks/useHuntSync';
 import { usePayPlayer } from '@/hooks/usePayPlayer';
 import { useToast } from '@/hooks/useToast';
 import { ANTI_CHEAT_CONFIG } from '@/lib/antiCheat';
-import { useHostP2P } from '@/hooks/useHostP2P';
+import { useHostConnection } from '@/hooks/useHostConnection';
 import { useHostApprovals, usePlayerMetadata } from '@/hooks/useHostApprovals';
 import { useLocalStorage } from '@/hooks/useLocalStorage';
 import { usePublishKick } from '@/hooks/usePublishKick';
@@ -402,15 +402,16 @@ export function HostDashboard() {
     }
   }, [activeHunt, publishKick, toast, setKickedPlayers]);
 
-  // P2P hosting for secure location data transfer
+  // P2P + Zero-Trust Relay hosting for secure location data transfer
   const {
-    isActive: isP2PActive,
-    connectedPlayers: _p2pConnectedPlayers,
-    sentDataTo: p2pSentDataTo,
-    error: p2pError,
-    startHosting: startP2P,
-    stopHosting: stopP2P,
-  } = useHostP2P(activeHunt);
+    isActive: isHostingActive,
+    connectedPlayers: _hostConnectedPlayers,
+    sentDataTo: hostSentDataTo,
+    error: hostError,
+    zeroTrustHandshake: _zeroTrustHandshake,
+    startHosting,
+    stopHosting,
+  } = useHostConnection(activeHunt);
 
   // Host approvals for join requests
   const {
@@ -576,20 +577,20 @@ export function HostDashboard() {
     }
   }, [activeHunt?.shareUrl]);
 
-  // Auto-start P2P hosting when hunt is ready/active
+  // Auto-start hosting when hunt is ready/active (P2P + zero-trust relay)
   useEffect(() => {
-    if (activeHunt && (activeHunt.status === 'ready' || activeHunt.status === 'active') && !isP2PActive) {
-      console.log('[HostDashboard] Starting P2P hosting for hunt', activeHunt.shareCode);
-      startP2P();
+    if (activeHunt && (activeHunt.status === 'ready' || activeHunt.status === 'active') && !isHostingActive) {
+      console.log('[HostDashboard] Starting hosting for hunt', activeHunt.shareCode);
+      startHosting();
     }
-  }, [activeHunt, activeHunt?.status, isP2PActive, startP2P]);
+  }, [activeHunt, activeHunt?.status, isHostingActive, startHosting]);
 
-  // Cleanup P2P on unmount
+  // Cleanup hosting on unmount
   useEffect(() => {
     return () => {
-      stopP2P();
+      stopHosting();
     };
-  }, [stopP2P]);
+  }, [stopHosting]);
 
 
 
@@ -682,27 +683,27 @@ export function HostDashboard() {
             </CardContent>
           </Card>
         )}
-        {/* P2P Status - Privacy Mode */}
-        <Card className={`col-span-3 ${isP2PActive ? 'border-green-500/30 bg-green-500/10' : 'border-yellow-500/30 bg-yellow-500/10'}`}>
+        {/* Connection Status - Privacy Mode (P2P + Relay Fallback) */}
+        <Card className={`col-span-3 ${isHostingActive ? 'border-green-500/30 bg-green-500/10' : 'border-yellow-500/30 bg-yellow-500/10'}`}>
           <CardContent className="p-3 flex items-center justify-between">
             <div className="flex items-center gap-2">
-              <Wifi className={`w-5 h-5 ${isP2PActive ? 'text-green-500' : 'text-yellow-500'}`} />
-              <span className={`text-sm ${isP2PActive ? 'text-green-400' : 'text-yellow-400'}`}>
-                {isP2PActive
-                  ? `P2P Active - ${p2pSentDataTo} player${p2pSentDataTo !== 1 ? 's' : ''} received location data`
-                  : 'Starting P2P connection...'}
+              <Wifi className={`w-5 h-5 ${isHostingActive ? 'text-green-500' : 'text-yellow-500'}`} />
+              <span className={`text-sm ${isHostingActive ? 'text-green-400' : 'text-yellow-400'}`}>
+                {isHostingActive
+                  ? `Hosting Active - ${hostSentDataTo} player${hostSentDataTo !== 1 ? 's' : ''} received location data`
+                  : 'Starting secure connection...'}
               </span>
             </div>
-            <Badge variant="outline" className={`text-xs ${isP2PActive ? 'border-green-500/50 text-green-500' : 'border-yellow-500/50 text-yellow-500'}`}>
+            <Badge variant="outline" className={`text-xs ${isHostingActive ? 'border-green-500/50 text-green-500' : 'border-yellow-500/50 text-yellow-500'}`}>
               🔒 Privacy Mode
             </Badge>
           </CardContent>
         </Card>
-        {p2pError && (
+        {hostError && (
           <Card className="col-span-3 border-red-500/30 bg-red-500/10">
             <CardContent className="p-3 flex items-center gap-2">
               <ShieldAlert className="w-5 h-5 text-red-500" />
-              <span className="text-sm text-red-400">P2P Error: {p2pError}</span>
+              <span className="text-sm text-red-400">Connection Error: {hostError}</span>
             </CardContent>
           </Card>
         )}

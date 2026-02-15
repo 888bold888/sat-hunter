@@ -7,7 +7,7 @@ import { useHuntByCode } from '@/hooks/useHuntByCode';
 import { usePublishJoin } from '@/hooks/useHuntSync';
 import { useAuthor } from '@/hooks/useAuthor';
 import { useNWC } from '@/hooks/useNWCContext';
-import { useJoinP2P } from '@/hooks/useJoinP2P';
+import { useHuntConnection } from '@/hooks/useHuntConnection';
 import { useJoinRequest } from '@/hooks/useJoinRequest';
 import { useAntiCheat } from '@/hooks/useAntiCheat';
 import { LoginArea } from '@/components/auth/LoginArea';
@@ -62,8 +62,8 @@ export default function JoinHuntPage() {
   // Query hunt from Nostr
   const { data: foundHunt, isLoading: isSearching, error: searchError, refetch, isFetching } = useHuntByCode(searchCode);
 
-  // P2P connection for receiving location data (privacy mode)
-  const { state: p2pState, error: p2pError, connect: connectP2P, reset: _resetP2P } = useJoinP2P();
+  // Connection for receiving location data (P2P with zero-trust relay fallback)
+  const { state: connectionState, method: connectionMethod, error: connectionError, connect: connectToHost, reset: _resetConnection } = useHuntConnection();
 
   // Join request for hunts requiring approval
   const {
@@ -258,26 +258,33 @@ export default function JoinHuntPage() {
 
       let huntToJoin = foundHunt;
 
-      // If hunt requires P2P, connect to host for location data
+      // If hunt requires P2P, connect to host for location data (with relay fallback)
       if (foundHunt.requiresP2P) {
         toast({
           title: 'Connecting to host...',
           description: 'Receiving hunt location data securely',
         });
 
-        const locationData = await connectP2P(foundHunt.id, foundHunt.shareCode, foundHunt.hostPubkey);
+        // Connect using P2P first, with automatic zero-trust relay fallback
+        // Note: hostThrowaway can be passed here if available (e.g., from QR code query params)
+        // If not provided, useHuntConnection will use hostPubkey as fallback
+        const locationData = await connectToHost(
+          foundHunt.id,
+          foundHunt.shareCode,
+          foundHunt.hostPubkey
+        );
 
         if (!locationData) {
           toast({
             title: 'Connection Failed',
-            description: p2pError || 'Could not connect to host. Make sure they have the hunt open.',
+            description: connectionError || 'Could not connect to host. Make sure they have the hunt open.',
             variant: 'destructive',
           });
           setIsJoining(false);
           return;
         }
 
-        // Merge P2P location data with hunt metadata
+        // Merge location data with hunt metadata
         huntToJoin = {
           ...foundHunt,
           geoFence: locationData.geoFence,
@@ -287,7 +294,7 @@ export default function JoinHuntPage() {
 
         toast({
           title: 'Connected!',
-          description: `Received ${locationData.monsters.length} creature locations`,
+          description: `Received ${locationData.monsters.length} creature locations${connectionMethod === 'relay' ? ' (via relay)' : ''}`,
         });
       }
 
@@ -502,16 +509,16 @@ export default function JoinHuntPage() {
               </Alert>
             )}
 
-            {/* P2P Connection Status */}
+            {/* Connection Status (P2P + Relay Fallback) */}
             {isJoining && foundHunt?.requiresP2P && (
-              <Alert className="border-blue-500/30 bg-blue-500/5">
-                <Loader2 className="w-4 h-4 text-blue-500 animate-spin" />
+              <Alert className={`${connectionState === 'relay-fallback' || connectionState === 'relay-connecting' ? 'border-amber-500/30 bg-amber-500/5' : 'border-blue-500/30 bg-blue-500/5'}`}>
+                <Loader2 className={`w-4 h-4 animate-spin ${connectionState === 'relay-fallback' || connectionState === 'relay-connecting' ? 'text-amber-500' : 'text-blue-500'}`} />
                 <AlertDescription className="text-sm">
-                  {p2pState === 'creating-offer' && 'Creating secure connection...'}
-                  {p2pState === 'waiting-answer' && 'Waiting for host...'}
-                  {p2pState === 'connecting' && 'Establishing connection...'}
-                  {p2pState === 'waiting-data' && 'Receiving hunt data...'}
-                  {p2pState === 'error' && (p2pError || 'Connection failed')}
+                  {connectionState === 'p2p-connecting' && 'Creating secure P2P connection...'}
+                  {connectionState === 'p2p-waiting' && 'Waiting for host response...'}
+                  {connectionState === 'relay-fallback' && 'P2P unavailable, using encrypted relay...'}
+                  {connectionState === 'relay-connecting' && 'Connecting via encrypted relay...'}
+                  {connectionState === 'error' && (connectionError || 'Connection failed')}
                 </AlertDescription>
               </Alert>
             )}

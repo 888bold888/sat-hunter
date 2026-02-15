@@ -280,7 +280,9 @@ export function useHuntConnection(): UseHuntConnectionResult {
       cleanup();
       return null;
     },
-    [user, reset, cleanupP2P, cleanup]
+    // Note: attemptP2P and attemptZeroTrust are defined inside the component and use user/nostr
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [user, nostr, reset, cleanupP2P, cleanup]
   );
 
   // Cleanup on unmount
