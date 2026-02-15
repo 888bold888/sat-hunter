@@ -271,7 +271,8 @@ export function useHostConnection(
     zeroTrustPrivkeyRef.current = sessionPrivkey;
 
     // Create session using PSK (share code) so any player with the code derives the same session key
-    const session = createSessionFromPSK(hunt.id, sessionPrivkey, hunt.shareCode);
+    // Use shareCode as sessionId since hunt.id changes after Nostr publication
+    const session = createSessionFromPSK(hunt.shareCode, sessionPrivkey, hunt.shareCode);
     zeroTrustSessionRef.current = session;
 
     // Create handshake data

@@ -216,7 +216,8 @@ export function useHuntConnection(): UseHuntConnectionResult {
       sessionPrivkeyRef.current = sessionPrivkey;
 
       // Create session using PSK (share code) — same key the host derived
-      const session = createSessionFromPSK(huntId, sessionPrivkey, shareCode);
+      // Use shareCode as sessionId to match the host (huntId is unstable)
+      const session = createSessionFromPSK(shareCode, sessionPrivkey, shareCode);
       sessionRef.current = session;
 
       // Set host's throwaway pubkey from handshake
