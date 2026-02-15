@@ -1,5 +1,6 @@
 import { useNostr } from '@nostrify/react';
 import { NLogin, useNostrLogin } from '@nostrify/react/login';
+import { clearSessionKey } from '@/lib/sessionKeys';
 
 // NOTE: This file should not be edited except for adding new login methods.
 
@@ -29,6 +30,11 @@ export function useLoginActions() {
       if (login) {
         removeLogin(login.id);
       }
+      // Clear session keys from sessionStorage
+      clearSessionKey();
+      // Clear NWC credentials from localStorage
+      localStorage.removeItem('nwc-connections');
+      localStorage.removeItem('nwc-active-connection');
     }
   };
 }
