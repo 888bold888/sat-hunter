@@ -127,6 +127,10 @@ export function useHuntSync(
       for (const event of joinEvents) {
         if (processedEventsRef.current.has(event.id)) continue;
         processedEventsRef.current.add(event.id);
+        if (!verifyEvent(event)) {
+          console.warn('Rejecting join event with invalid signature:', event.id);
+          continue;
+        }
         callbacks.onPlayerJoined(event.pubkey);
       }
 
@@ -146,6 +150,10 @@ export function useHuntSync(
         for (const event of leaveEvents) {
           if (processedEventsRef.current.has(event.id)) continue;
           processedEventsRef.current.add(event.id);
+          if (!verifyEvent(event)) {
+            console.warn('Rejecting leave event with invalid signature:', event.id);
+            continue;
+          }
           callbacks.onPlayerLeft(event.pubkey);
         }
       }
