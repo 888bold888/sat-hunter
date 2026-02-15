@@ -81,6 +81,7 @@ export function useHostConnection(
   // Zero-trust session
   const zeroTrustSessionRef = useRef<ZeroTrustSession | null>(null);
   const zeroTrustPrivkeyRef = useRef<Uint8Array | null>(null);
+  const sentEventIdsRef = useRef<Set<string>>(new Set());
 
   // Hunt data to send
   const huntDataRef = useRef<HuntLocationData | null>(null);
@@ -247,6 +248,7 @@ export function useHostConnection(
           false
         );
 
+        sentEventIdsRef.current.add(event.id);
         await nostr.event(event);
 
         setPersistedSentDataTo((prev) => prev + 1);
@@ -397,6 +399,9 @@ export function useHostConnection(
           const event = msg[2];
           if (processedHellos.has(event.id)) continue;
           processedHellos.add(event.id);
+
+          // Skip our own outgoing messages that bounce back from relays
+          if (sentEventIdsRef.current.has(event.id)) continue;
 
           const result = decryptZeroTrustMessage(zeroTrustSessionRef.current!, event);
           if (result?.payload) {
