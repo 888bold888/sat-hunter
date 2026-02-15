@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback, useMemo } from 'react';
+import { useEffect, useState, useCallback, useMemo, useRef } from 'react';
 import { useGame } from '@/contexts/GameContext';
 import { formatSats, formatTimeRemaining, formatCountdown, calculateDistance } from '@/lib/gameUtils';
 import { decodeGeohash } from '@/lib/antiCheat';
@@ -355,6 +355,9 @@ export function HostDashboard() {
     setSerializer
   );
 
+  // Rate limiting: track capture timestamps per player (max 3 per 10 seconds)
+  const captureTimestampsRef = useRef<Map<string, number[]>>(new Map());
+
   // Handle kicking a player
   const handleKickPlayer = useCallback(async (playerPubkey: string) => {
     if (!activeHunt) return;
@@ -507,6 +510,18 @@ export function HostDashboard() {
     if (activeHunt) {
       const monster = activeHunt.monsters.find(m => m.id === monsterId);
       if (monster && !paidCaptures.has(monsterId)) {
+        // Rate limit: max 3 captures per 10 seconds per player
+        const now = Date.now();
+        const timestamps = captureTimestampsRef.current.get(playerPubkey) ?? [];
+        const recent = timestamps.filter(t => now - t < 10000);
+        if (recent.length >= 3) {
+          console.warn(`[AntiCheat] Rate limiting player ${playerPubkey.slice(0, 8)}...: ${recent.length} captures in 10s`);
+          setRejectedCaptures(prev => new Map(prev).set(monsterId, 'Capture rate limit exceeded'));
+          return;
+        }
+        recent.push(now);
+        captureTimestampsRef.current.set(playerPubkey, recent);
+
         // Host-side distance check: reject captures from obviously wrong locations
         // Geohash precision 5 = ~5km cells, so use 5km threshold to catch remote attacks
         if (antiCheat?.geohash) {
