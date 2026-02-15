@@ -1,7 +1,7 @@
 import { useEffect, useState, useCallback, useMemo, useRef } from 'react';
 import { useGame } from '@/contexts/GameContext';
 import { formatSats, formatTimeRemaining, formatCountdown, calculateDistance } from '@/lib/gameUtils';
-import { decodeGeohash } from '@/lib/antiCheat';
+import { decodeGeohash, verifyCaptureProof } from '@/lib/antiCheat';
 import { HuntMap } from './HuntMap';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -48,6 +48,7 @@ interface CaptureAntiCheat {
   trustScore?: number;
   trustFlags?: string[];
   geohash?: string;
+  captureProof?: string;
 }
 
 import { setSerializer, mapSerializer } from '@/lib/serializers';
@@ -404,6 +405,7 @@ export function HostDashboard() {
     sentDataTo: hostSentDataTo,
     error: hostError,
     zeroTrustHandshake: _zeroTrustHandshake,
+    captureSecret,
     startHosting,
     stopHosting,
   } = useHostConnection(activeHunt);
@@ -533,11 +535,25 @@ export function HostDashboard() {
             return;
           }
         }
+        // Verify HMAC capture proof (proves player received hunt data via authenticated channel)
+        if (captureSecret) {
+          if (!antiCheat?.captureProof) {
+            console.warn(`[AntiCheat] Rejecting capture: missing capture proof from player ${playerPubkey.slice(0, 8)}...`);
+            setRejectedCaptures(prev => new Map(prev).set(monsterId, 'Missing capture proof'));
+            return;
+          }
+          if (!verifyCaptureProof(captureSecret, monsterId, playerPubkey, capturedAt, antiCheat.captureProof)) {
+            console.warn(`[AntiCheat] Rejecting capture: invalid capture proof from player ${playerPubkey.slice(0, 8)}...`);
+            setRejectedCaptures(prev => new Map(prev).set(monsterId, 'Invalid capture proof'));
+            return;
+          }
+        }
+
         // Use host-side monster value, NOT player-reported satAmount
         processPayment(monsterId, playerPubkey, monster.satAmount, monster.name, antiCheat);
       }
     }
-  }, [activeHunt, paidCaptures, processPayment, setRejectedCaptures]);
+  }, [activeHunt, paidCaptures, processPayment, setRejectedCaptures, captureSecret]);
 
   const onPlayerJoined = useCallback((playerPubkey: string) => {
     setSyncedPlayers(prev => {

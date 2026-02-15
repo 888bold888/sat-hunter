@@ -7,6 +7,9 @@ import type { GeoLocation } from './gameTypes';
 import { calculateDistance } from './gameUtils';
 import ngeohash from 'ngeohash';
 import { getMotionScore, getMotionStats } from './motionTracking';
+import { hmac } from '@noble/hashes/hmac.js';
+import { sha256 } from '@noble/hashes/sha2.js';
+import { bytesToHex, hexToBytes } from '@noble/hashes/utils.js';
 
 // ══════════════════════════════════════════════════════════════
 // CONFIGURATION
@@ -642,4 +645,47 @@ export function checkLocationIntegrity(
     canCapture,
     reason,
   };
+}
+
+// ══════════════════════════════════════════════════════════════
+// CAPTURE PROOF (HMAC-based token)
+// ══════════════════════════════════════════════════════════════
+
+/**
+ * Generate a random capture secret for a hunt session.
+ * Host generates this and includes it in encrypted hunt data.
+ */
+export function generateCaptureSecret(): string {
+  return bytesToHex(crypto.getRandomValues(new Uint8Array(32)));
+}
+
+/**
+ * Compute an HMAC capture proof.
+ * Player includes this in capture events to prove they received hunt data
+ * through the authenticated channel (P2P or zero-trust relay).
+ */
+export function computeCaptureProof(
+  captureSecret: string,
+  monsterId: string,
+  playerPubkey: string,
+  capturedAt: number
+): string {
+  const message = `${monsterId}:${playerPubkey}:${capturedAt}`;
+  const key = hexToBytes(captureSecret);
+  return bytesToHex(hmac(sha256, key, new TextEncoder().encode(message)));
+}
+
+/**
+ * Verify an HMAC capture proof (host-side).
+ * Returns true if the proof is valid — meaning the player had the capture secret.
+ */
+export function verifyCaptureProof(
+  captureSecret: string,
+  monsterId: string,
+  playerPubkey: string,
+  capturedAt: number,
+  proof: string
+): boolean {
+  const expected = computeCaptureProof(captureSecret, monsterId, playerPubkey, capturedAt);
+  return expected === proof;
 }

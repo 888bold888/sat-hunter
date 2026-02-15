@@ -47,6 +47,8 @@ export function GameMap({ selectedMonster, selectedStop, onSelectMonster, onSele
           playerLocation: playerLocation ?? undefined,
           trustScore: lastIntegrityCheck?.trustScore.composite,
           trustFlags: lastIntegrityCheck?.trustScore.flags,
+          // HMAC capture proof (proves we received hunt data via authenticated channel)
+          captureSecret: activeHunt.captureSecret,
         });
       }
 

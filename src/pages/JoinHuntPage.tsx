@@ -290,6 +290,7 @@ export default function JoinHuntPage() {
           geoFence: locationData.geoFence,
           monsters: locationData.monsters,
           satStops: locationData.satStops,
+          captureSecret: locationData.captureSecret,
         };
 
         toast({

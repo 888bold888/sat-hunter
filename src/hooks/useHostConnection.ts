@@ -19,6 +19,7 @@ import {
   parseOfferFromEvent,
   type HuntLocationData,
 } from '@/lib/p2pSignaling';
+import { generateCaptureSecret } from '@/lib/antiCheat';
 import { signWithSessionKey } from '@/lib/sessionKeys';
 import {
   createSessionFromPSK,
@@ -47,6 +48,7 @@ interface UseHostConnectionResult {
   sentDataTo: number;
   error: string | null;
   zeroTrustHandshake: SessionHandshake | null;
+  captureSecret: string | null;
   startHosting: () => void;
   stopHosting: () => void;
 }
@@ -81,6 +83,8 @@ export function useHostConnection(
 
   // Hunt data to send
   const huntDataRef = useRef<HuntLocationData | null>(null);
+  // Capture secret for HMAC-based capture proof verification
+  const captureSecretRef = useRef<string | null>(null);
 
   // Persist processed offer IDs
   const processedOffersKey = useMemo(
@@ -307,11 +311,15 @@ export function useHostConnection(
     try {
       setError(null);
 
-      // Prepare hunt data
+      // Generate capture secret for HMAC-based capture proof
+      captureSecretRef.current = generateCaptureSecret();
+
+      // Prepare hunt data (includes captureSecret for player verification)
       huntDataRef.current = {
         geoFence: hunt.geoFence,
         monsters: hunt.monsters,
         satStops: hunt.satStops,
+        captureSecret: captureSecretRef.current,
       };
 
       // Initialize zero-trust
@@ -432,6 +440,7 @@ export function useHostConnection(
     sentDataTo: persistedSentDataTo,
     error,
     zeroTrustHandshake,
+    captureSecret: captureSecretRef.current,
     startHosting,
     stopHosting,
   };
