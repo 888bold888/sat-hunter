@@ -20,14 +20,13 @@ import { generateSecretKey, getPublicKey, finalizeEvent } from 'nostr-tools';
 import type { NostrEvent } from '@nostrify/nostrify';
 
 // Event kinds for zero-trust relay
+// Outer/inner are ephemeral (relays forward but don't store) — requires subscriptions
 export const ZERO_TRUST_OUTER_KIND = 21111;
 export const ZERO_TRUST_INNER_KIND = 21112;
+// Handshake is regular (relays store it) — players need to query for it after host publishes
+export const ZERO_TRUST_HANDSHAKE_KIND = 3493;
 
 // Utility functions
-function bytesToHex(bytes: Uint8Array): string {
-  return Array.from(bytes).map(b => b.toString(16).padStart(2, '0')).join('');
-}
-
 function hexToBytes(hex: string): Uint8Array {
   const bytes = new Uint8Array(hex.length / 2);
   for (let i = 0; i < bytes.length; i++) {
@@ -74,7 +73,12 @@ function deriveSharedSecret(
   myPrivkey: Uint8Array,
   theirPubkey: Uint8Array
 ): Uint8Array {
-  const sharedPoint = secp256k1.getSharedSecret(myPrivkey, theirPubkey);
+  // Ensure pubkey is compressed (33 bytes with 02 prefix)
+  // nostr-tools returns x-only 32-byte keys, but ECDH needs compressed format
+  const compressedPubkey = theirPubkey.length === 32
+    ? concatBytes(new Uint8Array([0x02]), theirPubkey)
+    : theirPubkey;
+  const sharedPoint = secp256k1.getSharedSecret(myPrivkey, compressedPubkey);
   // Remove the prefix byte and hash
   return sha256(sharedPoint.slice(1));
 }
@@ -130,14 +134,6 @@ function decrypt(key: Uint8Array, data: Uint8Array): Uint8Array {
   return cipher.decrypt(ciphertext);
 }
 
-/**
- * Randomize timestamp within ±24 hours to prevent timing correlation
- */
-function randomizeTimestamp(): number {
-  const now = Math.floor(Date.now() / 1000);
-  const offset = Math.floor(Math.random() * 172800) - 86400; // ±24 hours
-  return now + offset;
-}
 
 /**
  * Session state for zero-trust communication
@@ -162,7 +158,7 @@ export function createSession(
   myPrivkey: Uint8Array,
   theirPubkey: string
 ): ZeroTrustSession {
-  const myPubkey = bytesToHex(secp256k1.getPublicKey(myPrivkey, true));
+  const myPubkey = getPublicKey(myPrivkey);
   const theirPubkeyBytes = hexToBytes(theirPubkey);
 
   // Derive session key
@@ -184,6 +180,39 @@ export function createSession(
     currentThrowawayPrivkey: throwawayPrivkey,
     currentThrowawayPubkey: throwawayPubkey,
     theirThrowawayPubkey: '', // Will be set when we receive their first message or from QR
+    sequenceNumber: 0,
+    lastReceivedSeq: -1,
+  };
+}
+
+/**
+ * Create a new zero-trust session using a Pre-Shared Key (PSK)
+ * Used for one-to-many scenarios where both sides know a shared secret
+ * (e.g., the hunt share code) but can't do ECDH key exchange upfront.
+ */
+export function createSessionFromPSK(
+  sessionId: string,
+  myPrivkey: Uint8Array,
+  preSharedKey: string
+): ZeroTrustSession {
+  const myPubkey = getPublicKey(myPrivkey);
+
+  // Derive session key from PSK instead of ECDH
+  const sharedSecret = sha256(stringToBytes(preSharedKey));
+  const sessionKey = deriveSessionKey(sharedSecret, sessionId);
+
+  // Generate first throwaway keypair
+  const throwawayPrivkey = generateSecretKey();
+  const throwawayPubkey = getPublicKey(throwawayPrivkey);
+
+  return {
+    sessionId,
+    sessionKey,
+    mySessionPubkey: myPubkey,
+    theirSessionPubkey: '', // Not used in PSK mode
+    currentThrowawayPrivkey: throwawayPrivkey,
+    currentThrowawayPubkey: throwawayPubkey,
+    theirThrowawayPubkey: '', // Will be set from handshake or first message
     sequenceNumber: 0,
     lastReceivedSeq: -1,
   };
@@ -253,10 +282,10 @@ export function buildZeroTrustMessage(
   // 6. Encrypt inner ciphertext for outer envelope
   const outerCiphertext = encrypt(outerSharedSecret, innerCiphertext);
 
-  // 7. Build outer event with randomized timestamp
+  // 7. Build outer event
   const outerEvent = finalizeEvent({
     kind: ZERO_TRUST_OUTER_KIND,
-    created_at: randomizeTimestamp(),
+    created_at: Math.floor(Date.now() / 1000),
     content: bytesToBase64(outerCiphertext),
     tags: [['p', session.theirThrowawayPubkey]],
   }, outerThrowawayPrivkey) as NostrEvent;

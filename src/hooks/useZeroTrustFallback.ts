@@ -9,7 +9,7 @@ import { useState, useCallback, useRef, useEffect } from 'react';
 import { useNostr } from '@nostrify/react';
 import { generateSecretKey, getPublicKey } from 'nostr-tools';
 import {
-  createSession,
+  createSessionFromPSK,
   setTheirThrowaway,
   buildZeroTrustMessage,
   decryptZeroTrustMessage,
@@ -69,9 +69,8 @@ export function useZeroTrustHost(): UseZeroTrustHostResult {
     const sessionPubkey = getPublicKey(sessionPrivkey);
     sessionPrivkeyRef.current = sessionPrivkey;
 
-    // Create placeholder session (we'll set their pubkey when player connects)
-    // For now, use a dummy pubkey that will be replaced
-    const session = createSession(huntId, sessionPrivkey, sessionPubkey);
+    // Create session with huntId as PSK (caller should use shareCode for real hunts)
+    const session = createSessionFromPSK(huntId, sessionPrivkey, huntId);
     sessionRef.current = session;
 
     const handshake: SessionHandshake = {
@@ -177,14 +176,13 @@ export function useZeroTrustPlayer(): UseZeroTrustPlayerResult {
     try {
       // Generate our session keypair
       const sessionPrivkey = generateSecretKey();
-      const _sessionPubkey = getPublicKey(sessionPrivkey); // Used internally by createSession
       sessionPrivkeyRef.current = sessionPrivkey;
 
-      // Create session with host's pubkey
-      const session = createSession(
+      // Create session with PSK (using sessionId as fallback PSK)
+      const session = createSessionFromPSK(
         handshake.sessionId,
         sessionPrivkey,
-        handshake.sessionPubkey
+        handshake.sessionId
       );
       sessionRef.current = session;
 

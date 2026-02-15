@@ -21,13 +21,13 @@ import {
 } from '@/lib/p2pSignaling';
 import { signWithSessionKey } from '@/lib/sessionKeys';
 import {
-  createSession,
-  setTheirThrowaway,
+  createSessionFromPSK,
   buildZeroTrustMessage,
   decryptZeroTrustMessage,
   destroySession,
   getThrowawayPubkey,
   ZERO_TRUST_OUTER_KIND,
+  ZERO_TRUST_HANDSHAKE_KIND,
   type ZeroTrustSession,
   type SessionHandshake,
 } from '@/lib/zeroTrustRelay';
@@ -81,6 +81,7 @@ export function useHostConnection(
   // Zero-trust session
   const zeroTrustSessionRef = useRef<ZeroTrustSession | null>(null);
   const zeroTrustPrivkeyRef = useRef<Uint8Array | null>(null);
+  const sentEventIdsRef = useRef<Set<string>>(new Set());
 
   // Hunt data to send
   const huntDataRef = useRef<HuntLocationData | null>(null);
@@ -237,8 +238,8 @@ export function useHostConnection(
       console.log('[Host ZeroTrust] Received hello from player, sending hunt data...');
 
       try {
-        // Set player's throwaway
-        setTheirThrowaway(zeroTrustSessionRef.current, playerThrowaway);
+        // Player's next throwaway was already set by decryptZeroTrustMessage
+        // from the next_throwaway tag in the inner event. Don't override it.
 
         // Send hunt data
         const { event } = buildZeroTrustMessage(
@@ -247,6 +248,7 @@ export function useHostConnection(
           false
         );
 
+        sentEventIdsRef.current.add(event.id);
         await nostr.event(event);
 
         setPersistedSentDataTo((prev) => prev + 1);
@@ -261,19 +263,20 @@ export function useHostConnection(
   );
 
   // Initialize zero-trust session
-  const initZeroTrust = useCallback(() => {
-    if (!hunt || !user) return;
+  const initZeroTrust = useCallback(async () => {
+    if (!hunt || !user || !nostr) return;
 
     // Generate session keypair
     const sessionPrivkey = generateSecretKey();
     const sessionPubkey = getPublicKey(sessionPrivkey);
     zeroTrustPrivkeyRef.current = sessionPrivkey;
 
-    // Create session (use our own pubkey as placeholder for "their" pubkey)
-    const session = createSession(hunt.id, sessionPrivkey, sessionPubkey);
+    // Create session using PSK (share code) so any player with the code derives the same session key
+    // Use shareCode as sessionId since hunt.id changes after Nostr publication
+    const session = createSessionFromPSK(hunt.shareCode, sessionPrivkey, hunt.shareCode);
     zeroTrustSessionRef.current = session;
 
-    // Create handshake data for QR code
+    // Create handshake data
     const handshake: SessionHandshake = {
       sessionId: hunt.id,
       sessionPubkey: sessionPubkey,
@@ -282,10 +285,24 @@ export function useHostConnection(
     };
 
     setZeroTrustHandshake(handshake);
-  }, [hunt, user]);
+
+    // Publish handshake to Nostr so players can discover our throwaway pubkey
+    try {
+      const handshakeEvent = signWithSessionKey({
+        kind: ZERO_TRUST_HANDSHAKE_KIND,
+        created_at: Math.floor(Date.now() / 1000),
+        content: JSON.stringify(handshake),
+        tags: [['h', hunt.id], ['s', hunt.shareCode]],
+      });
+      await nostr.event(handshakeEvent);
+      console.log('[Host ZeroTrust] Published handshake for hunt', hunt.shareCode);
+    } catch (err) {
+      console.error('[Host ZeroTrust] Failed to publish handshake:', err);
+    }
+  }, [hunt, user, nostr]);
 
   // Start hosting
-  const startHosting = useCallback(() => {
+  const startHosting = useCallback(async () => {
     if (!hunt || !user) {
       setError('No hunt or user available');
       return;
@@ -302,7 +319,7 @@ export function useHostConnection(
       };
 
       // Initialize zero-trust
-      initZeroTrust();
+      await initZeroTrust();
 
       setIsActive(true);
     } catch (err) {
@@ -358,29 +375,33 @@ export function useHostConnection(
     };
   }, [isActive, hunt, user, nostr, handleP2POffer]);
 
-  // Poll for zero-trust hello messages
+  // Subscribe to zero-trust hello messages (streaming, not polling)
   useEffect(() => {
     if (!isActive || !hunt || !nostr || !zeroTrustSessionRef.current || !zeroTrustHandshake) return;
 
-    const controller = new AbortController();
+    let isSubscribed = true;
     const processedHellos = new Set<string>();
 
-    const pollForHellos = async () => {
-      try {
-        const events = await nostr.query(
-          [
-            {
-              kinds: [ZERO_TRUST_OUTER_KIND],
-              '#p': [zeroTrustHandshake.throwawayPubkey],
-              since: Math.floor(Date.now() / 1000) - 300,
-            },
-          ],
-          { signal: controller.signal }
-        );
+    const subscription = nostr.req([
+      {
+        kinds: [ZERO_TRUST_OUTER_KIND],
+        '#p': [zeroTrustHandshake.throwawayPubkey],
+        since: Math.floor(Date.now() / 1000) - 300,
+      },
+    ]);
 
-        for (const event of events) {
+    (async () => {
+      try {
+        for await (const msg of subscription) {
+          if (!isSubscribed) break;
+          if (msg[0] !== 'EVENT') continue;
+
+          const event = msg[2];
           if (processedHellos.has(event.id)) continue;
           processedHellos.add(event.id);
+
+          // Skip our own outgoing messages that bounce back from relays
+          if (sentEventIdsRef.current.has(event.id)) continue;
 
           const result = decryptZeroTrustMessage(zeroTrustSessionRef.current!, event);
           if (result?.payload) {
@@ -393,18 +414,14 @@ export function useHostConnection(
           }
         }
       } catch (err) {
-        if (!controller.signal.aborted) {
-          console.error('[Host] Error polling for zero-trust hellos:', err);
+        if (isSubscribed) {
+          console.error('[Host] Zero-trust subscription error:', err);
         }
       }
-    };
-
-    pollForHellos();
-    const interval = setInterval(pollForHellos, 2000);
+    })();
 
     return () => {
-      controller.abort();
-      clearInterval(interval);
+      isSubscribed = false;
     };
   }, [isActive, hunt, nostr, zeroTrustHandshake, handleZeroTrustHello]);
 

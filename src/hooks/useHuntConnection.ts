@@ -8,7 +8,7 @@
 import { useState, useCallback, useRef, useEffect } from 'react';
 import { useNostr } from '@nostrify/react';
 import { useCurrentUser } from './useCurrentUser';
-import { generateSecretKey, getPublicKey } from 'nostr-tools';
+import { generateSecretKey } from 'nostr-tools';
 import {
   P2P_ANSWER_KIND,
   createHostConnection,
@@ -18,14 +18,16 @@ import {
 } from '@/lib/p2pSignaling';
 import { signWithSessionKey } from '@/lib/sessionKeys';
 import {
-  createSession,
+  createSessionFromPSK,
   setTheirThrowaway,
   buildZeroTrustMessage,
   decryptZeroTrustMessage,
   destroySession,
   getThrowawayPubkey,
   ZERO_TRUST_OUTER_KIND,
+  ZERO_TRUST_HANDSHAKE_KIND,
   type ZeroTrustSession,
+  type SessionHandshake,
 } from '@/lib/zeroTrustRelay';
 
 type ConnectionMethod = 'p2p' | 'relay' | null;
@@ -177,29 +179,49 @@ export function useHuntConnection(): UseHuntConnectionResult {
   // Attempt zero-trust relay fallback
   const attemptZeroTrust = async (
     huntId: string,
-    hostPubkey: string,
+    shareCode: string,
     hostThrowaway?: string
   ): Promise<HuntLocationData | null> => {
     if (!nostr) return null;
 
     try {
+      // Query for host's handshake event to get their throwaway pubkey
+      let hostThrowawayPubkey = hostThrowaway;
+
+      if (!hostThrowawayPubkey) {
+        console.log('[HuntConnection] Querying for host handshake...');
+        const handshakeEvents = await nostr.query(
+          [
+            {
+              kinds: [ZERO_TRUST_HANDSHAKE_KIND],
+              '#s': [shareCode],
+              limit: 1,
+            },
+          ],
+          { signal: AbortSignal.timeout(10000) }
+        );
+
+        if (handshakeEvents.length > 0) {
+          const handshake = JSON.parse(handshakeEvents[0].content) as SessionHandshake;
+          hostThrowawayPubkey = handshake.throwawayPubkey;
+          console.log('[HuntConnection] Found host handshake, throwaway:', hostThrowawayPubkey.slice(0, 8) + '...');
+        } else {
+          console.error('[HuntConnection] No host handshake found');
+          return null;
+        }
+      }
+
       // Generate session keypair
       const sessionPrivkey = generateSecretKey();
-      const _sessionPubkey = getPublicKey(sessionPrivkey); // Used internally by createSession
       sessionPrivkeyRef.current = sessionPrivkey;
 
-      // Create session
-      const session = createSession(huntId, sessionPrivkey, hostPubkey);
+      // Create session using PSK (share code) — same key the host derived
+      // Use shareCode as sessionId to match the host (huntId is unstable)
+      const session = createSessionFromPSK(shareCode, sessionPrivkey, shareCode);
       sessionRef.current = session;
 
-      // If we have host's throwaway from QR, use it
-      // Otherwise, we need to get it from the hunt metadata or signaling
-      if (hostThrowaway) {
-        setTheirThrowaway(session, hostThrowaway);
-      } else {
-        // Use host's session pubkey as initial throwaway (not ideal, but works)
-        setTheirThrowaway(session, hostPubkey);
-      }
+      // Set host's throwaway pubkey from handshake
+      setTheirThrowaway(session, hostThrowawayPubkey);
 
       // Get our throwaway for host to respond to
       const ourThrowaway = getThrowawayPubkey(session);
@@ -213,12 +235,20 @@ export function useHuntConnection(): UseHuntConnectionResult {
 
       await nostr.event(helloEvent);
 
+      // After buildZeroTrustMessage, our throwaway rotated. The host will encrypt
+      // to our next_throwaway (included in the hello's inner tags), so poll with
+      // the post-rotation throwaway that matches our current privkey.
+      const postRotationThrowaway = getThrowawayPubkey(session);
+
       // Wait for hunt data
-      const data = await waitForZeroTrustData(nostr, session, ourThrowaway, RELAY_TIMEOUT_MS);
+      const data = await waitForZeroTrustData(nostr, session, postRotationThrowaway, RELAY_TIMEOUT_MS);
 
       return data;
     } catch (err) {
       console.error('[HuntConnection] Zero-trust failed:', err);
+      if (err instanceof AggregateError) {
+        console.error('[HuntConnection] Relay errors:', err.errors.map((e: Error) => e.message));
+      }
       return null;
     }
   };
@@ -264,7 +294,7 @@ export function useHuntConnection(): UseHuntConnectionResult {
       setState('relay-connecting');
       setMethod('relay');
 
-      const relayData = await attemptZeroTrust(huntId, hostPubkey, hostThrowaway);
+      const relayData = await attemptZeroTrust(huntId, shareCode, hostThrowaway);
 
       if (relayData) {
         console.log('[HuntConnection] Zero-trust relay succeeded!');
@@ -376,7 +406,7 @@ function waitForDataOnChannel(
 }
 
 /**
- * Wait for hunt data via zero-trust relay
+ * Wait for hunt data via zero-trust relay (subscription-based for ephemeral events)
  */
 async function waitForZeroTrustData(
   nostr: ReturnType<typeof useNostr>['nostr'],
@@ -384,39 +414,53 @@ async function waitForZeroTrustData(
   myThrowaway: string,
   timeoutMs: number
 ): Promise<HuntLocationData | null> {
-  const startTime = Date.now();
-  const pollInterval = 1000;
+  return new Promise<HuntLocationData | null>((resolve) => {
+    let resolved = false;
 
-  while (Date.now() - startTime < timeoutMs) {
-    try {
-      const events = await nostr.query(
-        [
-          {
-            kinds: [ZERO_TRUST_OUTER_KIND],
-            '#p': [myThrowaway],
-            since: Math.floor(startTime / 1000) - 60,
-            limit: 10,
-          },
-        ],
-        { signal: AbortSignal.timeout(5000) }
-      );
+    const timeout = setTimeout(() => {
+      if (!resolved) {
+        resolved = true;
+        isActive = false;
+        resolve(null);
+      }
+    }, timeoutMs);
 
-      for (const event of events) {
-        const result = decryptZeroTrustMessage(session, event);
-        if (result?.payload) {
-          const payload = result.payload as Record<string, unknown>;
-          // Check if this is hunt data
-          if (payload.geoFence && payload.monsters && payload.satStops) {
-            return payload as unknown as HuntLocationData;
+    let isActive = true;
+
+    const subscription = nostr.req([
+      {
+        kinds: [ZERO_TRUST_OUTER_KIND],
+        '#p': [myThrowaway],
+        since: Math.floor(Date.now() / 1000) - 60,
+      },
+    ]);
+
+    (async () => {
+      try {
+        for await (const msg of subscription) {
+          if (!isActive) break;
+          if (msg[0] !== 'EVENT') continue;
+
+          const event = msg[2];
+          const result = decryptZeroTrustMessage(session, event);
+          if (result?.payload) {
+            const payload = result.payload as Record<string, unknown>;
+            if (payload.geoFence && payload.monsters && payload.satStops) {
+              if (!resolved) {
+                resolved = true;
+                isActive = false;
+                clearTimeout(timeout);
+                resolve(payload as unknown as HuntLocationData);
+              }
+              break;
+            }
           }
         }
+      } catch (err) {
+        if (isActive) {
+          console.error('[HuntConnection] Subscription error:', err);
+        }
       }
-    } catch {
-      // Query failed, will retry
-    }
-
-    await new Promise(resolve => setTimeout(resolve, pollInterval));
-  }
-
-  return null;
+    })();
+  });
 }
