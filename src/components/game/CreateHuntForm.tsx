@@ -152,6 +152,14 @@ export function CreateHuntForm({ onHuntCreated }: CreateHuntFormProps) {
       setError('Please enter a hunt name');
       return;
     }
+    if (name.length > 100) {
+      setError('Hunt name must be 100 characters or less');
+      return;
+    }
+    if (description.length > 500) {
+      setError('Description must be 500 characters or less');
+      return;
+    }
     // Validate polygon if using custom boundary
     if (boundaryType === 'polygon' && (!polygonPoints || polygonPoints.length < 3)) {
       setError('Please draw a hunt boundary with at least 3 points');
@@ -279,6 +287,7 @@ export function CreateHuntForm({ onHuntCreated }: CreateHuntFormProps) {
                 placeholder="Bitcoin Treasure Hunt 🏴‍☠️"
                 value={name}
                 onChange={(e) => setName(e.target.value)}
+                maxLength={100}
                 className="border-primary/30 focus:border-primary"
               />
             </div>
@@ -289,6 +298,7 @@ export function CreateHuntForm({ onHuntCreated }: CreateHuntFormProps) {
                 placeholder="Describe your hunt... What makes it special?"
                 value={description}
                 onChange={(e) => setDescription(e.target.value)}
+                maxLength={500}
                 className="border-primary/30 focus:border-primary resize-none"
                 rows={3}
               />

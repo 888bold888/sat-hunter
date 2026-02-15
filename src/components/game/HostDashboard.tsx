@@ -1,6 +1,7 @@
-import { useEffect, useState, useCallback, useMemo } from 'react';
+import { useEffect, useState, useCallback, useMemo, useRef } from 'react';
 import { useGame } from '@/contexts/GameContext';
-import { formatSats, formatTimeRemaining, formatCountdown } from '@/lib/gameUtils';
+import { formatSats, formatTimeRemaining, formatCountdown, calculateDistance } from '@/lib/gameUtils';
+import { decodeGeohash } from '@/lib/antiCheat';
 import { HuntMap } from './HuntMap';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -354,6 +355,9 @@ export function HostDashboard() {
     setSerializer
   );
 
+  // Rate limiting: track capture timestamps per player (max 3 per 10 seconds)
+  const captureTimestampsRef = useRef<Map<string, number[]>>(new Map());
+
   // Handle kicking a player
   const handleKickPlayer = useCallback(async (playerPubkey: string) => {
     if (!activeHunt) return;
@@ -506,11 +510,34 @@ export function HostDashboard() {
     if (activeHunt) {
       const monster = activeHunt.monsters.find(m => m.id === monsterId);
       if (monster && !paidCaptures.has(monsterId)) {
+        // Rate limit: max 3 captures per 10 seconds per player
+        const now = Date.now();
+        const timestamps = captureTimestampsRef.current.get(playerPubkey) ?? [];
+        const recent = timestamps.filter(t => now - t < 10000);
+        if (recent.length >= 3) {
+          console.warn(`[AntiCheat] Rate limiting player ${playerPubkey.slice(0, 8)}...: ${recent.length} captures in 10s`);
+          setRejectedCaptures(prev => new Map(prev).set(monsterId, 'Capture rate limit exceeded'));
+          return;
+        }
+        recent.push(now);
+        captureTimestampsRef.current.set(playerPubkey, recent);
+
+        // Host-side distance check: reject captures from obviously wrong locations
+        // Geohash precision 5 = ~5km cells, so use 5km threshold to catch remote attacks
+        if (antiCheat?.geohash) {
+          const playerLocation = decodeGeohash(antiCheat.geohash);
+          const distance = calculateDistance(playerLocation, monster.location);
+          if (distance > 5000) {
+            console.warn(`[AntiCheat] Rejecting capture: player ${distance.toFixed(0)}m from monster`);
+            setRejectedCaptures(prev => new Map(prev).set(monsterId, `Player location ${distance.toFixed(0)}m from monster`));
+            return;
+          }
+        }
         // Use host-side monster value, NOT player-reported satAmount
         processPayment(monsterId, playerPubkey, monster.satAmount, monster.name, antiCheat);
       }
     }
-  }, [activeHunt, paidCaptures, processPayment]);
+  }, [activeHunt, paidCaptures, processPayment, setRejectedCaptures]);
 
   const onPlayerJoined = useCallback((playerPubkey: string) => {
     setSyncedPlayers(prev => {

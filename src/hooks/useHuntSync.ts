@@ -8,6 +8,7 @@ const HUNT_EVENT_KIND = 32959;
 const CLAIM_EVENT_KIND = 32960;
 const JOIN_EVENT_KIND = 32961;
 const PLAYER_LEAVE_KIND = 32964;
+const MAX_EVENT_AGE_SECONDS = 300; // Reject events older than 5 minutes
 
 // Anti-cheat data included in capture events
 interface CaptureAntiCheatData {
@@ -78,6 +79,13 @@ export function useHuntSync(
           continue;
         }
 
+        // Reject stale or backdated events to prevent replay attacks
+        const now = Math.floor(Date.now() / 1000);
+        if (Math.abs(now - event.created_at) > MAX_EVENT_AGE_SECONDS) {
+          console.warn('Rejecting capture event with stale timestamp:', event.id, event.created_at);
+          continue;
+        }
+
         try {
           const content: ClaimEventContent = JSON.parse(event.content);
           const playerPubkey = event.pubkey;
@@ -119,6 +127,10 @@ export function useHuntSync(
       for (const event of joinEvents) {
         if (processedEventsRef.current.has(event.id)) continue;
         processedEventsRef.current.add(event.id);
+        if (!verifyEvent(event)) {
+          console.warn('Rejecting join event with invalid signature:', event.id);
+          continue;
+        }
         callbacks.onPlayerJoined(event.pubkey);
       }
 
@@ -138,6 +150,10 @@ export function useHuntSync(
         for (const event of leaveEvents) {
           if (processedEventsRef.current.has(event.id)) continue;
           processedEventsRef.current.add(event.id);
+          if (!verifyEvent(event)) {
+            console.warn('Rejecting leave event with invalid signature:', event.id);
+            continue;
+          }
           callbacks.onPlayerLeft(event.pubkey);
         }
       }
