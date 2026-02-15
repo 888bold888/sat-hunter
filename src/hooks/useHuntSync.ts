@@ -8,6 +8,7 @@ const HUNT_EVENT_KIND = 32959;
 const CLAIM_EVENT_KIND = 32960;
 const JOIN_EVENT_KIND = 32961;
 const PLAYER_LEAVE_KIND = 32964;
+const MAX_EVENT_AGE_SECONDS = 300; // Reject events older than 5 minutes
 
 // Anti-cheat data included in capture events
 interface CaptureAntiCheatData {
@@ -75,6 +76,13 @@ export function useHuntSync(
         // Verify cryptographic signature to prevent forged capture events
         if (!verifyEvent(event)) {
           console.warn('Rejecting capture event with invalid signature:', event.id);
+          continue;
+        }
+
+        // Reject stale or backdated events to prevent replay attacks
+        const now = Math.floor(Date.now() / 1000);
+        if (Math.abs(now - event.created_at) > MAX_EVENT_AGE_SECONDS) {
+          console.warn('Rejecting capture event with stale timestamp:', event.id, event.created_at);
           continue;
         }
 
