@@ -1,7 +1,12 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect, useRef } from 'react';
 import { useLocalStorage } from '@/hooks/useLocalStorage';
 import { useToast } from '@/hooks/useToast';
+import { useCurrentUser } from '@/hooks/useCurrentUser';
 import { LN } from '@getalby/sdk';
+import { deriveStorageKey, encryptData, decryptData } from '@/lib/encryptedStorage';
+
+const NWC_STORAGE_KEY = 'nwc-connections-encrypted';
+const NWC_LEGACY_KEY = 'nwc-connections';
 
 export interface NWCConnection {
   connectionString: string;
@@ -21,9 +26,84 @@ export interface NWCInfo {
 
 export function useNWCInternal() {
   const { toast } = useToast();
-  const [connections, setConnections] = useLocalStorage<NWCConnection[]>('nwc-connections', []);
+  const { user } = useCurrentUser();
+  const [connections, setConnections] = useState<NWCConnection[]>([]);
   const [activeConnection, setActiveConnection] = useLocalStorage<string | null>('nwc-active-connection', null);
   const [connectionInfo, setConnectionInfo] = useState<Record<string, NWCInfo>>({});
+  const [isDecrypted, setIsDecrypted] = useState(false);
+
+  // Cache the encryption key in memory (never persisted)
+  const storageKeyRef = useRef<CryptoKey | null>(null);
+
+  // Persist encrypted connections to localStorage
+  const persistConnections = useCallback(async (conns: NWCConnection[]) => {
+    const key = storageKeyRef.current;
+    if (!key) {
+      // No encryption key yet — store nothing (will encrypt when key is available)
+      console.warn('No storage encryption key available, connections not persisted');
+      return;
+    }
+
+    // Strip non-serializable client property
+    const serializable = conns.map(({ connectionString, alias, isConnected }) => ({
+      connectionString, alias, isConnected,
+    }));
+
+    const encrypted = await encryptData(key, JSON.stringify(serializable));
+    localStorage.setItem(NWC_STORAGE_KEY, encrypted);
+  }, []);
+
+  // Decrypt connections from storage when signer becomes available
+  useEffect(() => {
+    if (!user?.signer || isDecrypted) return;
+
+    let cancelled = false;
+
+    (async () => {
+      try {
+        const key = await deriveStorageKey(user.signer);
+        if (cancelled) return;
+        storageKeyRef.current = key;
+
+        // Try to decrypt existing encrypted data
+        const encryptedRaw = localStorage.getItem(NWC_STORAGE_KEY);
+        if (encryptedRaw) {
+          const decrypted = await decryptData(key, encryptedRaw);
+          if (!cancelled && decrypted) {
+            const parsed = JSON.parse(decrypted) as NWCConnection[];
+            setConnections(parsed);
+            setIsDecrypted(true);
+            return;
+          }
+        }
+
+        // Migrate legacy plaintext connections if they exist
+        const legacyRaw = localStorage.getItem(NWC_LEGACY_KEY);
+        if (legacyRaw) {
+          try {
+            const legacy = JSON.parse(legacyRaw) as NWCConnection[];
+            if (!cancelled && legacy.length > 0) {
+              setConnections(legacy);
+              // Re-encrypt and remove legacy plaintext
+              const encrypted = await encryptData(key, JSON.stringify(legacy));
+              localStorage.setItem(NWC_STORAGE_KEY, encrypted);
+              localStorage.removeItem(NWC_LEGACY_KEY);
+              console.log('Migrated NWC connections to encrypted storage');
+            }
+          } catch {
+            // Invalid legacy data, ignore
+          }
+        }
+
+        if (!cancelled) setIsDecrypted(true);
+      } catch (err) {
+        console.error('Failed to derive storage key:', err);
+        if (!cancelled) setIsDecrypted(true); // Allow app to continue without stored connections
+      }
+    })();
+
+    return () => { cancelled = true; };
+  }, [user?.signer, isDecrypted]);
 
   // Add new connection
   const addConnection = async (uri: string, alias?: string): Promise<boolean> => {
@@ -98,6 +178,7 @@ export function useNWCInternal() {
 
       const newConnections = [...connections, connection];
       setConnections(newConnections);
+      await persistConnections(newConnections);
 
       if (connections.length === 0 || !activeConnection)
         setActiveConnection(parsed.connectionString);
@@ -122,9 +203,10 @@ export function useNWCInternal() {
   };
 
   // Remove connection
-  const removeConnection = (connectionString: string) => {
+  const removeConnection = async (connectionString: string) => {
     const filtered = connections.filter(c => c.connectionString !== connectionString);
     setConnections(filtered);
+    await persistConnections(filtered);
 
     if (activeConnection === connectionString) {
       const newActive = filtered.length > 0 ? filtered[0].connectionString : null;
