@@ -49,16 +49,7 @@ interface CaptureAntiCheat {
   geohash?: string;
 }
 
-// Serializers for Set and Map types in localStorage
-const setSerializer = {
-  serialize: (value: Set<string>) => JSON.stringify([...value]),
-  deserialize: (value: string) => new Set<string>(JSON.parse(value)),
-};
-
-const mapSerializer = {
-  serialize: (value: Map<string, string>) => JSON.stringify([...value.entries()]),
-  deserialize: (value: string) => new Map<string, string>(JSON.parse(value)),
-};
+import { setSerializer, mapSerializer } from '@/lib/serializers';
 
 // Component to display a player's join request with their profile
 function PlayerRequestCard({

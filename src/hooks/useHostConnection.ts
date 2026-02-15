@@ -32,11 +32,7 @@ import {
   type SessionHandshake,
 } from '@/lib/zeroTrustRelay';
 
-// Serializer for Set in localStorage
-const setSerializer = {
-  serialize: (value: Set<string>) => JSON.stringify([...value]),
-  deserialize: (value: string) => new Set<string>(JSON.parse(value)),
-};
+import { setSerializer } from '@/lib/serializers';
 
 interface PlayerConnection {
   pubkey: string;
