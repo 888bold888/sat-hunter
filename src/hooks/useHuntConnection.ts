@@ -240,6 +240,9 @@ export function useHuntConnection(): UseHuntConnectionResult {
       return data;
     } catch (err) {
       console.error('[HuntConnection] Zero-trust failed:', err);
+      if (err instanceof AggregateError) {
+        console.error('[HuntConnection] Relay errors:', err.errors.map((e: Error) => e.message));
+      }
       return null;
     }
   };

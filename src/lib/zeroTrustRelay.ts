@@ -132,15 +132,6 @@ function decrypt(key: Uint8Array, data: Uint8Array): Uint8Array {
   return cipher.decrypt(ciphertext);
 }
 
-/**
- * Randomize timestamp into the past to prevent timing correlation
- * Only goes backward since relays reject future timestamps
- */
-function randomizeTimestamp(): number {
-  const now = Math.floor(Date.now() / 1000);
-  const offset = Math.floor(Math.random() * 3600); // 0-60 minutes into the past
-  return now - offset;
-}
 
 /**
  * Session state for zero-trust communication
@@ -289,10 +280,10 @@ export function buildZeroTrustMessage(
   // 6. Encrypt inner ciphertext for outer envelope
   const outerCiphertext = encrypt(outerSharedSecret, innerCiphertext);
 
-  // 7. Build outer event with randomized timestamp
+  // 7. Build outer event
   const outerEvent = finalizeEvent({
     kind: ZERO_TRUST_OUTER_KIND,
-    created_at: randomizeTimestamp(),
+    created_at: Math.floor(Date.now() / 1000),
     content: bytesToBase64(outerCiphertext),
     tags: [['p', session.theirThrowawayPubkey]],
   }, outerThrowawayPrivkey) as NostrEvent;
