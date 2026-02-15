@@ -31,9 +31,10 @@ export function generateId(): string {
 // Generate a short share code for joining hunts
 export function generateShareCode(): string {
   const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; // Removed confusable chars (0,O,1,I)
+  const randomValues = crypto.getRandomValues(new Uint8Array(6));
   let code = '';
   for (let i = 0; i < 6; i++) {
-    code += chars[Math.floor(Math.random() * chars.length)];
+    code += chars[randomValues[i] % chars.length];
   }
   return code;
 }
