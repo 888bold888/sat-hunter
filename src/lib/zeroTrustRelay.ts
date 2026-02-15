@@ -19,10 +19,10 @@ import { sha256 } from '@noble/hashes/sha2.js';
 import { generateSecretKey, getPublicKey, finalizeEvent } from 'nostr-tools';
 import type { NostrEvent } from '@nostrify/nostrify';
 
-// Event kinds for zero-trust relay
-export const ZERO_TRUST_OUTER_KIND = 21111;
-export const ZERO_TRUST_INNER_KIND = 21112;
-export const ZERO_TRUST_HANDSHAKE_KIND = 21113;
+// Event kinds for zero-trust relay (regular range so relays store them for polling)
+export const ZERO_TRUST_OUTER_KIND = 3491;
+export const ZERO_TRUST_INNER_KIND = 3492;
+export const ZERO_TRUST_HANDSHAKE_KIND = 3493;
 
 // Utility functions
 function hexToBytes(hex: string): Uint8Array {
