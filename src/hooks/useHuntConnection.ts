@@ -194,7 +194,7 @@ export function useHuntConnection(): UseHuntConnectionResult {
           [
             {
               kinds: [ZERO_TRUST_HANDSHAKE_KIND],
-              '#h': [huntId],
+              '#s': [shareCode],
               limit: 1,
             },
           ],
