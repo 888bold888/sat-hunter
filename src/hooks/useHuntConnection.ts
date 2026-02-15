@@ -8,7 +8,7 @@
 import { useState, useCallback, useRef, useEffect } from 'react';
 import { useNostr } from '@nostrify/react';
 import { useCurrentUser } from './useCurrentUser';
-import { generateSecretKey, getPublicKey } from 'nostr-tools';
+import { generateSecretKey } from 'nostr-tools';
 import {
   P2P_ANSWER_KIND,
   createHostConnection,
@@ -18,14 +18,16 @@ import {
 } from '@/lib/p2pSignaling';
 import { signWithSessionKey } from '@/lib/sessionKeys';
 import {
-  createSession,
+  createSessionFromPSK,
   setTheirThrowaway,
   buildZeroTrustMessage,
   decryptZeroTrustMessage,
   destroySession,
   getThrowawayPubkey,
   ZERO_TRUST_OUTER_KIND,
+  ZERO_TRUST_HANDSHAKE_KIND,
   type ZeroTrustSession,
+  type SessionHandshake,
 } from '@/lib/zeroTrustRelay';
 
 type ConnectionMethod = 'p2p' | 'relay' | null;
@@ -177,29 +179,48 @@ export function useHuntConnection(): UseHuntConnectionResult {
   // Attempt zero-trust relay fallback
   const attemptZeroTrust = async (
     huntId: string,
-    hostPubkey: string,
+    shareCode: string,
     hostThrowaway?: string
   ): Promise<HuntLocationData | null> => {
     if (!nostr) return null;
 
     try {
+      // Query for host's handshake event to get their throwaway pubkey
+      let hostThrowawayPubkey = hostThrowaway;
+
+      if (!hostThrowawayPubkey) {
+        console.log('[HuntConnection] Querying for host handshake...');
+        const handshakeEvents = await nostr.query(
+          [
+            {
+              kinds: [ZERO_TRUST_HANDSHAKE_KIND],
+              '#h': [huntId],
+              limit: 1,
+            },
+          ],
+          { signal: AbortSignal.timeout(10000) }
+        );
+
+        if (handshakeEvents.length > 0) {
+          const handshake = JSON.parse(handshakeEvents[0].content) as SessionHandshake;
+          hostThrowawayPubkey = handshake.throwawayPubkey;
+          console.log('[HuntConnection] Found host handshake, throwaway:', hostThrowawayPubkey.slice(0, 8) + '...');
+        } else {
+          console.error('[HuntConnection] No host handshake found');
+          return null;
+        }
+      }
+
       // Generate session keypair
       const sessionPrivkey = generateSecretKey();
-      const _sessionPubkey = getPublicKey(sessionPrivkey); // Used internally by createSession
       sessionPrivkeyRef.current = sessionPrivkey;
 
-      // Create session
-      const session = createSession(huntId, sessionPrivkey, hostPubkey);
+      // Create session using PSK (share code) — same key the host derived
+      const session = createSessionFromPSK(huntId, sessionPrivkey, shareCode);
       sessionRef.current = session;
 
-      // If we have host's throwaway from QR, use it
-      // Otherwise, we need to get it from the hunt metadata or signaling
-      if (hostThrowaway) {
-        setTheirThrowaway(session, hostThrowaway);
-      } else {
-        // Use host's session pubkey as initial throwaway (not ideal, but works)
-        setTheirThrowaway(session, hostPubkey);
-      }
+      // Set host's throwaway pubkey from handshake
+      setTheirThrowaway(session, hostThrowawayPubkey);
 
       // Get our throwaway for host to respond to
       const ourThrowaway = getThrowawayPubkey(session);
@@ -264,7 +285,7 @@ export function useHuntConnection(): UseHuntConnectionResult {
       setState('relay-connecting');
       setMethod('relay');
 
-      const relayData = await attemptZeroTrust(huntId, hostPubkey, hostThrowaway);
+      const relayData = await attemptZeroTrust(huntId, shareCode, hostThrowaway);
 
       if (relayData) {
         console.log('[HuntConnection] Zero-trust relay succeeded!');

@@ -21,13 +21,14 @@ import {
 } from '@/lib/p2pSignaling';
 import { signWithSessionKey } from '@/lib/sessionKeys';
 import {
-  createSession,
+  createSessionFromPSK,
   setTheirThrowaway,
   buildZeroTrustMessage,
   decryptZeroTrustMessage,
   destroySession,
   getThrowawayPubkey,
   ZERO_TRUST_OUTER_KIND,
+  ZERO_TRUST_HANDSHAKE_KIND,
   type ZeroTrustSession,
   type SessionHandshake,
 } from '@/lib/zeroTrustRelay';
@@ -261,19 +262,19 @@ export function useHostConnection(
   );
 
   // Initialize zero-trust session
-  const initZeroTrust = useCallback(() => {
-    if (!hunt || !user) return;
+  const initZeroTrust = useCallback(async () => {
+    if (!hunt || !user || !nostr) return;
 
     // Generate session keypair
     const sessionPrivkey = generateSecretKey();
     const sessionPubkey = getPublicKey(sessionPrivkey);
     zeroTrustPrivkeyRef.current = sessionPrivkey;
 
-    // Create session (use our own pubkey as placeholder for "their" pubkey)
-    const session = createSession(hunt.id, sessionPrivkey, sessionPubkey);
+    // Create session using PSK (share code) so any player with the code derives the same session key
+    const session = createSessionFromPSK(hunt.id, sessionPrivkey, hunt.shareCode);
     zeroTrustSessionRef.current = session;
 
-    // Create handshake data for QR code
+    // Create handshake data
     const handshake: SessionHandshake = {
       sessionId: hunt.id,
       sessionPubkey: sessionPubkey,
@@ -282,10 +283,24 @@ export function useHostConnection(
     };
 
     setZeroTrustHandshake(handshake);
-  }, [hunt, user]);
+
+    // Publish handshake to Nostr so players can discover our throwaway pubkey
+    try {
+      const handshakeEvent = signWithSessionKey({
+        kind: ZERO_TRUST_HANDSHAKE_KIND,
+        created_at: Math.floor(Date.now() / 1000),
+        content: JSON.stringify(handshake),
+        tags: [['h', hunt.id], ['s', hunt.shareCode]],
+      });
+      await nostr.event(handshakeEvent);
+      console.log('[Host ZeroTrust] Published handshake for hunt', hunt.shareCode);
+    } catch (err) {
+      console.error('[Host ZeroTrust] Failed to publish handshake:', err);
+    }
+  }, [hunt, user, nostr]);
 
   // Start hosting
-  const startHosting = useCallback(() => {
+  const startHosting = useCallback(async () => {
     if (!hunt || !user) {
       setError('No hunt or user available');
       return;
@@ -302,7 +317,7 @@ export function useHostConnection(
       };
 
       // Initialize zero-trust
-      initZeroTrust();
+      await initZeroTrust();
 
       setIsActive(true);
     } catch (err) {

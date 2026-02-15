@@ -22,6 +22,7 @@ import type { NostrEvent } from '@nostrify/nostrify';
 // Event kinds for zero-trust relay
 export const ZERO_TRUST_OUTER_KIND = 21111;
 export const ZERO_TRUST_INNER_KIND = 21112;
+export const ZERO_TRUST_HANDSHAKE_KIND = 21113;
 
 // Utility functions
 function hexToBytes(hex: string): Uint8Array {
@@ -185,6 +186,39 @@ export function createSession(
     currentThrowawayPrivkey: throwawayPrivkey,
     currentThrowawayPubkey: throwawayPubkey,
     theirThrowawayPubkey: '', // Will be set when we receive their first message or from QR
+    sequenceNumber: 0,
+    lastReceivedSeq: -1,
+  };
+}
+
+/**
+ * Create a new zero-trust session using a Pre-Shared Key (PSK)
+ * Used for one-to-many scenarios where both sides know a shared secret
+ * (e.g., the hunt share code) but can't do ECDH key exchange upfront.
+ */
+export function createSessionFromPSK(
+  sessionId: string,
+  myPrivkey: Uint8Array,
+  preSharedKey: string
+): ZeroTrustSession {
+  const myPubkey = getPublicKey(myPrivkey);
+
+  // Derive session key from PSK instead of ECDH
+  const sharedSecret = sha256(stringToBytes(preSharedKey));
+  const sessionKey = deriveSessionKey(sharedSecret, sessionId);
+
+  // Generate first throwaway keypair
+  const throwawayPrivkey = generateSecretKey();
+  const throwawayPubkey = getPublicKey(throwawayPrivkey);
+
+  return {
+    sessionId,
+    sessionKey,
+    mySessionPubkey: myPubkey,
+    theirSessionPubkey: '', // Not used in PSK mode
+    currentThrowawayPrivkey: throwawayPrivkey,
+    currentThrowawayPubkey: throwawayPubkey,
+    theirThrowawayPubkey: '', // Will be set from handshake or first message
     sequenceNumber: 0,
     lastReceivedSeq: -1,
   };
