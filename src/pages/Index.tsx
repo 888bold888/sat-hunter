@@ -419,6 +419,8 @@ const Index = () => {
             <span>Built on Nostr</span>
             <span>•</span>
             <span>Powered by Lightning</span>
+            <span>•</span>
+            <span>Est. 928478</span>
           </div>
           <div className="mt-6 text-xl animate-float">🐸⚡🔥</div>
         </div>
