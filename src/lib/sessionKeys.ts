@@ -9,6 +9,7 @@
  */
 
 import { generateSecretKey, getPublicKey, finalizeEvent } from 'nostr-tools';
+import { v2 as nip44 } from 'nostr-tools/nip44';
 import type { NostrEvent } from '@nostrify/nostrify';
 
 interface P2PEventTemplate {
@@ -97,4 +98,13 @@ export function clearSessionKey(): void {
  */
 export function getSessionPubkey(): string {
   return getSessionKey().pubkey;
+}
+
+/**
+ * Encrypt plaintext with session key for a specific recipient using NIP-44
+ */
+export function nip44EncryptWithSessionKey(recipientPubkey: string, plaintext: string): string {
+  const sessionKey = getSessionKey();
+  const conversationKey = nip44.utils.getConversationKey(sessionKey.secretKey, recipientPubkey);
+  return nip44.encrypt(plaintext, conversationKey);
 }

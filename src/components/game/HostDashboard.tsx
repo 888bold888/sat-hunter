@@ -33,6 +33,7 @@ import {
 } from 'lucide-react';
 import QRCode from 'qrcode';
 import { useHuntSync } from '@/hooks/useHuntSync';
+import { useCurrentUser } from '@/hooks/useCurrentUser';
 import { usePayPlayer } from '@/hooks/usePayPlayer';
 import { useToast } from '@/hooks/useToast';
 import { ANTI_CHEAT_CONFIG } from '@/lib/antiCheat';
@@ -308,6 +309,7 @@ function PlayerMonitorCard({
 }
 
 export function HostDashboard() {
+  const { user } = useCurrentUser();
   const { state, isHost, addParticipant } = useGame();
   const { activeHunt, playerLocation } = state;
   const [timeRemaining, setTimeRemaining] = useState('');
@@ -585,12 +587,12 @@ export function HostDashboard() {
     });
   }, [leftPlayers, setLeftPlayers, toast]);
 
-  // Subscribe to hunt updates via Nostr
+  // Subscribe to hunt updates via Nostr (host signer decrypts encrypted capture events)
   const { refresh: refreshSync } = useHuntSync(activeHunt, {
     onMonsterCaptured,
     onPlayerJoined,
     onPlayerLeft,
-  });
+  }, user?.signer);
 
   // Update time remaining
   useEffect(() => {
