@@ -238,7 +238,8 @@ export function setTheirThrowaway(
 export function buildZeroTrustMessage(
   session: ZeroTrustSession,
   payload: object,
-  includeNextThrowaway: boolean = true
+  includeNextThrowaway: boolean = true,
+  rotateThrowaway: boolean = true
 ): { event: NostrEvent; nextThrowaway: string } {
   // Generate next throwaway for key rotation
   const nextThrowawayPrivkey = generateSecretKey();
@@ -296,10 +297,14 @@ export function buildZeroTrustMessage(
   // 8. Increment sequence number
   session.sequenceNumber++;
 
-  // 9. Rotate throwaway keys
-  secureDelete(session.currentThrowawayPrivkey);
-  session.currentThrowawayPrivkey = nextThrowawayPrivkey;
-  session.currentThrowawayPubkey = nextThrowawayPubkey;
+  // 9. Rotate throwaway keys (skip in 1-to-many scenarios like host serving players)
+  if (rotateThrowaway) {
+    secureDelete(session.currentThrowawayPrivkey);
+    session.currentThrowawayPrivkey = nextThrowawayPrivkey;
+    session.currentThrowawayPubkey = nextThrowawayPubkey;
+  } else {
+    secureDelete(nextThrowawayPrivkey);
+  }
 
   // 10. Securely delete temporary keys
   secureDelete(messageKey);
