@@ -294,10 +294,10 @@ export function useNWCInternal() {
       const errorMessage = error instanceof Error ? error.message : 'Unknown error';
       console.warn('NWC payment error:', errorMessage);
 
-      // "Payment is still pending" means LND accepted it and is routing — treat as success
+      // "Payment is still pending" means LND accepted it and is routing — not failed, not confirmed
       if (errorMessage.includes('pending')) {
-        console.log('Payment is pending on the node — treating as in-flight success');
-        return { preimage: '' };
+        console.log('Payment is pending on the node — still routing');
+        throw new Error('PAYMENT_PENDING');
       }
 
       // Map known errors to user-friendly messages

@@ -9,6 +9,7 @@ import { bytesToHex, hexToBytes } from '@noble/hashes/utils.js';
 
 interface PayPlayerResult {
   success: boolean;
+  pending?: boolean;
   preimage?: string;
   error?: string;
 }
@@ -142,9 +143,15 @@ export function usePayPlayer() {
         preimage: paymentResult.preimage,
       };
     } catch (error) {
-      console.error('Payment error:', error);
       const errorMessage = error instanceof Error ? error.message : 'Unknown payment error';
 
+      // Pending means LND is still routing — not a failure
+      if (errorMessage === 'PAYMENT_PENDING') {
+        console.log('Payment pending — LND is still routing');
+        return { success: false, pending: true };
+      }
+
+      console.error('Payment error:', error);
       return {
         success: false,
         error: errorMessage,
