@@ -204,6 +204,11 @@ export function useNWCInternal() {
 
   // Remove connection
   const removeConnection = async (connectionString: string) => {
+    // Clean up persistent client if it matches
+    if (clientRef.current?.connectionString === connectionString) {
+      clientRef.current = null;
+    }
+
     const filtered = connections.filter(c => c.connectionString !== connectionString);
     setConnections(filtered);
     await persistConnections(filtered);
@@ -242,6 +247,20 @@ export function useNWCInternal() {
     return null;
   }, [activeConnection, connections]);
 
+  // Persistent NWC client instance (reused across payments)
+  const clientRef = useRef<{ connectionString: string; client: LN } | null>(null);
+
+  const getOrCreateClient = useCallback((connectionString: string): LN => {
+    // Reuse existing client if connection string matches
+    if (clientRef.current && clientRef.current.connectionString === connectionString) {
+      return clientRef.current.client;
+    }
+
+    const client = new LN(connectionString);
+    clientRef.current = { connectionString, client };
+    return client;
+  }, []);
+
   // Send payment using the SDK
   const sendPayment = useCallback(async (
     connection: NWCConnection,
@@ -253,7 +272,7 @@ export function useNWCInternal() {
 
     let client: LN;
     try {
-      client = new LN(connection.connectionString);
+      client = getOrCreateClient(connection.connectionString);
     } catch (error) {
       console.error('Failed to create NWC client:', error);
       throw new Error(`Failed to create NWC client: ${error instanceof Error ? error.message : 'Unknown error'}`);
@@ -319,7 +338,7 @@ export function useNWCInternal() {
 
       throw new Error('Payment failed with unknown error');
     }
-  }, []);
+  }, [getOrCreateClient]);
 
   return {
     connections,
