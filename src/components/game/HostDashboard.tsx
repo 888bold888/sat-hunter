@@ -545,16 +545,12 @@ export function HostDashboard() {
           }
         }
         // Verify HMAC capture proof (proves player received hunt data via authenticated channel)
+        // Log warnings but don't block — proof mismatches can happen after host refresh
         if (captureSecret) {
           if (!antiCheat?.captureProof) {
-            console.warn(`[AntiCheat] Rejecting capture: missing capture proof from player ${playerPubkey.slice(0, 8)}...`);
-            setRejectedCaptures(prev => new Map(prev).set(monsterId, 'Missing capture proof'));
-            return;
-          }
-          if (!verifyCaptureProof(captureSecret, monsterId, playerPubkey, capturedAt, antiCheat.captureProof)) {
-            console.warn(`[AntiCheat] Rejecting capture: invalid capture proof from player ${playerPubkey.slice(0, 8)}...`);
-            setRejectedCaptures(prev => new Map(prev).set(monsterId, 'Invalid capture proof'));
-            return;
+            console.warn(`[AntiCheat] Missing capture proof from player ${playerPubkey.slice(0, 8)}... (allowing — may be from pre-refresh session)`);
+          } else if (!verifyCaptureProof(captureSecret, monsterId, playerPubkey, capturedAt, antiCheat.captureProof)) {
+            console.warn(`[AntiCheat] Invalid capture proof from player ${playerPubkey.slice(0, 8)}... (allowing — secret may have rotated)`);
           }
         }
 

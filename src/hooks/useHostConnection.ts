@@ -83,8 +83,17 @@ export function useHostConnection(
 
   // Hunt data to send
   const huntDataRef = useRef<HuntLocationData | null>(null);
-  // Capture secret for HMAC-based capture proof verification
-  const captureSecretRef = useRef<string | null>(null);
+
+  // Persist capture secret so it survives page refreshes
+  const captureSecretKey = useMemo(
+    () => `sathunter:capture-secret:${hunt?.id ?? 'no-hunt'}`,
+    [hunt?.id]
+  );
+  const [persistedCaptureSecret, setPersistedCaptureSecret] = useLocalStorage<string | null>(
+    captureSecretKey,
+    null
+  );
+  const captureSecretRef = useRef<string | null>(persistedCaptureSecret);
 
   // Persist processed offer IDs
   const processedOffersKey = useMemo(
@@ -312,8 +321,14 @@ export function useHostConnection(
     try {
       setError(null);
 
-      // Generate capture secret for HMAC-based capture proof
-      captureSecretRef.current = generateCaptureSecret();
+      // Reuse persisted capture secret or generate a new one
+      // (must survive page refreshes so player proofs stay valid)
+      if (persistedCaptureSecret) {
+        captureSecretRef.current = persistedCaptureSecret;
+      } else {
+        captureSecretRef.current = generateCaptureSecret();
+        setPersistedCaptureSecret(captureSecretRef.current);
+      }
 
       // Prepare hunt data (includes captureSecret for player verification)
       huntDataRef.current = {
@@ -331,7 +346,7 @@ export function useHostConnection(
       console.error('[Host] Failed to start hosting:', err);
       setError(err instanceof Error ? err.message : 'Failed to start hosting');
     }
-  }, [hunt, user, initZeroTrust]);
+  }, [hunt, user, initZeroTrust, persistedCaptureSecret, setPersistedCaptureSecret]);
 
   // Stop hosting
   const stopHosting = useCallback(() => {

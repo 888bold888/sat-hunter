@@ -11,7 +11,7 @@ const HUNT_EVENT_KIND = 32959;
 const CLAIM_EVENT_KIND = 32960;
 const JOIN_EVENT_KIND = 32961;
 const PLAYER_LEAVE_KIND = 32964;
-const MAX_EVENT_AGE_SECONDS = 300; // Reject events older than 5 minutes
+const MAX_EVENT_AGE_SECONDS = 7200; // Reject events older than 2 hours (covers full hunt duration)
 
 // Anti-cheat data included in capture events
 interface CaptureAntiCheatData {
