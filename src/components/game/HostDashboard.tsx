@@ -33,6 +33,7 @@ import {
 } from 'lucide-react';
 import QRCode from 'qrcode';
 import { useHuntSync } from '@/hooks/useHuntSync';
+import { useCurrentUser } from '@/hooks/useCurrentUser';
 import { usePayPlayer } from '@/hooks/usePayPlayer';
 import { useToast } from '@/hooks/useToast';
 import { ANTI_CHEAT_CONFIG } from '@/lib/antiCheat';
@@ -308,6 +309,7 @@ function PlayerMonitorCard({
 }
 
 export function HostDashboard() {
+  const { user } = useCurrentUser();
   const { state, isHost, addParticipant } = useGame();
   const { activeHunt, playerLocation } = state;
   const [timeRemaining, setTimeRemaining] = useState('');
@@ -335,6 +337,7 @@ export function HostDashboard() {
     setSerializer
   );
   const [payingCaptures, setPayingCaptures] = useState<Set<string>>(new Set());
+  const [pendingCaptures, setPendingCaptures] = useState<Set<string>>(new Set());
   const [rejectedCaptures, setRejectedCaptures] = useLocalStorage<Map<string, string>>(
     rejectedCapturesKey,
     new Map(),
@@ -438,8 +441,8 @@ export function HostDashboard() {
     monsterName: string,
     antiCheat?: CaptureAntiCheat
   ) => {
-    // Skip if already paid, paying, or rejected
-    if (paidCaptures.has(monsterId) || payingCaptures.has(monsterId) || rejectedCaptures.has(monsterId)) {
+    // Skip if already paid, paying, pending, or rejected
+    if (paidCaptures.has(monsterId) || payingCaptures.has(monsterId) || pendingCaptures.has(monsterId) || rejectedCaptures.has(monsterId)) {
       return;
     }
 
@@ -473,6 +476,12 @@ export function HostDashboard() {
         title: `Payment sent! ⚡`,
         description: `${satAmount} sats sent for capturing ${monsterName}`,
       });
+    } else if (result.pending) {
+      setPendingCaptures(prev => new Set(prev).add(monsterId));
+      toast({
+        title: 'Payment routing...',
+        description: `${satAmount} sats for ${monsterName} is being routed. Check your wallet.`,
+      });
     } else {
       toast({
         title: 'Payment failed',
@@ -486,7 +495,7 @@ export function HostDashboard() {
       next.delete(monsterId);
       return next;
     });
-  }, [payPlayer, paidCaptures, payingCaptures, rejectedCaptures, toast, setPaidCaptures, setRejectedCaptures]);
+  }, [payPlayer, paidCaptures, payingCaptures, pendingCaptures, rejectedCaptures, toast, setPaidCaptures, setRejectedCaptures]);
 
   // Callbacks for hunt sync
   const onMonsterCaptured = useCallback((
@@ -585,12 +594,12 @@ export function HostDashboard() {
     });
   }, [leftPlayers, setLeftPlayers, toast]);
 
-  // Subscribe to hunt updates via Nostr
+  // Subscribe to hunt updates via Nostr (host signer decrypts encrypted capture events)
   const { refresh: refreshSync } = useHuntSync(activeHunt, {
     onMonsterCaptured,
     onPlayerJoined,
     onPlayerLeft,
-  });
+  }, user?.signer);
 
   // Update time remaining
   useEffect(() => {
@@ -693,14 +702,14 @@ export function HostDashboard() {
             <p className="text-xs text-muted-foreground">Players</p>
           </CardContent>
         </Card>
-        <Card className={`border-accent/30 ${payingCaptures.size > 0 ? 'bg-yellow-500/10' : paidCaptures.size > 0 ? 'bg-green-500/10' : 'bg-muted/30'}`}>
+        <Card className={`border-accent/30 ${payingCaptures.size > 0 ? 'bg-yellow-500/10' : pendingCaptures.size > 0 ? 'bg-amber-500/10' : paidCaptures.size > 0 ? 'bg-green-500/10' : 'bg-muted/30'}`}>
           <CardContent className="p-3 text-center">
-            <Check className={`w-5 h-5 mx-auto mb-1 ${payingCaptures.size > 0 ? 'text-yellow-500 animate-pulse' : 'text-green-500'}`} />
+            <Check className={`w-5 h-5 mx-auto mb-1 ${payingCaptures.size > 0 ? 'text-yellow-500 animate-pulse' : pendingCaptures.size > 0 ? 'text-amber-500' : 'text-green-500'}`} />
             <p className="font-display text-xl font-bold">
               {paidCaptures.size}/{capturedCount}
             </p>
             <p className="text-xs text-muted-foreground">
-              {payingCaptures.size > 0 ? 'Paying...' : 'Paid'}
+              {payingCaptures.size > 0 ? 'Paying...' : pendingCaptures.size > 0 ? `${pendingCaptures.size} routing...` : 'Paid'}
             </p>
           </CardContent>
         </Card>

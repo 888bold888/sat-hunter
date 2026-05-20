@@ -204,6 +204,11 @@ export function useNWCInternal() {
 
   // Remove connection
   const removeConnection = async (connectionString: string) => {
+    // Clean up persistent client if it matches
+    if (clientRef.current?.connectionString === connectionString) {
+      clientRef.current = null;
+    }
+
     const filtered = connections.filter(c => c.connectionString !== connectionString);
     setConnections(filtered);
     await persistConnections(filtered);
@@ -242,6 +247,20 @@ export function useNWCInternal() {
     return null;
   }, [activeConnection, connections]);
 
+  // Persistent NWC client instance (reused across payments)
+  const clientRef = useRef<{ connectionString: string; client: LN } | null>(null);
+
+  const getOrCreateClient = useCallback((connectionString: string): LN => {
+    // Reuse existing client if connection string matches
+    if (clientRef.current && clientRef.current.connectionString === connectionString) {
+      return clientRef.current.client;
+    }
+
+    const client = new LN(connectionString);
+    clientRef.current = { connectionString, client };
+    return client;
+  }, []);
+
   // Send payment using the SDK
   const sendPayment = useCallback(async (
     connection: NWCConnection,
@@ -253,73 +272,48 @@ export function useNWCInternal() {
 
     let client: LN;
     try {
-      client = new LN(connection.connectionString);
+      client = getOrCreateClient(connection.connectionString);
     } catch (error) {
       console.error('Failed to create NWC client:', error);
       throw new Error(`Failed to create NWC client: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
 
-    // Try payment with retries (NWC relays can be slow/flaky)
-    const maxRetries = 2;
-    let lastError: Error | null = null;
+    // Single attempt with generous timeout (Lightning payments can take time to route)
+    const timeoutMs = 60000;
+    let timeoutId: NodeJS.Timeout | undefined;
+    const timeoutPromise = new Promise<never>((_, reject) => {
+      timeoutId = setTimeout(() => reject(new Error(`Payment timeout after ${timeoutMs / 1000} seconds`)), timeoutMs);
+    });
 
-    for (let attempt = 1; attempt <= maxRetries; attempt++) {
-      try {
-        let timeoutId: NodeJS.Timeout | undefined;
-        const timeoutMs = attempt === 1 ? 30000 : 45000; // 30s first try, 45s retry
-        const timeoutPromise = new Promise<never>((_, reject) => {
-          timeoutId = setTimeout(() => reject(new Error(`Payment timeout after ${timeoutMs / 1000} seconds`)), timeoutMs);
-        });
-
-        const paymentPromise = client.pay(invoice);
-
-        try {
-          const response = await Promise.race([paymentPromise, timeoutPromise]) as { preimage: string };
-          if (timeoutId) clearTimeout(timeoutId);
-          return response;
-        } catch (error) {
-          if (timeoutId) clearTimeout(timeoutId);
-          throw error;
-        }
-      } catch (error) {
-        lastError = error instanceof Error ? error : new Error('Unknown error');
-        console.warn(`NWC payment attempt ${attempt}/${maxRetries} failed:`, lastError.message);
-
-        // Don't retry on non-timeout errors (insufficient funds, invalid invoice, etc.)
-        if (!lastError.message.includes('timeout')) {
-          break;
-        }
-
-        // Wait before retry
-        if (attempt < maxRetries) {
-          await new Promise(resolve => setTimeout(resolve, 2000));
-        }
-      }
-    }
-
-    // All retries failed, throw the last error
     try {
-      throw lastError || new Error('Payment failed');
+      const response = await Promise.race([client.pay(invoice), timeoutPromise]) as { preimage: string };
+      if (timeoutId) clearTimeout(timeoutId);
+      return response;
     } catch (error) {
-      console.error('NWC payment failed:', error);
+      if (timeoutId) clearTimeout(timeoutId);
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      console.warn('NWC payment error:', errorMessage);
 
-      if (error instanceof Error) {
-        if (error.message.includes('timeout')) {
-          throw new Error('Payment timed out. Please try again.');
-        } else if (error.message.includes('insufficient')) {
-          throw new Error('Insufficient balance in connected wallet.');
-        } else if (error.message.includes('invalid')) {
-          throw new Error('Invalid invoice or connection. Please check your wallet.');
-        } else if (error.message.includes('13194') || error.message.includes('info event')) {
-          throw new Error('Wallet connection expired or relay unavailable. Please reconnect your NWC wallet in settings.');
-        } else {
-          throw new Error(`Payment failed: ${error.message}`);
-        }
+      // "Payment is still pending" means LND accepted it and is routing — not failed, not confirmed
+      if (errorMessage.includes('pending')) {
+        console.log('Payment is pending on the node — still routing');
+        throw new Error('PAYMENT_PENDING');
       }
 
-      throw new Error('Payment failed with unknown error');
+      // Map known errors to user-friendly messages
+      if (errorMessage.includes('timeout')) {
+        throw new Error('Payment timed out after 60s. The payment may still complete — check your wallet.');
+      } else if (errorMessage.includes('insufficient')) {
+        throw new Error('Insufficient balance in connected wallet.');
+      } else if (errorMessage.includes('invalid')) {
+        throw new Error('Invalid invoice or connection. Please check your wallet.');
+      } else if (errorMessage.includes('13194') || errorMessage.includes('info event')) {
+        throw new Error('Wallet connection expired or relay unavailable. Please reconnect your NWC wallet in settings.');
+      } else {
+        throw new Error(`Payment failed: ${errorMessage}`);
+      }
     }
-  }, []);
+  }, [getOrCreateClient]);
 
   return {
     connections,

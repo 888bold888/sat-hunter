@@ -1,6 +1,9 @@
-import { useEffect, useCallback, useRef } from 'react';
+import { useEffect, useCallback, useRef, useMemo } from 'react';
 import { useNostr } from '@nostrify/react';
 import { verifyEvent } from 'nostr-tools';
+import { sha256 } from '@noble/hashes/sha2.js';
+import { bytesToHex } from '@noble/hashes/utils.js';
+import type { NostrSigner } from '@nostrify/nostrify';
 import type { HuntEvent } from '@/lib/gameTypes';
 import { useCurrentUser } from './useCurrentUser';
 
@@ -32,6 +35,7 @@ interface HuntSyncCallbacks {
 }
 
 interface ClaimEventContent {
+  playerPubkey?: string;
   monsterId: string;
   monsterName: string;
   satAmount: number;
@@ -47,25 +51,38 @@ interface ClaimEventContent {
 
 export function useHuntSync(
   hunt: HuntEvent | null,
-  callbacks: HuntSyncCallbacks
+  callbacks: HuntSyncCallbacks,
+  hostSigner?: NostrSigner
 ) {
   const { nostr } = useNostr();
   const processedEventsRef = useRef<Set<string>>(new Set());
   const isPollingRef = useRef(false);
 
+  // Blinded hunt reference: SHA256(shareCode) — only host/players can compute
+  const huntBlind = useMemo(
+    () => hunt ? bytesToHex(sha256(new TextEncoder().encode(hunt.shareCode))) : null,
+    [hunt]
+  );
+
   const fetchCaptureEvents = useCallback(async () => {
-    if (!hunt || isPollingRef.current) return;
+    if (!hunt || !huntBlind || isPollingRef.current) return;
 
     isPollingRef.current = true;
 
     try {
-      // Query for capture events for this hunt
+      // Query capture events by blinded hunt tag (no hunt ID exposed)
+      // Also query by legacy '#e' tag for backwards compat with unencrypted events
       const events = await nostr.query(
         [
           {
             kinds: [CLAIM_EVENT_KIND],
+            '#x': [huntBlind],
+            since: Math.floor((hunt.startTime || Date.now() - 3600000) / 1000),
+          },
+          {
+            kinds: [CLAIM_EVENT_KIND],
             '#e': [hunt.id],
-            since: Math.floor((hunt.startTime || Date.now() - 3600000) / 1000), // Since hunt start
+            since: Math.floor((hunt.startTime || Date.now() - 3600000) / 1000),
           },
         ],
         { signal: AbortSignal.timeout(10000) }
@@ -90,8 +107,27 @@ export function useHuntSync(
         }
 
         try {
-          const content: ClaimEventContent = JSON.parse(event.content);
-          const playerPubkey = event.pubkey;
+          // Try to decrypt content if host signer is available (encrypted capture events)
+          let contentStr = event.content;
+          let decrypted = false;
+          if (hostSigner?.nip44) {
+            try {
+              contentStr = await hostSigner.nip44.decrypt(event.pubkey, event.content);
+              decrypted = true;
+            } catch {
+              // Fallback: try parsing as plain JSON (backwards compat with unencrypted events)
+            }
+          }
+
+          // Skip encrypted events we can't decrypt (e.g. player seeing their own capture)
+          if (!decrypted && !contentStr.startsWith('{')) {
+            continue;
+          }
+
+          const content: ClaimEventContent = JSON.parse(contentStr);
+          // Use playerPubkey from decrypted content (encrypted events use session keys)
+          // Fall back to event.pubkey for backwards compat with unencrypted events
+          const playerPubkey = content.playerPubkey || event.pubkey;
 
           // Extract anti-cheat data from capture event
           const antiCheat: CaptureAntiCheatData | undefined =
@@ -188,7 +224,7 @@ export function useHuntSync(
     } finally {
       isPollingRef.current = false;
     }
-  }, [hunt, nostr, callbacks]);
+  }, [hunt, huntBlind, nostr, callbacks, hostSigner]);
 
   // Poll for updates every 5 seconds
   useEffect(() => {

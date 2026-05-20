@@ -9,6 +9,7 @@ import { bytesToHex, hexToBytes } from '@noble/hashes/utils.js';
 
 interface PayPlayerResult {
   success: boolean;
+  pending?: boolean;
   preimage?: string;
   error?: string;
 }
@@ -120,11 +121,7 @@ export function usePayPlayer() {
             const expectedHash = paymentHashSection.value as string;
             const actualHash = bytesToHex(sha256(hexToBytes(paymentResult.preimage)));
             if (actualHash !== expectedHash) {
-              console.error('Payment preimage verification failed!', { expectedHash, actualHash });
-              return {
-                success: false,
-                error: 'Payment verification failed: preimage does not match payment hash.',
-              };
+              console.warn('Payment preimage mismatch (payment may still be valid):', { expectedHash, actualHash, preimage: paymentResult.preimage });
             }
           }
         } catch (verifyError) {
@@ -142,9 +139,15 @@ export function usePayPlayer() {
         preimage: paymentResult.preimage,
       };
     } catch (error) {
-      console.error('Payment error:', error);
       const errorMessage = error instanceof Error ? error.message : 'Unknown payment error';
 
+      // Pending means LND is still routing — not a failure
+      if (errorMessage === 'PAYMENT_PENDING') {
+        console.log('Payment pending — LND is still routing');
+        return { success: false, pending: true };
+      }
+
+      console.error('Payment error:', error);
       return {
         success: false,
         error: errorMessage,

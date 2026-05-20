@@ -43,6 +43,7 @@ export function GameMap({ selectedMonster, selectedStop, onSelectMonster, onSele
           huntShareCode: activeHunt.shareCode,
           monster,
           playerPubkey: user.pubkey,
+          hostPubkey: activeHunt.hostPubkey,
           // Anti-cheat data
           playerLocation: playerLocation ?? undefined,
           trustScore: lastIntegrityCheck?.trustScore.composite,
