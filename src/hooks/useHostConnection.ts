@@ -241,11 +241,12 @@ export function useHostConnection(
         // Player's next throwaway was already set by decryptZeroTrustMessage
         // from the next_throwaway tag in the inner event. Don't override it.
 
-        // Send hunt data
+        // Send hunt data (don't rotate throwaway — host must keep receiving on same key for other players)
         const { event } = buildZeroTrustMessage(
           zeroTrustSessionRef.current,
           huntDataRef.current!,
-          false
+          false, // includeNextThrowaway
+          false  // rotateThrowaway — 1-to-many scenario
         );
 
         sentEventIdsRef.current.add(event.id);
