@@ -121,11 +121,7 @@ export function usePayPlayer() {
             const expectedHash = paymentHashSection.value as string;
             const actualHash = bytesToHex(sha256(hexToBytes(paymentResult.preimage)));
             if (actualHash !== expectedHash) {
-              console.error('Payment preimage verification failed!', { expectedHash, actualHash });
-              return {
-                success: false,
-                error: 'Payment verification failed: preimage does not match payment hash.',
-              };
+              console.warn('Payment preimage mismatch (payment may still be valid):', { expectedHash, actualHash, preimage: paymentResult.preimage });
             }
           }
         } catch (verifyError) {

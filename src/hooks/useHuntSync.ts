@@ -109,12 +109,19 @@ export function useHuntSync(
         try {
           // Try to decrypt content if host signer is available (encrypted capture events)
           let contentStr = event.content;
+          let decrypted = false;
           if (hostSigner?.nip44) {
             try {
               contentStr = await hostSigner.nip44.decrypt(event.pubkey, event.content);
+              decrypted = true;
             } catch {
               // Fallback: try parsing as plain JSON (backwards compat with unencrypted events)
             }
+          }
+
+          // Skip encrypted events we can't decrypt (e.g. player seeing their own capture)
+          if (!decrypted && !contentStr.startsWith('{')) {
+            continue;
           }
 
           const content: ClaimEventContent = JSON.parse(contentStr);
