@@ -344,14 +344,17 @@ export function decryptZeroTrustMessage(
     } | null = null;
     let successSeq = -1;
 
-    // Try sequence numbers around what we expect
+    // Try sequence numbers around what we expect.
+    // Wide window for first contact (1-to-many: host seq may be high when player first connects).
+    // Narrow window for established sessions (just handles reordering).
     const expectedSeq = session.lastReceivedSeq + 1;
-    const seqsToTry = [
-      expectedSeq,
-      expectedSeq + 1,
-      expectedSeq + 2,
-      expectedSeq - 1, // In case of reordering
-    ].filter(s => s >= 0);
+    const maxLookahead = session.lastReceivedSeq < 0 ? 50 : 5;
+    const seqsToTry: number[] = [];
+    for (let i = 0; i <= maxLookahead; i++) {
+      seqsToTry.push(expectedSeq + i);
+    }
+    if (expectedSeq > 0) seqsToTry.push(expectedSeq - 1);
+    if (expectedSeq > 1) seqsToTry.push(expectedSeq - 2);
 
     for (const seq of seqsToTry) {
       try {

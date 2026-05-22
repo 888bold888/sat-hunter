@@ -1,6 +1,11 @@
 import '@testing-library/jest-dom';
 import { vi } from 'vitest';
 
+// Skip DOM mocks when running in Node environment (pure crypto/logic tests)
+if (typeof window === 'undefined') {
+  // Nothing to mock — these are pure function tests
+} else {
+
 // Mock window.matchMedia
 Object.defineProperty(window, 'matchMedia', {
   writable: true,
@@ -38,3 +43,5 @@ global.ResizeObserver = vi.fn().mockImplementation((_callback) => ({
   unobserve: vi.fn(),
   disconnect: vi.fn(),
 }));
+
+} // end if (typeof window !== 'undefined')
