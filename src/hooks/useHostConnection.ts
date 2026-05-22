@@ -80,6 +80,7 @@ export function useHostConnection(
   const zeroTrustSessionRef = useRef<ZeroTrustSession | null>(null);
   const zeroTrustPrivkeyRef = useRef<Uint8Array | null>(null);
   const sentEventIdsRef = useRef<Set<string>>(new Set());
+  const helloQueueRef = useRef<Promise<void>>(Promise.resolve());
 
   // Hunt data to send
   const huntDataRef = useRef<HuntLocationData | null>(null);
@@ -437,7 +438,10 @@ export function useHostConnection(
                 typeof payload.huntId === 'string') {
               // Capture the player's next throwaway NOW before another hello overwrites it
               const playerNextThrowaway = result.senderNextThrowaway || (payload.throwaway as string);
-              handleZeroTrustHello(playerNextThrowaway, payload.huntId);
+              const huntId = payload.huntId as string;
+              helloQueueRef.current = helloQueueRef.current.then(() =>
+                handleZeroTrustHello(playerNextThrowaway, huntId)
+              );
             }
           }
         }
