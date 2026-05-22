@@ -239,16 +239,19 @@ export function useHostConnection(
   );
 
   // Handle incoming zero-trust hello message
+  // playerNextThrowaway is captured BEFORE this async call to avoid race conditions
   const handleZeroTrustHello = useCallback(
-    async (playerThrowaway: string, huntId: string) => {
+    async (playerNextThrowaway: string, huntId: string) => {
       if (!hunt || !nostr || !zeroTrustSessionRef.current) return;
       if (huntId !== hunt.id) return;
 
       console.log('[Host ZeroTrust] Received hello from player, sending hunt data...');
 
       try {
-        // Player's next throwaway was already set by decryptZeroTrustMessage
-        // from the next_throwaway tag in the inner event. Don't override it.
+        // Temporarily set theirThrowaway to this specific player's key
+        // (must be done right before buildZeroTrustMessage since it reads from session)
+        const savedTheirThrowaway = zeroTrustSessionRef.current.theirThrowawayPubkey;
+        zeroTrustSessionRef.current.theirThrowawayPubkey = playerNextThrowaway;
 
         // Send hunt data (don't rotate throwaway — host must keep receiving on same key for other players)
         const { event } = buildZeroTrustMessage(
@@ -257,6 +260,9 @@ export function useHostConnection(
           false, // includeNextThrowaway
           false  // rotateThrowaway — 1-to-many scenario
         );
+
+        // Restore previous throwaway so other concurrent handlers aren't affected
+        zeroTrustSessionRef.current.theirThrowawayPubkey = savedTheirThrowaway;
 
         sentEventIdsRef.current.add(event.id);
         await nostr.event(event);
@@ -429,7 +435,9 @@ export function useHostConnection(
             if (payload.type === 'player_hello' &&
                 typeof payload.throwaway === 'string' &&
                 typeof payload.huntId === 'string') {
-              handleZeroTrustHello(payload.throwaway, payload.huntId);
+              // Capture the player's next throwaway NOW before another hello overwrites it
+              const playerNextThrowaway = result.senderNextThrowaway || (payload.throwaway as string);
+              handleZeroTrustHello(playerNextThrowaway, payload.huntId);
             }
           }
         }
