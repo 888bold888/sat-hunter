@@ -134,6 +134,14 @@ export function hasMotionSensors(): boolean {
 function handleMotionEvent(event: DeviceMotionEvent): void {
   const now = Date.now();
 
+  // Auto-detect permission: if we're receiving events, permission is granted.
+  // Fixes GrapheneOS/Vanadium where requestMotionPermission() may never be called
+  // but the sensor works fine.
+  if (!permissionGranted) {
+    permissionGranted = true;
+    console.log('[Motion] Auto-detected permission from incoming events');
+  }
+
   // Throttle samples to reduce memory usage
   if (now - lastSampleTime < MOTION_CONFIG.SAMPLE_INTERVAL_MS) {
     return;

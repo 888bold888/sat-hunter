@@ -35,7 +35,7 @@ export const ANTI_CHEAT_CONFIG = {
   MAX_LOCATION_HISTORY: 20,
 
   // Accuracy thresholds
-  SUSPICIOUS_PERFECT_ACCURACY: 3, // Meters - too perfect is suspicious
+  SUSPICIOUS_PERFECT_ACCURACY: 1, // Meters - sub-1m is spoofing (real GNSS can hit 1-2m)
   POOR_ACCURACY_THRESHOLD: 100, // Meters - very poor GPS
 };
 
@@ -202,7 +202,7 @@ export function checkVelocity(
 
   // Check velocity against each recent location
   for (const prevLocation of history) {
-    const distance = calculateDistance(
+    const rawDistance = calculateDistance(
       { lat: prevLocation.lat, lng: prevLocation.lng },
       { lat: currentLocation.lat, lng: currentLocation.lng }
     );
@@ -210,6 +210,11 @@ export function checkVelocity(
     const timeDeltaSeconds = (currentLocation.timestamp - prevLocation.timestamp) / 1000;
 
     if (timeDeltaSeconds <= 0) continue;
+
+    // Subtract combined GPS accuracy — movement within error circles isn't real movement.
+    // Raw GNSS (e.g. GrapheneOS) can jump 50-100m between readings when satellite lock shifts.
+    const accuracyMargin = (currentLocation.accuracy || 0) + (prevLocation.accuracy || 0);
+    const distance = Math.max(0, rawDistance - accuracyMargin);
 
     const velocity = distance / timeDeltaSeconds;
     maxVelocity = Math.max(maxVelocity, velocity);
@@ -339,9 +344,9 @@ export function calculateTrustScore(
     breakdown.history = 90; // Slight penalty for new session
   }
 
-  // Check for consistent suspicious patterns
+  // Check for consistent suspicious patterns (only hard signals, not accuracy)
   const suspiciousInHistory = flags.filter(f =>
-    f.startsWith('TELEPORTATION') || f.startsWith('PERFECT_ACCURACY')
+    f.startsWith('TELEPORTATION')
   ).length;
 
   if (suspiciousInHistory >= 3) {

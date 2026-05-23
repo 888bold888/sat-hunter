@@ -661,7 +661,7 @@ export function GameProvider({ children }: { children: ReactNode }) {
   }, [state.activeHunt, refundUnclaimed]);
 
   // Start location tracking
-  const startLocationTracking = useCallback(() => {
+  const startLocationTracking = useCallback(async () => {
     // Already tracking
     if (watchIdRef.current !== null) return;
 
@@ -687,6 +687,28 @@ export function GameProvider({ children }: { children: ReactNode }) {
       });
       return;
     }
+
+    // Check if permission was previously denied (Permissions API).
+    // On iOS/Android, once denied, watchPosition silently fails without re-prompting.
+    // Detect this and show actionable instructions instead of a useless retry loop.
+    if (navigator.permissions) {
+      try {
+        const status = await navigator.permissions.query({ name: 'geolocation' });
+        if (status.state === 'denied') {
+          dispatch({
+            type: 'SET_LOCATION_ERROR',
+            error: 'Location permission was denied. Please go to your browser or device Settings → find this site → enable Location, then refresh the page.'
+          });
+          return;
+        }
+      } catch {
+        // Permissions API not supported for geolocation on this browser — fall through
+      }
+    }
+
+    // Clear stale error so UI shows "Loading..." during the attempt
+    dispatch({ type: 'SET_LOCATION_ERROR', error: null });
+
     const watchId = navigator.geolocation.watchPosition(
       (position) => {
         // Perform anti-cheat integrity check on every location update
@@ -701,7 +723,7 @@ export function GameProvider({ children }: { children: ReactNode }) {
         let errorMessage = 'Location error occurred';
         switch (error.code) {
           case error.PERMISSION_DENIED:
-            errorMessage = 'Please enable location permissions in your browser settings to play';
+            errorMessage = 'Location permission was denied. Please go to your browser or device Settings → find this site → enable Location, then refresh the page.';
             break;
           case error.POSITION_UNAVAILABLE:
             errorMessage = 'Location unavailable. Please check your device settings';
