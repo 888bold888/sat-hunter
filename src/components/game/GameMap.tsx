@@ -119,10 +119,17 @@ export function GameMap({ selectedMonster, selectedStop, onSelectMonster, onSele
                 <h3 className="font-display font-bold text-destructive">Location Required</h3>
                 <p className="text-sm text-muted-foreground mt-2">{locationError}</p>
               </div>
-              <Button onClick={handleRequestLocation} className="shadow-glow-orange">
-                <RefreshCw className="w-4 h-4 mr-2" />
-                Enable Location
-              </Button>
+              {locationError.includes('Settings') ? (
+                <Button onClick={() => window.location.reload()} className="shadow-glow-orange">
+                  <RefreshCw className="w-4 h-4 mr-2" />
+                  Refresh After Enabling
+                </Button>
+              ) : (
+                <Button onClick={handleRequestLocation} className="shadow-glow-orange">
+                  <RefreshCw className="w-4 h-4 mr-2" />
+                  Enable Location
+                </Button>
+              )}
             </Card>
           )}
         </div>
