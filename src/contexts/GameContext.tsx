@@ -17,6 +17,7 @@ import {
   generateSatStopsAsync,
   createGeoFence,
   createPolygonGeoFence,
+  calculateDistance,
   isInCaptureRange,
   isAtSatStop,
   generateId,
@@ -314,6 +315,7 @@ export function GameProvider({ children }: { children: ReactNode }) {
   const [savedStats, setSavedStats] = useLocalStorage<PlayerStats | null>('sathunter:player-stats', null);
   const [savedHunt, setSavedHunt] = useLocalStorage<HuntEvent | null>('sathunter:active-hunt', null);
   const watchIdRef = useRef<number | null>(null); // Use ref to avoid re-renders when watchId changes
+  const nearbyMonsterIdsRef = useRef<Set<string>>(new Set()); // Hysteresis for GPS jitter
 
   // Load saved stats on mount only
   useEffect(() => {
@@ -384,11 +386,16 @@ export function GameProvider({ children }: { children: ReactNode }) {
   // Update nearby entities when location changes
   useEffect(() => {
     if (!state.playerLocation || !state.activeHunt) return;
-    // Monsters only visible within 15 meters (~50 feet)
-    const VISIBILITY_RANGE = 15;
-    const nearbyMonsters = state.activeHunt.monsters.filter(
-      (m) => !m.captured && isInCaptureRange(state.playerLocation!, m.location, VISIBILITY_RANGE)
-    );
+    // Hysteresis: appear at 15m, disappear at 25m to prevent GPS jitter flickering
+    const APPEAR_RANGE = 15;
+    const DISAPPEAR_RANGE = 25;
+    const nearbyMonsters = state.activeHunt.monsters.filter((m) => {
+      if (m.captured) return false;
+      const dist = calculateDistance(state.playerLocation!, m.location);
+      const wasNearby = nearbyMonsterIdsRef.current.has(m.id);
+      return wasNearby ? dist <= DISAPPEAR_RANGE : dist <= APPEAR_RANGE;
+    });
+    nearbyMonsterIdsRef.current = new Set(nearbyMonsters.map(m => m.id));
     dispatch({ type: 'SET_NEARBY_MONSTERS', monsters: nearbyMonsters });
     const nearbyStops = state.activeHunt.satStops.filter((s) =>
       isAtSatStop(state.playerLocation!, s.location)

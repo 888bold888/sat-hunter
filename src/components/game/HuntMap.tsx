@@ -59,6 +59,8 @@ export function HuntMap({
   const isMountedRef = useRef(true);
   const initialCenterRef = useRef(center);
   const updateTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Track currently visible monster IDs for hysteresis (prevent GPS jitter flickering)
+  const visibleMonsterIdsRef = useRef<Set<string>>(new Set());
 
   // Cleanup function for markers, circles, and polygons
   const clearMapLayers = useCallback(() => {
@@ -161,13 +163,25 @@ export function HuntMap({
           circlesRef.current.push(geofenceCircle);
         }
 
-        // Filter visible monsters - 15 meters (~50 feet) visibility range
-        const VISIBILITY_RANGE = 15;
+        // Filter visible monsters with hysteresis to prevent GPS jitter flickering.
+        // Creatures appear at 15m but only disappear at 25m — the 10m buffer
+        // absorbs typical GPS accuracy fluctuations (5-10m).
+        const APPEAR_RANGE = 15;
+        const DISAPPEAR_RANGE = 25;
         const visibleMonsters = showAllMonsters
           ? monsters
           : playerLocation
-            ? monsters.filter(m => calculateDistance(playerLocation, m.location) <= VISIBILITY_RANGE)
+            ? monsters.filter(m => {
+                const dist = calculateDistance(playerLocation, m.location);
+                const wasVisible = visibleMonsterIdsRef.current.has(m.id);
+                const isVisible = wasVisible ? dist <= DISAPPEAR_RANGE : dist <= APPEAR_RANGE;
+                return isVisible;
+              })
             : [];
+
+        // Update tracking set
+        const newVisibleIds = new Set(visibleMonsters.map(m => m.id));
+        visibleMonsterIdsRef.current = newVisibleIds;
 
         // Add monster markers
         visibleMonsters.forEach(monster => {
