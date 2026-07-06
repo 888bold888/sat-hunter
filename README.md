@@ -131,7 +131,6 @@ Sat Hunter features **exactly 11 unique creature types**, each with fixed rarity
 - Pokémon GO mechanics
 - Bitcoin maximalism
 - Cypherpunk movement
-- Meme culture (Pepe, Guy Fawkes)
 - Lightning-fast gameplay
 
 ---
@@ -235,7 +234,7 @@ For development/testing without GPS hardware:
 1. Open the app in development mode
 2. Click the "Dev Tools" button (bottom right)
 3. Enable "Use Mock Location"
-4. Set coordinates or use default (San Francisco)
+4. Set coordinates or use default 
 5. Page will reload with mock location active
 
 ### Environment Variables
@@ -263,10 +262,9 @@ MIT License - see LICENSE file
 
 ## 🙏 Acknowledgments
 
-- Built with [Shakespeare](https://shakespeare.diy) - AI-powered website builder
 - Inspired by Pokémon GO and the Bitcoin community
 - Thanks to Nostr and Lightning Network developers
-- Special shoutout to all Pepe enthusiasts 🐸
+
 
 ---
 
