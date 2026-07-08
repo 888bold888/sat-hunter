@@ -305,6 +305,12 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
       };
     }
     case 'CAPTURE_MONSTER': {
+      // Defense in depth: refuse to credit a monster whose LIVE roster copy is
+      // already captured (another hunter got it; the action's monster object may
+      // be a stale UI reference). captureMonster() gates on this too — this
+      // reducer guard exists so no dispatch path can ever double-credit.
+      const rosterCopy = state.activeHunt?.monsters.find(m => m.id === action.monster.id);
+      if (rosterCopy?.captured || action.monster.captured) return state;
       // Demo captures update per-hunt stats and inventory but never lifetime/total stats
       const isDemo = state.activeHunt?.isDemo ?? false;
       const capturedMonster: CapturedMonster = {
@@ -450,18 +456,41 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
   }
 }
 
+// Why a capture attempt is refused, in player-facing priority order.
+// 'already-captured' outranks everything: it is the one refusal the player
+// cannot fix by walking or collecting, and it is the signal that distinguishes
+// "someone else got it" from a fake success (goal: shared-creature-state).
+export type CaptureRefusalReason =
+  | 'already-captured'
+  | 'no-balls'
+  | 'no-location'
+  | 'out-of-range'
+  | 'integrity';
+
 // Pure capture-eligibility check (exported for testing).
 // Real hunts enforce the anti-cheat integrity gate; demo hunts bypass it since
 // there is no host and no money at stake, so false positives would break the demo.
-export function canCaptureMonster(state: GameState, monster: Monster): boolean {
-  if (state.playerStats.balls <= 0) return false;
-  if (monster.captured) return false;
-  if (!state.playerLocation) return false;
-  if (!isInCaptureRange(state.playerLocation, monster.location)) return false;
+// IMPORTANT: the captured flag is checked on the LIVE roster copy, not just the
+// passed object — the UI can hold a stale monster reference (e.g. an open
+// selection panel) from before another player's claim landed, and that stale
+// copy still says captured:false. Field bug: tapping it produced a fake success.
+export function getCaptureRefusalReason(
+  state: GameState,
+  monster: Monster
+): CaptureRefusalReason | null {
+  const live = state.activeHunt?.monsters.find(m => m.id === monster.id);
+  if (monster.captured || live?.captured) return 'already-captured';
+  if (state.playerStats.balls <= 0) return 'no-balls';
+  if (!state.playerLocation) return 'no-location';
+  if (!isInCaptureRange(state.playerLocation, monster.location)) return 'out-of-range';
   if (!state.activeHunt?.isDemo && state.lastIntegrityCheck && !state.lastIntegrityCheck.canCapture) {
-    return false;
+    return 'integrity';
   }
-  return true;
+  return null;
+}
+
+export function canCaptureMonster(state: GameState, monster: Monster): boolean {
+  return getCaptureRefusalReason(state, monster) === null;
 }
 
 // Create hunt result type - includes info about monster and SatStop generation

@@ -127,6 +127,38 @@ describe('captureBroadcast (Tier 2 authoritative capture-state)', () => {
     expect(deriveCastKeypair('XYZ789').pubkey).not.toBe(deriveCastKeypair(SHARE).pubkey);
   });
 
+  it('PRIVACY: the serialized capture_state wire payload leaks no location and no winner npub', () => {
+    const hostPrivkey = generateSecretKey();
+    const hostPubkey = getPublicKey(hostPrivkey);
+    const cast = deriveCastKeypair(SHARE);
+
+    // Realistic entries: proofs computed from an actual winner pubkey, exactly
+    // as HostDashboard's buildStateEntries does.
+    const winnerPubkey = getPublicKey(generateSecretKey());
+    const realEntries: CaptureStateEntry[] = [
+      { monsterId: 'mon-1', capturedAt: 1000, winnerProof: computeWinnerProof('mon-1', winnerPubkey) },
+      { monsterId: 'mon-2', capturedAt: 2000, winnerProof: computeWinnerProof('mon-2', winnerPubkey) },
+    ];
+
+    const outer = buildCaptureStateEvent(hostPrivkey, cast.pubkey, HUNT_ID, 7, realEntries);
+    const payload = decryptCaptureStateEvent(cast.privkey, outer, hostPubkey)!;
+    expect(payload).not.toBeNull();
+
+    // Assert on the SERIALIZED message (hard constraint: not just the types).
+    const wire = JSON.stringify(payload).toLowerCase();
+    for (const forbidden of ['lat', 'lng', 'longitude', 'geohash', '"location"', 'winnerpubkey', 'npub']) {
+      expect(wire).not.toContain(forbidden);
+    }
+    // The winner's actual pubkey hex must not be recoverable from the payload.
+    expect(JSON.stringify(payload)).not.toContain(winnerPubkey);
+    // Only the expected keys ride the wire.
+    expect(Object.keys(payload).sort()).toEqual(['entries', 'huntId', 'stateVersion', 'type']);
+    for (const entry of payload.entries) {
+      expect(Object.keys(entry).sort()).toEqual(['capturedAt', 'monsterId', 'winnerProof']);
+      expect(entry.winnerProof).toMatch(/^[0-9a-f]{64}$/);
+    }
+  });
+
   it('winnerProof matches for the winner and differs for anyone else', () => {
     const winner = 'winner-pubkey';
     const proof = computeWinnerProof('mon-1', winner);

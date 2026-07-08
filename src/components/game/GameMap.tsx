@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useGame } from '@/contexts/GameContext';
+import { useGame, getCaptureRefusalReason } from '@/contexts/GameContext';
 import type { Monster, SatStop } from '@/lib/gameTypes';
 import { isInCaptureRange, isAtSatStop } from '@/lib/gameUtils';
 import { MonsterCard } from './MonsterCard';
@@ -38,6 +38,35 @@ export function GameMap({ selectedMonster, selectedStop, onSelectMonster, onSele
 
   // Handle monster capture
   const handleCapture = (monster: Monster) => {
+    // Refusals get an honest reason instead of a silent no-op — in the field the
+    // worst confusion was tapping a creature another hunter already caught and
+    // seeing either nothing or a fake success (goal: shared-creature-state).
+    const refusal = getCaptureRefusalReason(state, monster);
+    if (refusal) {
+      if (refusal === 'already-captured') {
+        toast({
+          title: 'Already captured!',
+          description: `Another hunter got ${monster.name} first.`,
+          variant: 'destructive',
+        });
+        onSelectMonster(null); // close the stale selection panel
+      } else if (refusal === 'no-balls') {
+        toast({
+          title: 'Out of SatCubes',
+          description: 'Visit a SatStop to collect more.',
+          variant: 'destructive',
+        });
+      } else if (refusal === 'out-of-range') {
+        toast({
+          title: 'Too far away',
+          description: `Walk closer to catch ${monster.name}.`,
+        });
+      }
+      // 'no-location' / 'integrity' already surface through their own UI
+      // (location banner, anti-cheat warnings) — no duplicate toast.
+      return;
+    }
+
     const success = captureMonster(monster);
     if (success) {
       onSelectMonster(null);

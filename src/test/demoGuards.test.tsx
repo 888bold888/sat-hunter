@@ -27,9 +27,13 @@ vi.mock('@/hooks/useCurrentUser', () => ({
 const mockStartDemoHunt = vi.fn();
 const mockCaptureMonster = vi.fn(() => true);
 let mockGameValue: Record<string, unknown>;
-vi.mock('@/contexts/GameContext', () => ({
-  useGame: () => mockGameValue,
-}));
+// Keep the real module (GameMap also imports the pure getCaptureRefusalReason,
+// which must run for real so eligible captures reach captureMonster) and mock
+// only the hook.
+vi.mock('@/contexts/GameContext', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/contexts/GameContext')>();
+  return { ...actual, useGame: () => mockGameValue };
+});
 
 import { GameMap } from '@/components/game/GameMap';
 import Index from '@/pages/Index';

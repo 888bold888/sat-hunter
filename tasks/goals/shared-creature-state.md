@@ -1,6 +1,6 @@
 # Goal: Shared creature state — all players see one world
 
-**Status**: in progress (phases 0–4 done)
+**Status**: done (all phases 0–5 complete, 2026-07-08)
 **Why**: In a multi-player hunt every player must see the same creatures in the
 same places, and when player 1 catches one it must disappear from player 2's map.
 The field test showed this is glitchy: caught creatures linger as "ghosts" on other
@@ -230,7 +230,7 @@ range stays tied to capture range (~15m — read gameTypes.ts for the live value
       poll batch with N claims for one monster produces exactly one payment and
       one winner in `capture_state`; first-VALID-PROCESSED-wins (host processing
       order, not client capturedAt) documented and tested.
-- [ ] **5. Field-glitch regression tests** — the failure cases listed under hard
+- [x] **5. Field-glitch regression tests** — the failure cases listed under hard
       constraints, plus: player 2 taps an optimistically-hidden monster → clean
       "already captured" refusal, no capture event published.
 
@@ -293,6 +293,35 @@ range stays tied to capture range (~15m — read gameTypes.ts for the live value
   behavior; failure→retriable / success→locked / pending→locked; N-monster
   batch isolation; refresh seeding). Suite: 137 tests green, tsc/eslint/build
   clean.
+
+### 2026-07-08 — Phase 5 complete (field-glitch regressions + refusal UX), verifier PASS — GOAL DONE
+- Coverage audit found most hard-constraint failure cases already tested by
+  phases 1–4; the real gaps were (a) no privacy assertion on the SERIALIZED
+  capture_state broadcast wire payload, (b) the "already captured" refusal was
+  silent AND had a live fake-success hole: `canCaptureMonster` checked
+  `monster.captured` on the PASSED object, but the UI (selection panel) can
+  hold a stale pre-claim copy with captured:false — tapping it locally
+  credited a fake success (the exact field bug).
+- Fix: new pure `getCaptureRefusalReason(state, monster)` (GameContext) also
+  resolves the LIVE roster copy by id; 'already-captured' outranks all other
+  reasons; `canCaptureMonster` delegates (boolean semantics otherwise
+  unchanged). CAPTURE_MONSTER reducer gained a defense-in-depth no-op guard
+  for already-captured roster monsters (zero credit, same state reference;
+  balls are safe — USE_BALL only dispatches after the captureMonster gate).
+- GameMap.handleCapture: refusals now toast honestly — 'already captured'
+  ("Another hunter got X first") also closes the stale selection panel;
+  no-balls / out-of-range get their own toasts; no-location / integrity stay
+  silent (existing UI covers them). Publish remains doubly gated (early
+  return + captureMonster success).
+- Tests: `captureRefusal.test.tsx` (5 — stale-object refusal after Tier 1
+  claim AND Tier 2 confirm, reducer no-op zero-credit, reason priority,
+  fixable reasons) + PRIVACY test in `captureBroadcast.test.ts` (serialized
+  payload: no lat/lng/geohash/npub, real winner pubkey hex absent, exact key
+  sets). demoGuards.test.tsx mock fixed to importOriginal + useGame override
+  (full-module mock left the new getCaptureRefusalReason export undefined —
+  lesson recorded). Suite: 143 tests green, tsc/eslint/build clean.
+- Verifier note: the two PoW-heavy zeroTrust tests still flake under parallel
+  CPU contention (pass in isolation) — pre-existing, unrelated.
 
 ### 2026-07-08 — Phase 0 complete (sticky visibility), verifier PASS after one fix
 - Constants consolidated in gameTypes.ts: `CAPTURE_RANGE_METERS=15`,

@@ -46,5 +46,20 @@ map during the exact GPS spike the fix targeted. Before declaring logic
 unified, grep for the underlying concept (here: distance literals `15`/`25`,
 `calculateDistance(... ) <=`), not just the call sites you already know about.
 
+### Full-module vi.mock silently breaks when the module gains an export
+demoGuards.test.tsx mocked `@/contexts/GameContext` with a factory returning
+only `useGame`. When GameMap started importing the new `getCaptureRefusalReason`
+from the same module, the mock left it `undefined` and the component threw —
+failing two unrelated-looking tests. Mock modules with
+`importOriginal` + spread and override only the pieces you need, so new exports
+keep working: `vi.mock(mod, async (orig) => ({ ...(await orig()), useGame: ... }))`.
+
+### Eligibility checks on UI-passed objects must re-resolve live state
+`canCaptureMonster` trusted `monster.captured` on the object the UI passed in,
+but an open selection panel holds a pre-claim copy — after another player's
+capture landed, the stale copy still said `captured: false` and produced a fake
+success. Any check that gates on entity state must look the entity up by id in
+current state, not trust the caller's snapshot.
+
 ### Rate limiting belongs on the host side, not client side
 Client-side rate limits are trivially bypassed. The host's `onMonsterCaptured` callback is the enforcement point — track timestamps per player in a ref and reject excess captures there.
