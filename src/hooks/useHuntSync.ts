@@ -32,6 +32,11 @@ interface HuntSyncCallbacks {
   onPlayerJoined: (playerPubkey: string) => void;
   onPlayerLeft?: (playerPubkey: string) => void;
   onHuntEnded?: () => void;
+  // Tier 1 optimistic claim signal for players: fired with the public 'd' dedup
+  // tag of every signature-verified, timestamp-valid capture event — players
+  // can't decrypt the content, but the tag identifies the claimed monster
+  // (see src/lib/captureSync.ts). Forgeable by shareCode holders: display-only.
+  onCaptureClaimTag?: (dedupHash: string) => void;
 }
 
 interface ClaimEventContent {
@@ -104,6 +109,13 @@ export function useHuntSync(
         if (Math.abs(now - event.created_at) > MAX_EVENT_AGE_SECONDS) {
           console.warn('Rejecting capture event with stale timestamp:', event.id, event.created_at);
           continue;
+        }
+
+        // Tag-based claim signal (players): runs before the decrypt attempt
+        // because players can never decrypt host-addressed capture content.
+        if (callbacks.onCaptureClaimTag) {
+          const dTag = event.tags.find(([t]) => t === 'd')?.[1];
+          if (dTag) callbacks.onCaptureClaimTag(dTag);
         }
 
         try {

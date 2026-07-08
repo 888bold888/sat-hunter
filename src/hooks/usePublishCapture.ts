@@ -4,6 +4,7 @@ import { sha256 } from '@noble/hashes/sha2.js';
 import { bytesToHex } from '@noble/hashes/utils.js';
 import type { Monster, GeoLocation } from '@/lib/gameTypes';
 import { encodeCoarseGeohash, computeCaptureProof } from '@/lib/antiCheat';
+import { computeCaptureDedupHash } from '@/lib/captureSync';
 import { signWithSessionKey, nip44EncryptWithSessionKey } from '@/lib/sessionKeys';
 
 const CLAIM_EVENT_KIND = 32960;
@@ -55,10 +56,12 @@ export function usePublishCapture() {
       // Encrypt content with session key -> host pubkey (NIP-44)
       const encryptedContent = nip44EncryptWithSessionKey(data.hostPubkey, plaintext);
 
-      // Only non-identifying tags: blinded hunt ref + hashed dedup key
+      // Only non-identifying tags: blinded hunt ref + hashed dedup key.
+      // The dedup hash doubles as the Tier 1 claim signal other players match
+      // against their roster (captureSync.ts) — formats must stay in lockstep.
       const enc = new TextEncoder();
       const huntBlind = bytesToHex(sha256(enc.encode(data.huntShareCode)));
-      const dedupHash = bytesToHex(sha256(enc.encode(`${data.huntShareCode}-${data.monster.id}`)));
+      const dedupHash = computeCaptureDedupHash(data.huntShareCode, data.monster.id);
       const tags: string[][] = [
         ['x', huntBlind],
         ['d', dedupHash],

@@ -1,6 +1,6 @@
 # Goal: Shared creature state — all players see one world
 
-**Status**: in progress (phase 0 done)
+**Status**: in progress (phases 0–1 done)
 **Why**: In a multi-player hunt every player must see the same creatures in the
 same places, and when player 1 catches one it must disappear from player 2's map.
 The field test showed this is glitchy: caught creatures linger as "ghosts" on other
@@ -176,7 +176,7 @@ range stays tied to capture range (~15m — read gameTypes.ts for the live value
       ~80m GPS spike does not despawn a visible creature; HuntMap remount does not
       despawn creatures in the hysteresis band; map and nearby-UI visibility
       agree for the same location sequence; capture still requires CAPTURE_RANGE.
-- [ ] **1. Player-side capture awareness (Tier 1)** — dedupHash→monsterId map for
+- [x] **1. Player-side capture awareness (Tier 1)** — dedupHash→monsterId map for
       the roster; wire a real `onMonsterCaptured`/tag-match path in GamePage's
       `useHuntSync` so claimed monsters get marked captured in GameContext
       (display-only reducer action, no stats/sats side effects). Ghost creatures
@@ -240,3 +240,29 @@ range stays tied to capture range (~15m — read gameTypes.ts for the live value
   sanity. Full suite green: 99 tests, tsc/eslint/build clean.
 - Note for Phase 1: capture-removal must bypass stickiness — already true, the
   helper drops `captured` monsters regardless of the previously-visible set.
+
+### 2026-07-08 — Phase 1 complete (Tier 1 capture awareness), verifier PASS
+- `src/lib/captureSync.ts`: `computeCaptureDedupHash` / `buildCaptureDedupIndex`;
+  usePublishCapture now calls the same helper for its `d` tag, so the publish
+  and match formats are locked together (plus a hardcoded node:crypto vector in
+  the test pinning the wire format).
+- `useHuntSync`: new optional `onCaptureClaimTag(dedupHash)` — fires once per
+  event, only AFTER verifyEvent + timestamp window, before/independent of the
+  host decrypt path. Host callbacks unchanged (HostDashboard omits it).
+- GameContext: `MARK_MONSTER_CLAIMED` reducer action + `markMonsterClaimed()`.
+  Display-only: flips captured/capturedAt, capturedBy left unset for Tier 2 to
+  fill; no-ops on unknown/already-captured/no-hunt; removes the monster from
+  `nearbyMonsters` immediately (real disappearance bypasses 100m stickiness).
+  `scattered_replacement` next-monster activation extracted to
+  `activateNextUnspawned` and fired on remote claims too, so all players' local
+  worlds progress identically (roster order is host-generated and shared).
+- GamePage: `claimIndex` (memoized per hunt, non-host non-demo only) →
+  `markMonsterClaimed` via the tag callback. Own-capture echo is a no-op.
+- Tests: `captureSync.test.ts` (node env, 3) + `monsterClaims.test.tsx` (5,
+  incl. the forged-claim-never-credits failure case). Suite: 107 tests green.
+- Verifier note: the two PoW-heavy zeroTrust tests can exceed their 5s timeout
+  under parallel CPU contention (pass in isolation) — not related to this work,
+  but expect occasional flakes on loaded machines.
+- Ghost-creature fix latency: within one 5s poll of the relay seeing the
+  capture event. Losing-player "too slow" UX + credit rollback is Phase 2
+  (needs the authoritative winner, which Tier 1 can't provide).

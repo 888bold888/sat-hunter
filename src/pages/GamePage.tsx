@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { useGame } from '@/contexts/GameContext';
 import type { Monster, SatStop } from '@/lib/gameTypes';
 import { GameHUD } from '@/components/game/GameHUD';
@@ -31,11 +31,12 @@ import { Badge } from '@/components/ui/badge';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Target, ArrowLeft, LogOut, Sparkles, QrCode, BarChart3, Zap, Clock, RefreshCw, Radio, Loader2, X, Trash2 } from 'lucide-react';
 import { formatSats, formatTimeRemaining, getDemoEndReason } from '@/lib/gameUtils';
+import { buildCaptureDedupIndex } from '@/lib/captureSync';
 import { Link, useNavigate } from 'react-router-dom';
 import { useToast } from '@/hooks/useToast';
 
 export default function GamePage() {
-  const { state, leaveHunt, joinHunt, startLocationTracking, stopLocationTracking, isHost, clearKicked } = useGame();
+  const { state, leaveHunt, joinHunt, startLocationTracking, stopLocationTracking, isHost, clearKicked, markMonsterClaimed } = useGame();
   const { activeHunt } = state;
   const { user } = useCurrentUser();
   const navigate = useNavigate();
@@ -124,13 +125,33 @@ export default function GamePage() {
     setShowDemoEnd(true);
   }, [activeHunt]);
 
-  // Sync hook for players to detect when host ends the hunt
+  // Tier 1 claim matching: capture events are encrypted to the host, but their
+  // public 'd' dedup tag resolves against our roster (captureSync.ts). Rebuilt
+  // per activeHunt change; roster ids are fixed at generation so this is stable.
+  const claimIndex = useMemo(
+    () =>
+      activeHunt && !userIsHost && !activeHunt.isDemo
+        ? buildCaptureDedupIndex(activeHunt.shareCode, activeHunt.monsters)
+        : null,
+    [activeHunt, userIsHost]
+  );
+
+  const handleCaptureClaimTag = useCallback(
+    (dedupHash: string) => {
+      const monsterId = claimIndex?.get(dedupHash);
+      if (monsterId) markMonsterClaimed(monsterId); // no-op if already captured locally
+    },
+    [claimIndex, markMonsterClaimed]
+  );
+
+  // Sync hook for players: capture-claim tags (ghost-creature fix) + hunt end
   useHuntSync(
     (!userIsHost && !activeHunt?.isDemo) ? activeHunt : null, // Only players; never demo (no relay for local hunts)
     {
-      onMonsterCaptured: () => {}, // Players don't need to handle this
+      onMonsterCaptured: () => {}, // Content is host-encrypted; players use onCaptureClaimTag instead
       onPlayerJoined: () => {}, // Players don't need to handle this
       onHuntEnded: handleHuntEndedFromSync,
+      onCaptureClaimTag: handleCaptureClaimTag,
     }
   );
 

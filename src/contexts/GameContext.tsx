@@ -63,6 +63,7 @@ type GameAction =
   | { type: 'SET_NEARBY_MONSTERS'; monsters: Monster[] }
   | { type: 'SET_NEARBY_STOPS'; stops: SatStop[] }
   | { type: 'CAPTURE_MONSTER'; monster: Monster; huntName: string }
+  | { type: 'MARK_MONSTER_CLAIMED'; monsterId: string }
   | { type: 'COLLECT_BALLS'; stopId: string; balls: number }
   | { type: 'USE_BALL' }
   | { type: 'SET_CAPTURING'; capturing: boolean }
@@ -108,6 +109,20 @@ export const initialState: GameState = {
   manualMovement: false,
 };
 
+// scattered_replacement mode: activate the first unspawned monster (shared
+// roster order, so every player's device activates the same replacement).
+function activateNextUnspawned(monsters: Monster[]): Monster[] {
+  const unspawnedIndex = monsters.findIndex(
+    m => !m.captured && m.spawnTime === Number.MAX_SAFE_INTEGER
+  );
+  if (unspawnedIndex === -1) return monsters;
+  return monsters.map((m, i) =>
+    i === unspawnedIndex
+      ? { ...m, spawnTime: Date.now() + Math.random() * 5000 } // Spawn within 5s
+      : m
+  );
+}
+
 export function gameReducer(state: GameState, action: GameAction): GameState {
   switch (action.type) {
     case 'SET_ACTIVE_HUNT':
@@ -135,6 +150,31 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
       return { ...state, nearbyMonsters: action.monsters };
     case 'SET_NEARBY_STOPS':
       return { ...state, nearbySatStops: action.stops };
+    case 'MARK_MONSTER_CLAIMED': {
+      // Tier 1 optimistic claim from another player's capture event tag
+      // (tasks/goals/shared-creature-state.md). DISPLAY-ONLY by hard rule: the
+      // signal is forgeable, so this may hide a creature but must never touch
+      // playerStats, balls, payments, or anti-cheat state.
+      if (!state.activeHunt) return state;
+      const target = state.activeHunt.monsters.find(m => m.id === action.monsterId);
+      if (!target || target.captured) return state;
+      let claimedMonsters = state.activeHunt.monsters.map(m =>
+        m.id === action.monsterId ? { ...m, captured: true, capturedAt: Date.now() } : m
+      );
+      // Keep spawn progression identical across players' local worlds: a remote
+      // capture activates the next replacement just like a local one. Roster
+      // order is shared (host-generated), so everyone activates the same one.
+      if (state.activeHunt.spawnMode === 'scattered_replacement') {
+        claimedMonsters = activateNextUnspawned(claimedMonsters);
+      }
+      return {
+        ...state,
+        activeHunt: { ...state.activeHunt, monsters: claimedMonsters },
+        // Remove from the map immediately — a real disappearance is signal, and
+        // must not wait for the next location tick or linger via stickiness.
+        nearbyMonsters: state.nearbyMonsters.filter(m => m.id !== action.monsterId),
+      };
+    }
     case 'CAPTURE_MONSTER': {
       // Demo captures update per-hunt stats and inventory but never lifetime/total stats
       const isDemo = state.activeHunt?.isDemo ?? false;
@@ -158,16 +198,7 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
 
       // For scattered_replacement mode: activate the next unspawned monster
       if (state.activeHunt?.spawnMode === 'scattered_replacement') {
-        const unspawnedIndex = updatedMonsters.findIndex(
-          m => !m.captured && m.spawnTime === Number.MAX_SAFE_INTEGER
-        );
-        if (unspawnedIndex !== -1) {
-          updatedMonsters = updatedMonsters.map((m, i) =>
-            i === unspawnedIndex
-              ? { ...m, spawnTime: Date.now() + Math.random() * 5000 } // Spawn within 5s
-              : m
-          );
-        }
+        updatedMonsters = activateNextUnspawned(updatedMonsters);
       }
 
       return {
@@ -339,6 +370,7 @@ interface GameContextType {
   updateParticipantLocation: (pubkey: string, location: GeoLocation) => void;
   isHost: () => boolean;
   captureMonster: (monster: Monster) => boolean;
+  markMonsterClaimed: (monsterId: string) => void;
   collectBalls: (stop: SatStop) => boolean;
   startLocationTracking: () => void;
   stopLocationTracking: () => void;
@@ -752,6 +784,12 @@ export function GameProvider({ children }: { children: ReactNode }) {
     [state]
   );
 
+  // Tier 1: another player's capture event claimed this monster — hide it.
+  // Display-only (see MARK_MONSTER_CLAIMED reducer case).
+  const markMonsterClaimed = useCallback((monsterId: string) => {
+    dispatch({ type: 'MARK_MONSTER_CLAIMED', monsterId });
+  }, []);
+
   // Collect balls from a sat stop
   const collectBalls = useCallback(
     (stop: SatStop): boolean => {
@@ -918,6 +956,7 @@ export function GameProvider({ children }: { children: ReactNode }) {
         updateParticipantLocation,
         isHost,
         captureMonster,
+        markMonsterClaimed,
         collectBalls,
         startLocationTracking,
         stopLocationTracking,
