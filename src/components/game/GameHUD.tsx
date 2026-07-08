@@ -63,6 +63,7 @@ export function GameHUD({ onOpenLeaderboard, onOpenInventory, onOpenStats }: Gam
   const _progress = (capturedCount / activeHunt.monsterCount) * 100;
 
   const isHuntEnded = Date.now() > activeHunt.endTime;
+  const isDemo = activeHunt.isDemo ?? false;
 
   return (
     <>
@@ -77,9 +78,14 @@ export function GameHUD({ onOpenLeaderboard, onOpenInventory, onOpenStats }: Gam
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">
                 <Target className="w-5 h-5 text-primary" />
-                <span className="font-display font-bold text-sm truncate max-w-[150px]">
+                <span className="font-display font-bold text-sm truncate max-w-[110px]">
                   {activeHunt.name}
                 </span>
+                {isDemo && (
+                  <Badge className="font-mono text-[10px] bg-purple-500/20 text-purple-300 border-purple-500/40">
+                    DEMO
+                  </Badge>
+                )}
               </div>
               <Badge
                 variant={isHuntEnded ? 'destructive' : 'outline'}
@@ -101,7 +107,7 @@ export function GameHUD({ onOpenLeaderboard, onOpenInventory, onOpenStats }: Gam
                   This hunt: {playerStats.currentHuntCaptured} captured
                 </span>
                 <span className="text-primary font-medium">
-                  +{formatSats(playerStats.currentHuntSatsEarned)} sats
+                  +{formatSats(playerStats.currentHuntSatsEarned)} {isDemo ? 'demo sats' : 'sats'}
                 </span>
               </div>
               <Progress value={(playerStats.currentHuntCaptured / activeHunt.monsterCount) * 100} className="h-2 bg-muted" />
@@ -195,19 +201,23 @@ export function GameHUD({ onOpenLeaderboard, onOpenInventory, onOpenStats }: Gam
               </div>
             </div>
 
-            {/* Player Stats - Lifetime totals */}
+            {/* Player Stats - Lifetime totals (demo: show frozen-safe demo-session values) */}
             <div className="flex items-center gap-3">
               <div className="text-center border-r border-border pr-3">
                 <p className="font-display font-bold text-lg text-primary text-glow-orange">
-                  {formatSats(playerStats.lifetimeSatsEarned)}
+                  {formatSats(isDemo ? playerStats.currentHuntSatsEarned : playerStats.lifetimeSatsEarned)}
                 </p>
-                <p className="text-[10px] text-muted-foreground uppercase tracking-wider">Lifetime</p>
+                <p className="text-[10px] text-muted-foreground uppercase tracking-wider">
+                  {isDemo ? 'Demo Sats' : 'Lifetime'}
+                </p>
               </div>
               <div className="text-center">
                 <p className="font-display font-bold text-lg text-accent">
-                  {playerStats.lifetimeCaptured}
+                  {isDemo ? playerStats.currentHuntCaptured : playerStats.lifetimeCaptured}
                 </p>
-                <p className="text-[10px] text-muted-foreground uppercase tracking-wider">Total</p>
+                <p className="text-[10px] text-muted-foreground uppercase tracking-wider">
+                  {isDemo ? 'Demo' : 'Total'}
+                </p>
               </div>
             </div>
           </div>

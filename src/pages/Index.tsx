@@ -1,5 +1,6 @@
+import { useState } from 'react';
 import { useSeoMeta } from '@unhead/react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { LoginArea } from '@/components/auth/LoginArea';
 import { useCurrentUser } from '@/hooks/useCurrentUser';
 import { useGame } from '@/contexts/GameContext';
@@ -21,16 +22,54 @@ import {
   ArrowRight,
   Lock,
   EyeOff,
+  Sparkles,
+  Loader2,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { checkGeolocationSupport, DEFAULT_TEST_LOCATION } from '@/lib/devMode';
 
 const Index = () => {
   const { user } = useCurrentUser();
-  const { state, isHost } = useGame();
+  const { state, isHost, startDemoHunt } = useGame();
   const { activeHunt } = state;
+  const navigate = useNavigate();
+  const [demoLoading, setDemoLoading] = useState(false);
 
   // Check if current user is hosting an active hunt
   const hasActiveHostHunt = activeHunt && isHost() && activeHunt.status !== 'ended';
+
+  // Only hide the demo entry when a real (non-demo) hunt is already active — the
+  // active-hunt banner routes those players to /play. A demo hunt can be re-entered.
+  const hasRealActiveHunt = !!activeHunt && !activeHunt.isDemo;
+
+  // Try Demo: request GPS, fall back to couch-mode tap-to-walk. Must never dead-end.
+  const handleTryDemo = async () => {
+    if (demoLoading) return;
+    setDemoLoading(true);
+
+    const startCouchDemo = () => {
+      startDemoHunt(DEFAULT_TEST_LOCATION, { manualMovement: true });
+      navigate('/play');
+    };
+
+    const { supported, secureContext } = checkGeolocationSupport();
+    if (!supported || !secureContext) {
+      startCouchDemo();
+      return;
+    }
+
+    navigator.geolocation.getCurrentPosition(
+      (position) => {
+        startDemoHunt({ lat: position.coords.latitude, lng: position.coords.longitude });
+        navigate('/play');
+      },
+      () => {
+        // Deny / timeout / unavailable — land in a playable couch-mode demo
+        startCouchDemo();
+      },
+      { timeout: 8000, maximumAge: 60000 }
+    );
+  };
 
   useSeoMeta({
     title: 'Sat Hunter - Hunt Bitcoin IRL',
@@ -131,9 +170,9 @@ const Index = () => {
             Capture creatures. Stack sats.
           </p>
 
-          {/* CTA Button */}
-          <div className="flex flex-col sm:flex-row gap-4 w-full max-w-md px-4">
-            <Link to="/play" className="flex-1">
+          {/* CTA Buttons */}
+          <div className="flex flex-col gap-3 w-full max-w-md px-4">
+            <Link to="/play" className="w-full">
               <Button
                 size="lg"
                 className="w-full h-14 font-display text-lg bg-gradient-to-r from-primary to-orange-600 hover:from-orange-600 hover:to-primary shadow-glow-orange group"
@@ -143,6 +182,33 @@ const Index = () => {
                 <ChevronRight className="w-5 h-5 ml-1 group-hover:translate-x-1 transition-transform" />
               </Button>
             </Link>
+
+            {!hasRealActiveHunt && (
+              <div className="w-full">
+                <Button
+                  size="lg"
+                  variant="outline"
+                  onClick={handleTryDemo}
+                  disabled={demoLoading}
+                  className="w-full h-12 font-display border-primary/40 hover:border-primary hover:bg-primary/10 group"
+                >
+                  {demoLoading ? (
+                    <>
+                      <Loader2 className="w-5 h-5 mr-2 animate-spin" />
+                      Finding you...
+                    </>
+                  ) : (
+                    <>
+                      <Sparkles className="w-5 h-5 mr-2 group-hover:scale-110 transition-transform" />
+                      Try Demo
+                    </>
+                  )}
+                </Button>
+                <p className="mt-2 text-xs text-muted-foreground">
+                  No login, no wallet — just play
+                </p>
+              </div>
+            )}
           </div>
 
           {/* Login Prompt */}

@@ -31,5 +31,12 @@ With precision 5 (~5km cells), geohash-based distance checks can only catch gros
 ### Timestamp validation prevents replay attacks
 Always reject Nostr events with `created_at` too far from `now`. A 5-minute window (`MAX_EVENT_AGE_SECONDS = 300`) balances clock skew tolerance with replay protection.
 
+### Priority-ordered classifiers can make lower branches unreachable
+`getDemoEndReason` checked 'mythic' before 'all-captured', but every demo hunt
+contains exactly one mythic — so a fully-cleared field always classified as
+'mythic' and the per-reason dedup could never fire 'all-captured'. When an event
+dedup key comes from a priority-ordered classifier, check each class is actually
+reachable given the data invariants (here: mythic ⊂ all-captured).
+
 ### Rate limiting belongs on the host side, not client side
 Client-side rate limits are trivially bypassed. The host's `onMonsterCaptured` callback is the enforcement point — track timestamps per player in a ref and reject excess captures there.

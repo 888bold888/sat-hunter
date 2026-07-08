@@ -86,6 +86,8 @@ export interface HuntEvent {
   // Security settings
   requiresApproval?: boolean; // Host must approve players before they can join
   captureSecret?: string; // HMAC key for capture proof (received via encrypted channel, never persisted)
+  // Demo hunts are fully local: never published to Nostr, never persisted, never paid
+  isDemo?: boolean;
 }
 
 export interface HuntParticipant {

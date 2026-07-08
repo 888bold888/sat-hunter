@@ -8,6 +8,7 @@ import type {
   SatStop,
   LeaderboardEntry,
   CapturedMonster,
+  HuntEvent,
 } from './gameTypes';
 
 import {
@@ -948,4 +949,35 @@ export function validateHuntConfig(
   }
 
   return { valid: true };
+}
+
+/**
+ * Why the demo end screen should show, or null if it should not.
+ * Only ever fires for demo hunts (a real hunt returns null — its ending is the
+ * host-driven HuntEndedDialog, never this conversion screen). Reasons, in priority
+ * order: the whole field was cleared, the mythic Pisatchu was captured, or the
+ * 30-minute demo window elapsed. All-captured must rank above mythic: every demo
+ * contains exactly one mythic, so a cleared field would otherwise re-evaluate to
+ * the already-dismissed 'mythic' reason and the end screen could never reopen
+ * after "Keep exploring".
+ */
+export type DemoEndReason = 'mythic' | 'all-captured' | 'time-expired';
+
+export function getDemoEndReason(
+  hunt: HuntEvent | null | undefined,
+  now: number = Date.now()
+): DemoEndReason | null {
+  if (!hunt?.isDemo) return null;
+  if (hunt.monsters.length > 0 && hunt.monsters.every((m) => m.captured)) return 'all-captured';
+  if (hunt.monsters.some((m) => m.rarity === 'mythic' && m.captured)) return 'mythic';
+  if (now > hunt.endTime) return 'time-expired';
+  return null;
+}
+
+/** Convenience boolean wrapper around getDemoEndReason. */
+export function shouldShowDemoEnd(
+  hunt: HuntEvent | null | undefined,
+  now: number = Date.now()
+): boolean {
+  return getDemoEndReason(hunt, now) !== null;
 }

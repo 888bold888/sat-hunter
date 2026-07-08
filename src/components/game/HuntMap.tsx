@@ -32,6 +32,7 @@ interface HuntMapProps {
   satStops: SatStop[];
   onMonsterClick?: (monster: Monster) => void;
   onStopClick?: (stop: SatStop) => void;
+  onMapClick?: (location: GeoLocation) => void;
   showAllMonsters?: boolean;
   className?: string;
   boundaryType?: BoundaryType;
@@ -46,6 +47,7 @@ export function HuntMap({
   satStops,
   onMonsterClick,
   onStopClick,
+  onMapClick,
   showAllMonsters = false,
   className,
   boundaryType = 'circle',
@@ -81,8 +83,10 @@ export function HuntMap({
   // Memoize stable references for callbacks to prevent unnecessary re-renders
   const onMonsterClickRef = useRef(onMonsterClick);
   const onStopClickRef = useRef(onStopClick);
+  const onMapClickRef = useRef(onMapClick);
   onMonsterClickRef.current = onMonsterClick;
   onStopClickRef.current = onStopClick;
+  onMapClickRef.current = onMapClick;
 
   // Initialize map once on mount
   useEffect(() => {
@@ -102,6 +106,12 @@ export function HuntMap({
       attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
       maxZoom: 19,
     }).addTo(map);
+
+    // Tap-to-walk (couch-mode demo): forward map clicks as a GeoLocation.
+    // Registered once via the ref pattern so it never re-binds.
+    map.on('click', (e: L.LeafletMouseEvent) => {
+      onMapClickRef.current?.({ lat: e.latlng.lat, lng: e.latlng.lng });
+    });
 
     mapInstanceRef.current = map;
 

@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { useGame } from '@/contexts/GameContext';
 import type { Monster, SatStop } from '@/lib/gameTypes';
 import { isInCaptureRange, isAtSatStop } from '@/lib/gameUtils';
@@ -6,7 +7,7 @@ import { SatStopCard } from './SatStopCard';
 import { HuntMap } from './HuntMap';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { MapPin, Compass, RefreshCw } from 'lucide-react';
+import { MapPin, Compass, RefreshCw, Footprints, X } from 'lucide-react';
 import { useToast } from '@/hooks/useToast';
 import { usePublishCapture } from '@/hooks/usePublishCapture';
 import { useCurrentUser } from '@/hooks/useCurrentUser';
@@ -20,11 +21,15 @@ interface GameMapProps {
 }
 
 export function GameMap({ selectedMonster, selectedStop, onSelectMonster, onSelectStop, onMonsterCaptured }: GameMapProps) {
-  const { state, getAvailableMonsters, getAvailableStops, captureMonster, collectBalls, startLocationTracking } = useGame();
-  const { activeHunt, playerLocation, locationError, playerStats, lastIntegrityCheck } = state;
+  const { state, getAvailableMonsters, getAvailableStops, captureMonster, collectBalls, startLocationTracking, setManualLocation } = useGame();
+  const { activeHunt, playerLocation, locationError, playerStats, lastIntegrityCheck, manualMovement } = state;
   const { toast } = useToast();
   const { user } = useCurrentUser();
   const publishCapture = usePublishCapture();
+  const [showWalkHint, setShowWalkHint] = useState(true);
+
+  // Couch-mode demo: tap the map to move the player (tap-to-walk)
+  const isCouchDemo = !!activeHunt?.isDemo && manualMovement;
 
   // Get available entities
   const availableMonsters = getAvailableMonsters();
@@ -36,8 +41,9 @@ export function GameMap({ selectedMonster, selectedStop, onSelectMonster, onSele
     if (success) {
       onSelectMonster(null);
 
-      // Publish capture event to Nostr for host to see (includes anti-cheat data)
-      if (activeHunt && user?.pubkey) {
+      // Publish capture event to Nostr for host to see (includes anti-cheat data).
+      // Demo hunts are hostless and local-only — never publish.
+      if (activeHunt && !activeHunt.isDemo && user?.pubkey) {
         publishCapture.mutate({
           huntId: activeHunt.id,
           huntShareCode: activeHunt.shareCode,
@@ -104,6 +110,7 @@ export function GameMap({ selectedMonster, selectedStop, onSelectMonster, onSele
           satStops={availableStops}
           onMonsterClick={onSelectMonster}
           onStopClick={onSelectStop}
+          onMapClick={isCouchDemo ? setManualLocation : undefined}
           showAllMonsters={false}
           className="w-full h-full"
           boundaryType={activeHunt.geoFence.boundaryType}
@@ -132,6 +139,23 @@ export function GameMap({ selectedMonster, selectedStop, onSelectMonster, onSele
               )}
             </Card>
           )}
+        </div>
+      )}
+
+      {/* Couch-mode tap-to-walk hint - dismissable, sits below the monster/stop panels */}
+      {isCouchDemo && showWalkHint && playerLocation && (
+        <div className="absolute top-4 left-1/2 -translate-x-1/2 w-max max-w-[90%]" style={{ zIndex: 20 }}>
+          <div className="flex items-center gap-2 rounded-full bg-card/80 backdrop-blur border border-border/60 px-3 py-1.5 shadow-lg">
+            <Footprints className="w-4 h-4 text-primary flex-shrink-0" />
+            <span className="text-xs font-medium">Tap the map to walk</span>
+            <button
+              onClick={() => setShowWalkHint(false)}
+              className="ml-1 text-muted-foreground hover:text-foreground"
+              aria-label="Dismiss hint"
+            >
+              <X className="w-3.5 h-3.5" />
+            </button>
+          </div>
         </div>
       )}
 

@@ -8,6 +8,7 @@ import { CapturedInventory } from '@/components/game/CapturedInventory';
 import { CreateHuntForm } from '@/components/game/CreateHuntForm';
 import { CaptureSuccessDialog } from '@/components/game/CaptureSuccessDialog';
 import { HuntEndedDialog } from '@/components/game/HuntEndedDialog';
+import { DemoEndDialog } from '@/components/game/DemoEndDialog';
 import { HostDashboard } from '@/components/game/HostDashboard';
 import { PaymentConfirmation } from '@/components/game/PaymentConfirmation';
 import { PlayerStatsView } from '@/components/game/PlayerStatsView';
@@ -29,7 +30,7 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Target, ArrowLeft, LogOut, Sparkles, QrCode, BarChart3, Zap, Clock, RefreshCw, Radio, Loader2, X, Trash2 } from 'lucide-react';
-import { formatSats, formatTimeRemaining } from '@/lib/gameUtils';
+import { formatSats, formatTimeRemaining, getDemoEndReason } from '@/lib/gameUtils';
 import { Link, useNavigate } from 'react-router-dom';
 import { useToast } from '@/hooks/useToast';
 
@@ -63,8 +64,15 @@ export default function GamePage() {
   const [capturedMonster, setCapturedMonster] = useState<Monster | null>(null);
   const [showCaptureSuccess, setShowCaptureSuccess] = useState(false);
   const [showHuntEnded, setShowHuntEnded] = useState(false);
+  const [showDemoEnd, setShowDemoEnd] = useState(false);
   const [isEndingHunt, setIsEndingHunt] = useState(false);
   const huntEndedShownRef = useRef(false);
+  // Demo end screen fires once per distinct reason (mythic / all-captured /
+  // time-expired) so "Keep exploring" after the Pisatchu catch still lets a later
+  // all-captured trigger open the screen again.
+  const demoEndShownRef = useRef<Set<string>>(new Set());
+
+  const isDemo = activeHunt?.isDemo ?? false;
 
   // Dismissed past hunts (stored in localStorage)
   const [dismissedHuntIds, setDismissedHuntIds] = useState<string[]>(() => {
@@ -105,9 +113,20 @@ export default function GamePage() {
     }
   }, []);
 
+  // Demo-only: open the conversion end screen when the demo is "over" for one of the
+  // trigger reasons, deduped per reason. Never runs for real hunts (getDemoEndReason
+  // returns null unless isDemo).
+  const maybeOpenDemoEnd = useCallback(() => {
+    const reason = getDemoEndReason(activeHunt, Date.now());
+    if (!reason) return;
+    if (demoEndShownRef.current.has(reason)) return;
+    demoEndShownRef.current.add(reason);
+    setShowDemoEnd(true);
+  }, [activeHunt]);
+
   // Sync hook for players to detect when host ends the hunt
   useHuntSync(
-    !userIsHost ? activeHunt : null, // Only use for players
+    (!userIsHost && !activeHunt?.isDemo) ? activeHunt : null, // Only players; never demo (no relay for local hunts)
     {
       onMonsterCaptured: () => {}, // Players don't need to handle this
       onPlayerJoined: () => {}, // Players don't need to handle this
@@ -149,9 +168,10 @@ export default function GamePage() {
     return () => stopLocationTracking();
   }, [startLocationTracking, stopLocationTracking]);
 
-  // Detect hunt end for players and show notification
+  // Detect hunt end for players and show notification.
+  // Demo hunts are excluded — they use DemoEndDialog, not the host-driven HuntEndedDialog.
   useEffect(() => {
-    if (!activeHunt || userIsHost) return;
+    if (!activeHunt || userIsHost || activeHunt.isDemo) return;
 
     // Check if hunt has ended (either by status or by time)
     const huntEnded = activeHunt.status === 'ended' || Date.now() > activeHunt.endTime;
@@ -162,10 +182,24 @@ export default function GamePage() {
     }
   }, [activeHunt, userIsHost]);
 
-  // Reset the hunt ended ref when hunt changes
+  // Demo-only: poll for the time-expired trigger (capture-driven triggers fire when
+  // the CaptureSuccessDialog closes). Suppressed while CaptureSuccessDialog is open so
+  // the catch moment isn't stomped.
+  useEffect(() => {
+    if (!isDemo) return;
+    const interval = setInterval(() => {
+      if (showCaptureSuccess) return;
+      maybeOpenDemoEnd();
+    }, 1000);
+    return () => clearInterval(interval);
+  }, [isDemo, showCaptureSuccess, maybeOpenDemoEnd]);
+
+  // Reset the hunt ended / demo end refs when hunt changes
   useEffect(() => {
     if (!activeHunt) {
       huntEndedShownRef.current = false;
+      demoEndShownRef.current = new Set();
+      setShowDemoEnd(false);
     }
   }, [activeHunt]);
 
@@ -451,7 +485,7 @@ export default function GamePage() {
         onClick={leaveHunt}
       >
         <LogOut className="w-4 h-4 mr-1" />
-        Leave Hunt
+        {isDemo ? 'Exit Demo' : 'Leave Hunt'}
       </Button>
 
       {/* Leaderboard Dialog */}
@@ -497,6 +531,9 @@ export default function GamePage() {
         onClose={() => {
           setShowCaptureSuccess(false);
           setCapturedMonster(null);
+          // In demo, once the catch celebration closes, check whether that catch
+          // ended the demo (mythic Pisatchu or field cleared) and convert.
+          if (isDemo) maybeOpenDemoEnd();
         }}
       />
 
@@ -505,6 +542,14 @@ export default function GamePage() {
         open={showHuntEnded}
         onClose={() => setShowHuntEnded(false)}
       />
+
+      {/* Demo End Dialog (demo hunts only — conversion CTAs, no Nostr) */}
+      {isDemo && (
+        <DemoEndDialog
+          open={showDemoEnd}
+          onClose={() => setShowDemoEnd(false)}
+        />
+      )}
 
       {/* Dev Tools (only in development) */}
       <DevTools />

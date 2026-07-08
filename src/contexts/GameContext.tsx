@@ -13,7 +13,9 @@ import { useCurrentUser } from '@/hooks/useCurrentUser';
 import { usePublishLeave } from '@/hooks/usePublishLeave';
 import { useKickSubscription } from '@/hooks/useKickSubscription';
 import {
+  generateMonsters,
   generateMonstersAsync,
+  generateSatStops,
   generateSatStopsAsync,
   createGeoFence,
   createPolygonGeoFence,
@@ -36,7 +38,7 @@ import {
   type LocationIntegrityResult,
 } from '@/lib/antiCheat';
 
-interface GameState {
+export interface GameState {
   activeHunt: HuntEvent | null;
   playerStats: PlayerStats;
   playerLocation: GeoLocation | null;
@@ -49,10 +51,11 @@ interface GameState {
   watchId: number | null;
   wasKicked: boolean;
   kickReason: string | null;
+  manualMovement: boolean; // Couch-mode demo: player moves via tap-to-walk, not GPS
 }
 
 type GameAction =
-  | { type: 'SET_ACTIVE_HUNT'; hunt: HuntEvent | null }
+  | { type: 'SET_ACTIVE_HUNT'; hunt: HuntEvent | null; manualMovement?: boolean }
   | { type: 'UPDATE_HUNT'; hunt: HuntEvent }
   | { type: 'SET_PLAYER_LOCATION'; location: GeoLocation }
   | { type: 'SET_PLAYER_POSITION'; position: GeolocationPosition; integrityCheck: LocationIntegrityResult }
@@ -69,9 +72,10 @@ type GameAction =
   | { type: 'START_HUNT_SESSION'; huntId: string }
   | { type: 'END_HUNT_SESSION'; huntEntry: HuntHistoryEntry }
   | { type: 'PLAYER_KICKED'; reason: string }
-  | { type: 'CLEAR_KICKED' };
+  | { type: 'CLEAR_KICKED' }
+  | { type: 'EXIT_DEMO_HUNT' };
 
-const initialPlayerStats: PlayerStats = {
+export const initialPlayerStats: PlayerStats = {
   pubkey: '',
   // Current hunt stats
   currentHuntId: null,
@@ -88,7 +92,7 @@ const initialPlayerStats: PlayerStats = {
   totalSatsEarned: 0,
 };
 
-const initialState: GameState = {
+export const initialState: GameState = {
   activeHunt: null,
   playerStats: initialPlayerStats,
   playerLocation: null,
@@ -101,12 +105,15 @@ const initialState: GameState = {
   watchId: null,
   wasKicked: false,
   kickReason: null,
+  manualMovement: false,
 };
 
-function gameReducer(state: GameState, action: GameAction): GameState {
+export function gameReducer(state: GameState, action: GameAction): GameState {
   switch (action.type) {
     case 'SET_ACTIVE_HUNT':
-      return { ...state, activeHunt: action.hunt };
+      // manualMovement is a couch-mode demo flag; any hunt change resets it unless
+      // explicitly set (only a manual-movement demo start passes it true)
+      return { ...state, activeHunt: action.hunt, manualMovement: action.manualMovement ?? false };
     case 'UPDATE_HUNT':
       return { ...state, activeHunt: action.hunt };
     case 'SET_PLAYER_LOCATION':
@@ -129,6 +136,8 @@ function gameReducer(state: GameState, action: GameAction): GameState {
     case 'SET_NEARBY_STOPS':
       return { ...state, nearbySatStops: action.stops };
     case 'CAPTURE_MONSTER': {
+      // Demo captures update per-hunt stats and inventory but never lifetime/total stats
+      const isDemo = state.activeHunt?.isDemo ?? false;
       const capturedMonster: CapturedMonster = {
         monsterId: action.monster.id,
         monsterName: action.monster.name,
@@ -168,12 +177,12 @@ function gameReducer(state: GameState, action: GameAction): GameState {
           // Update current hunt stats
           currentHuntCaptured: state.playerStats.currentHuntCaptured + 1,
           currentHuntSatsEarned: state.playerStats.currentHuntSatsEarned + action.monster.satAmount,
-          // Update lifetime stats
-          lifetimeCaptured: state.playerStats.lifetimeCaptured + 1,
-          lifetimeSatsEarned: state.playerStats.lifetimeSatsEarned + action.monster.satAmount,
-          // Legacy fields (keep in sync)
-          totalCaptured: state.playerStats.totalCaptured + 1,
-          totalSatsEarned: state.playerStats.totalSatsEarned + action.monster.satAmount,
+          // Update lifetime stats (skipped for demo hunts)
+          lifetimeCaptured: isDemo ? state.playerStats.lifetimeCaptured : state.playerStats.lifetimeCaptured + 1,
+          lifetimeSatsEarned: isDemo ? state.playerStats.lifetimeSatsEarned : state.playerStats.lifetimeSatsEarned + action.monster.satAmount,
+          // Legacy fields (keep in sync, skipped for demo hunts)
+          totalCaptured: isDemo ? state.playerStats.totalCaptured : state.playerStats.totalCaptured + 1,
+          totalSatsEarned: isDemo ? state.playerStats.totalSatsEarned : state.playerStats.totalSatsEarned + action.monster.satAmount,
           // Add to captured monsters list
           capturedMonsters: [...state.playerStats.capturedMonsters, capturedMonster],
         },
@@ -259,9 +268,40 @@ function gameReducer(state: GameState, action: GameAction): GameState {
       };
     case 'CLEAR_KICKED':
       return { ...state, wasKicked: false, kickReason: null };
+    case 'EXIT_DEMO_HUNT': {
+      // Only acts on demo hunts: strip demo captures and clear per-hunt session + hunt
+      if (!state.activeHunt?.isDemo) return state;
+      const demoId = state.activeHunt.id;
+      return {
+        ...state,
+        playerStats: {
+          ...state.playerStats,
+          capturedMonsters: state.playerStats.capturedMonsters.filter(m => m.huntId !== demoId),
+          currentHuntId: null,
+          currentHuntCaptured: 0,
+          currentHuntSatsEarned: 0,
+        },
+        activeHunt: null,
+        manualMovement: false,
+      };
+    }
     default:
       return state;
   }
+}
+
+// Pure capture-eligibility check (exported for testing).
+// Real hunts enforce the anti-cheat integrity gate; demo hunts bypass it since
+// there is no host and no money at stake, so false positives would break the demo.
+export function canCaptureMonster(state: GameState, monster: Monster): boolean {
+  if (state.playerStats.balls <= 0) return false;
+  if (monster.captured) return false;
+  if (!state.playerLocation) return false;
+  if (!isInCaptureRange(state.playerLocation, monster.location)) return false;
+  if (!state.activeHunt?.isDemo && state.lastIntegrityCheck && !state.lastIntegrityCheck.canCapture) {
+    return false;
+  }
+  return true;
 }
 
 // Create hunt result type - includes info about monster and SatStop generation
@@ -291,6 +331,9 @@ interface GameContextType {
   confirmPayment: () => void;
   startHunt: () => void;
   joinHunt: (hunt: HuntEvent) => void;
+  startDemoHunt: (center: GeoLocation, options?: { manualMovement?: boolean }) => HuntEvent;
+  setManualLocation: (location: GeoLocation) => void;
+  exitDemoHunt: () => void;
   leaveHunt: () => void;
   addParticipant: (pubkey: string) => void;
   updateParticipantLocation: (pubkey: string, location: GeoLocation) => void;
@@ -349,16 +392,18 @@ export function GameProvider({ children }: { children: ReactNode }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []); // Only run on mount
 
-  // Save stats when they change
+  // Save stats when they change (demo stats must never reach localStorage)
   useEffect(() => {
     if (state.playerStats.pubkey) {
+      if (state.activeHunt?.isDemo) return;
       setSavedStats(state.playerStats);
     }
-  }, [state.playerStats, setSavedStats]);
+  }, [state.playerStats, state.activeHunt?.isDemo, setSavedStats]);
 
-  // Save hunt when it changes (strip captureSecret — must never be persisted)
+  // Save hunt when it changes (strip captureSecret — must never be persisted).
+  // Demo hunts are local-only and never persisted (they don't survive a refresh).
   useEffect(() => {
-    if (state.activeHunt) {
+    if (state.activeHunt && !state.activeHunt.isDemo) {
       const { captureSecret: _, ...huntWithoutSecret } = state.activeHunt;
       setSavedHunt(huntWithoutSecret as HuntEvent);
     } else {
@@ -372,9 +417,10 @@ export function GameProvider({ children }: { children: ReactNode }) {
     dispatch({ type: 'PLAYER_KICKED', reason });
   }, []);
 
-  // Subscribe to kick events (only when player is in a hunt and not the host)
+  // Subscribe to kick events (only when player is in a hunt and not the host).
+  // Demo hunts are hostless — no relay subscription.
   useKickSubscription({
-    hunt: state.activeHunt,
+    hunt: state.activeHunt?.isDemo ? null : state.activeHunt,
     onKicked: handleKicked,
   });
 
@@ -531,8 +577,81 @@ export function GameProvider({ children }: { children: ReactNode }) {
     dispatch({ type: 'START_HUNT_SESSION', huntId: hunt.id });
   }, []);
 
+  // Start a fully local demo hunt (no Nostr, no NWC, no persistence)
+  const startDemoHunt = useCallback((center: GeoLocation, options?: { manualMovement?: boolean }): HuntEvent => {
+    const geoFence = createGeoFence(center, 300);
+
+    // Sync generators use random points (no Overpass call) — correct for a local demo
+    const monsters = generateMonsters({ totalSats: 21000, monsterCount: 8, geoFence });
+    const now = Date.now();
+    // Sync generator randomizes spawn within 60s; a demo must be instantly playable
+    monsters.forEach((m) => { m.spawnTime = now; });
+
+    // Plant a low-value common right next to the player so the very first tap succeeds
+    const commons = monsters.filter((m) => m.rarity === 'common');
+    const plant = commons.length > 0
+      ? commons.reduce((min, m) => (m.satAmount < min.satAmount ? m : min))
+      : monsters[0];
+    plant.location = { lat: center.lat + 0.0001, lng: center.lng }; // ~11m, inside 15m capture range
+
+    const satStops = generateSatStops(geoFence, 5);
+
+    const hunt: HuntEvent = {
+      id: 'demo-' + generateId(),
+      name: 'Demo Hunt',
+      description: 'A local demo hunt — walk up to a creature and tap to catch it. No login, no wallet, no payouts.',
+      hostPubkey: '',
+      totalSats: 21000,
+      monsterCount: 8,
+      geoFence,
+      startTime: now,
+      endTime: now + 30 * 60 * 1000,
+      createdAt: now,
+      monsters,
+      satStops,
+      status: 'active',
+      paymentStatus: 'paid',
+      shareCode: 'DEMO',
+      participants: [],
+      spawnMode: 'all_at_once',
+      isDemo: true,
+    };
+
+    const manualMovement = options?.manualMovement ?? false;
+    dispatch({ type: 'SET_ACTIVE_HUNT', hunt, manualMovement });
+    dispatch({ type: 'START_HUNT_SESSION', huntId: hunt.id });
+    // Couch mode has no GPS — drop the player at the fence center so the map renders
+    if (manualMovement) {
+      dispatch({ type: 'SET_PLAYER_LOCATION', location: center });
+    }
+    return hunt;
+  }, []);
+
+  // Inject a player location for couch-mode (tap-to-walk) demos only.
+  // Security: a real hunt must NEVER accept an injected location — that would be an
+  // anti-cheat bypass. Guard on both isDemo and manualMovement.
+  const setManualLocation = useCallback((location: GeoLocation) => {
+    if (!state.activeHunt?.isDemo || !state.manualMovement) return;
+    dispatch({ type: 'SET_PLAYER_LOCATION', location });
+  }, [state.activeHunt?.isDemo, state.manualMovement]);
+
+  // Exit a demo hunt: strip demo captures and clear all demo state (no publish, no history)
+  const exitDemoHunt = useCallback(() => {
+    if (!state.activeHunt?.isDemo) return;
+    clearCooldownState();
+    clearLocationHistory();
+    dispatch({ type: 'EXIT_DEMO_HUNT' });
+  }, [state.activeHunt?.isDemo]);
+
   // Leave the current hunt
   const leaveHunt = useCallback(() => {
+    // Demo hunts never publish or land in history — just clear local demo state
+    if (state.activeHunt?.isDemo) {
+      clearCooldownState();
+      clearLocationHistory();
+      dispatch({ type: 'EXIT_DEMO_HUNT' });
+      return;
+    }
     // Publish leave event to Nostr (only if player, not host)
     if (state.activeHunt && user?.pubkey && state.activeHunt.hostPubkey !== user.pubkey) {
       // Fire and forget - don't block UI
@@ -604,19 +723,16 @@ export function GameProvider({ children }: { children: ReactNode }) {
   // Capture a monster
   const captureMonster = useCallback(
     (monster: Monster): boolean => {
-      if (state.playerStats.balls <= 0) return false;
-      if (monster.captured) return false;
-      if (!state.playerLocation) return false;
-      if (!isInCaptureRange(state.playerLocation, monster.location)) return false;
-
-      // Anti-cheat check: verify location integrity
-      if (state.lastIntegrityCheck) {
-        if (!state.lastIntegrityCheck.canCapture) {
+      if (!canCaptureMonster(state, monster)) {
+        if (state.lastIntegrityCheck && !state.lastIntegrityCheck.canCapture && !state.activeHunt?.isDemo) {
           console.warn('[AntiCheat] Capture blocked:', state.lastIntegrityCheck.reason);
-          return false;
         }
-        // Record capture for cooldown tracking
-        updateCooldownState(state.playerLocation);
+        return false;
+      }
+
+      // Record capture for cooldown tracking (real hunts only — demo has no anti-cheat)
+      if (!state.activeHunt?.isDemo && state.lastIntegrityCheck) {
+        updateCooldownState(state.playerLocation!);
       }
 
       dispatch({ type: 'USE_BALL' });
@@ -627,7 +743,7 @@ export function GameProvider({ children }: { children: ReactNode }) {
       });
       return true;
     },
-    [state.playerStats.balls, state.playerLocation, state.activeHunt?.name, state.lastIntegrityCheck]
+    [state]
   );
 
   // Collect balls from a sat stop
@@ -671,6 +787,10 @@ export function GameProvider({ children }: { children: ReactNode }) {
   const startLocationTracking = useCallback(async () => {
     // Already tracking
     if (watchIdRef.current !== null) return;
+
+    // Couch-mode demo drives location via tap-to-walk — never start a GPS watch or
+    // surface a location error (GamePage calls this unconditionally on mount).
+    if (state.activeHunt?.isDemo && state.manualMovement) return;
 
     // Check for mock location in development mode
     if (isMockLocationEnabled()) {
@@ -750,7 +870,7 @@ export function GameProvider({ children }: { children: ReactNode }) {
       }
     );
     watchIdRef.current = watchId;
-  }, []);
+  }, [state.activeHunt?.isDemo, state.manualMovement]);
 
   // Stop location tracking
   const stopLocationTracking = useCallback(() => {
@@ -784,6 +904,9 @@ export function GameProvider({ children }: { children: ReactNode }) {
         confirmPayment,
         startHunt,
         joinHunt,
+        startDemoHunt,
+        setManualLocation,
+        exitDemoHunt,
         leaveHunt,
         addParticipant,
         updateParticipantLocation,
