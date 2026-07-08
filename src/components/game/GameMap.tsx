@@ -21,7 +21,7 @@ interface GameMapProps {
 }
 
 export function GameMap({ selectedMonster, selectedStop, onSelectMonster, onSelectStop, onMonsterCaptured }: GameMapProps) {
-  const { state, getAvailableMonsters, getAvailableStops, captureMonster, collectBalls, startLocationTracking, setManualLocation } = useGame();
+  const { state, getAvailableStops, captureMonster, collectBalls, startLocationTracking, setManualLocation } = useGame();
   const { activeHunt, playerLocation, locationError, playerStats, lastIntegrityCheck, manualMovement } = state;
   const { toast } = useToast();
   const { user } = useCurrentUser();
@@ -31,8 +31,9 @@ export function GameMap({ selectedMonster, selectedStop, onSelectMonster, onSele
   // Couch-mode demo: tap the map to move the player (tap-to-walk)
   const isCouchDemo = !!activeHunt?.isDemo && manualMovement;
 
-  // Get available entities
-  const availableMonsters = getAvailableMonsters();
+  // Visible monsters come from GameContext's sticky-visibility state (hysteresis
+  // survives map remounts there); stops have no visibility mechanic.
+  const visibleMonsters = state.nearbyMonsters;
   const availableStops = getAvailableStops();
 
   // Handle monster capture
@@ -106,7 +107,7 @@ export function GameMap({ selectedMonster, selectedStop, onSelectMonster, onSele
           center={activeHunt.geoFence.center}
           radiusMeters={activeHunt.geoFence.radiusMeters}
           playerLocation={playerLocation}
-          monsters={availableMonsters}
+          monsters={visibleMonsters}
           satStops={availableStops}
           onMonsterClick={onSelectMonster}
           onStopClick={onSelectStop}

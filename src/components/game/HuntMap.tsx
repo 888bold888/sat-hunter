@@ -1,6 +1,7 @@
 import { useEffect, useRef, useCallback } from 'react';
 import type { Monster, SatStop, GeoLocation, BoundaryType } from '@/lib/gameTypes';
-import { calculateDistance, formatSats } from '@/lib/gameUtils';
+import { CAPTURE_RANGE_METERS } from '@/lib/gameTypes';
+import { formatSats } from '@/lib/gameUtils';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import { cn } from '@/lib/utils';
@@ -61,8 +62,6 @@ export function HuntMap({
   const isMountedRef = useRef(true);
   const initialCenterRef = useRef(center);
   const updateTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  // Track currently visible monster IDs for hysteresis (prevent GPS jitter flickering)
-  const visibleMonsterIdsRef = useRef<Set<string>>(new Set());
 
   // Cleanup function for markers, circles, and polygons
   const clearMapLayers = useCallback(() => {
@@ -173,25 +172,11 @@ export function HuntMap({
           circlesRef.current.push(geofenceCircle);
         }
 
-        // Filter visible monsters with hysteresis to prevent GPS jitter flickering.
-        // Creatures appear at 15m but only disappear at 25m — the 10m buffer
-        // absorbs typical GPS accuracy fluctuations (5-10m).
-        const APPEAR_RANGE = 15;
-        const DISAPPEAR_RANGE = 25;
-        const visibleMonsters = showAllMonsters
-          ? monsters
-          : playerLocation
-            ? monsters.filter(m => {
-                const dist = calculateDistance(playerLocation, m.location);
-                const wasVisible = visibleMonsterIdsRef.current.has(m.id);
-                const isVisible = wasVisible ? dist <= DISAPPEAR_RANGE : dist <= APPEAR_RANGE;
-                return isVisible;
-              })
-            : [];
-
-        // Update tracking set
-        const newVisibleIds = new Set(visibleMonsters.map(m => m.id));
-        visibleMonsterIdsRef.current = newVisibleIds;
+        // HuntMap is a dumb renderer: visibility filtering (sticky hysteresis)
+        // happens in GameContext, whose state survives this component's
+        // remounts. Player views receive pre-filtered monsters; the host
+        // dashboard passes the full roster with showAllMonsters.
+        const visibleMonsters = monsters;
 
         // Add monster markers
         visibleMonsters.forEach(monster => {
@@ -285,11 +270,10 @@ export function HuntMap({
 
           markersRef.current.push(playerMarker);
 
-          // Add capture/visibility range circle (15m - orange)
+          // Add capture range circle (orange)
           if (!showAllMonsters) {
-            const CAPTURE_RANGE = 15;
             const captureCircle = L.circle([playerLocation.lat, playerLocation.lng], {
-              radius: CAPTURE_RANGE,
+              radius: CAPTURE_RANGE_METERS,
               color: '#f97316',
               fillColor: '#f97316',
               fillOpacity: 0.15,

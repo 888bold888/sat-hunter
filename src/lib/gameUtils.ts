@@ -17,6 +17,10 @@ import {
   MONSTER_NAMES,
   MONSTER_EMOJI_MAP,
   MONSTER_DESCRIPTIONS,
+  CAPTURE_RANGE_METERS,
+  SATSTOP_RANGE_METERS,
+  MONSTER_APPEAR_RANGE_METERS,
+  MONSTER_DISAPPEAR_RANGE_METERS,
 } from './gameTypes';
 
 // Turf.js for polygon operations
@@ -891,22 +895,43 @@ export function calculateLeaderboard(
   }));
 }
 
-// Check if monster is within capture range (15 meters = ~50 feet)
+// Check if monster is within capture range (~50 feet)
 export function isInCaptureRange(
   playerLocation: GeoLocation,
   monsterLocation: GeoLocation,
-  rangeMeters: number = 15
+  rangeMeters: number = CAPTURE_RANGE_METERS
 ): boolean {
   return calculateDistance(playerLocation, monsterLocation) <= rangeMeters;
 }
 
-// Check if player is at a sat stop (10 meters range)
+// Check if player is at a sat stop
 export function isAtSatStop(
   playerLocation: GeoLocation,
   stopLocation: GeoLocation,
-  rangeMeters: number = 10
+  rangeMeters: number = SATSTOP_RANGE_METERS
 ): boolean {
   return calculateDistance(playerLocation, stopLocation) <= rangeMeters;
+}
+
+// Sticky monster visibility with hysteresis: a creature appears when the player
+// walks within APPEAR range, then stays visible until they are DISAPPEAR away.
+// Pure — callers own `previouslyVisibleIds` (must persist across renders AND
+// component remounts; GameContext is the single holder of that state so the map
+// and the capture UI can never disagree).
+export function filterVisibleMonsters(
+  monsters: Monster[],
+  playerLocation: GeoLocation | null,
+  previouslyVisibleIds: ReadonlySet<string>,
+  now: number = Date.now()
+): Monster[] {
+  if (!playerLocation) return [];
+  return monsters.filter((m) => {
+    if (m.captured || m.spawnTime > now) return false;
+    const dist = calculateDistance(playerLocation, m.location);
+    return previouslyVisibleIds.has(m.id)
+      ? dist <= MONSTER_DISAPPEAR_RANGE_METERS
+      : dist <= MONSTER_APPEAR_RANGE_METERS;
+  });
 }
 
 // Calculate total sats from captured monsters

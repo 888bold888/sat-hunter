@@ -172,6 +172,18 @@ export interface MonsterGenConfig {
   maxConcurrentMonsters?: number;
 }
 
+// Distance thresholds (meters) — single source of truth, components must not
+// hardcode these. Visibility is display-only: widening DISAPPEAR must never
+// affect capture eligibility or anti-cheat distance checks.
+export const CAPTURE_RANGE_METERS = 15;
+export const SATSTOP_RANGE_METERS = 10;
+// Creatures appear when the player walks within capture range, but once visible
+// they stay on the map until the player is far away. The wide asymmetric band
+// absorbs GPS jitter spikes (field-observed >25m) that made creatures vanish
+// while players stood still.
+export const MONSTER_APPEAR_RANGE_METERS = CAPTURE_RANGE_METERS;
+export const MONSTER_DISAPPEAR_RANGE_METERS = 100;
+
 // Rarity weights for distribution (percentage of total spawns)
 // Common spawns the most, mythic only once
 export const RARITY_WEIGHTS: Record<MonsterRarity, number> = {

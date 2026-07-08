@@ -38,5 +38,13 @@ contains exactly one mythic — so a fully-cleared field always classified as
 dedup key comes from a priority-ordered classifier, check each class is actually
 reachable given the data invariants (here: mythic ⊂ all-captured).
 
+### When unifying duplicated logic, grep for the concept, not the known copies
+Consolidating the monster-visibility hysteresis, we migrated the two known
+copies (HuntMap, GameContext) but missed a third hidden one: GameHUD's "N
+nearby" count had its own hardcoded 15m filter, which would disagree with the
+map during the exact GPS spike the fix targeted. Before declaring logic
+unified, grep for the underlying concept (here: distance literals `15`/`25`,
+`calculateDistance(... ) <=`), not just the call sites you already know about.
+
 ### Rate limiting belongs on the host side, not client side
 Client-side rate limits are trivially bypassed. The host's `onMonsterCaptured` callback is the enforcement point — track timestamps per player in a ref and reject excess captures there.

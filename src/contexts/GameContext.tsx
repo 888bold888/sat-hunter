@@ -19,7 +19,7 @@ import {
   generateSatStopsAsync,
   createGeoFence,
   createPolygonGeoFence,
-  calculateDistance,
+  filterVisibleMonsters,
   isInCaptureRange,
   isAtSatStop,
   generateId,
@@ -358,7 +358,8 @@ export function GameProvider({ children }: { children: ReactNode }) {
   const [savedStats, setSavedStats] = useLocalStorage<PlayerStats | null>('sathunter:player-stats', null);
   const [savedHunt, setSavedHunt] = useLocalStorage<HuntEvent | null>('sathunter:active-hunt', null);
   const watchIdRef = useRef<number | null>(null); // Use ref to avoid re-renders when watchId changes
-  const nearbyMonsterIdsRef = useRef<Set<string>>(new Set()); // Hysteresis for GPS jitter
+  const nearbyMonsterIdsRef = useRef<Set<string>>(new Set()); // Sticky-visibility hysteresis for GPS jitter
+  const visibleHuntIdRef = useRef<string | null>(null); // Which hunt the visibility memory belongs to
 
   // Load saved stats on mount only
   useEffect(() => {
@@ -429,18 +430,23 @@ export function GameProvider({ children }: { children: ReactNode }) {
     dispatch({ type: 'CLEAR_KICKED' });
   }, []);
 
-  // Update nearby entities when location changes
+  // Update visible/nearby entities when location changes. Visibility hysteresis
+  // state lives here (not in map components) so it survives HuntMap remounts —
+  // this ref is the ONLY holder of "currently visible" ids; the map renders
+  // state.nearbyMonsters verbatim so map and capture UI can never disagree.
   useEffect(() => {
-    if (!state.playerLocation || !state.activeHunt) return;
-    // Hysteresis: appear at 15m, disappear at 25m to prevent GPS jitter flickering
-    const APPEAR_RANGE = 15;
-    const DISAPPEAR_RANGE = 25;
-    const nearbyMonsters = state.activeHunt.monsters.filter((m) => {
-      if (m.captured) return false;
-      const dist = calculateDistance(state.playerLocation!, m.location);
-      const wasNearby = nearbyMonsterIdsRef.current.has(m.id);
-      return wasNearby ? dist <= DISAPPEAR_RANGE : dist <= APPEAR_RANGE;
-    });
+    if (!state.activeHunt) return;
+    if (visibleHuntIdRef.current !== state.activeHunt.id) {
+      // New hunt: previous hunt's visibility memory must not leak in
+      visibleHuntIdRef.current = state.activeHunt.id;
+      nearbyMonsterIdsRef.current = new Set();
+    }
+    if (!state.playerLocation) return;
+    const nearbyMonsters = filterVisibleMonsters(
+      state.activeHunt.monsters,
+      state.playerLocation,
+      nearbyMonsterIdsRef.current
+    );
     nearbyMonsterIdsRef.current = new Set(nearbyMonsters.map(m => m.id));
     dispatch({ type: 'SET_NEARBY_MONSTERS', monsters: nearbyMonsters });
     const nearbyStops = state.activeHunt.satStops.filter((s) =>

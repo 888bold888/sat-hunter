@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useGame } from '@/contexts/GameContext';
-import { formatSats, formatTimeRemaining, calculateDistance } from '@/lib/gameUtils';
+import { formatSats, formatTimeRemaining } from '@/lib/gameUtils';
 import { Badge } from '@/components/ui/badge';
 import { Card } from '@/components/ui/card';
 import { Progress } from '@/components/ui/progress';
@@ -32,7 +32,7 @@ interface GameHUDProps {
 }
 
 export function GameHUD({ onOpenLeaderboard, onOpenInventory, onOpenStats }: GameHUDProps) {
-  const { state, getAvailableMonsters } = useGame();
+  const { state } = useGame();
   const { activeHunt, playerStats, playerLocation, locationError } = state;
   const [timeRemaining, setTimeRemaining] = useState('');
 
@@ -51,13 +51,9 @@ export function GameHUD({ onOpenLeaderboard, onOpenInventory, onOpenStats }: Gam
 
   if (!activeHunt) return null;
 
-  const availableMonsters = getAvailableMonsters();
-
-  // Only show monsters within 15 meters (~50 feet) visibility range
-  const VISIBILITY_RANGE_METERS = 15;
-  const visibleMonsters = playerLocation
-    ? availableMonsters.filter(m => calculateDistance(playerLocation, m.location) <= VISIBILITY_RANGE_METERS)
-    : [];
+  // Same sticky-visibility set the map renders (GameContext hysteresis) — the
+  // "N nearby" count must never disagree with what the player sees on the map.
+  const visibleMonsters = state.nearbyMonsters;
 
   const capturedCount = activeHunt.monsters.filter((m) => m.captured).length;
   const _progress = (capturedCount / activeHunt.monsterCount) * 100;
