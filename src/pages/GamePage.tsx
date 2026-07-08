@@ -16,6 +16,7 @@ import { DevTools } from '@/components/game/DevTools';
 import { useCurrentUser } from '@/hooks/useCurrentUser';
 import { usePublishHuntEnd } from '@/hooks/usePublishHuntEnd';
 import { useHuntSync } from '@/hooks/useHuntSync';
+import { useCaptureStateSync } from '@/hooks/useCaptureStateSync';
 import { useMyHunts } from '@/hooks/useMyHunts';
 import { useSeoMeta } from '@unhead/react';
 import { Button } from '@/components/ui/button';
@@ -154,6 +155,31 @@ export default function GamePage() {
       onCaptureClaimTag: handleCaptureClaimTag,
     }
   );
+
+  // Tier 2: apply the host's authoritative capture-state broadcasts (terminal
+  // captures + loser rollback). Host and demo hunts pass null (dead paths).
+  useCaptureStateSync((!userIsHost && !activeHunt?.isDemo) ? activeHunt : null);
+
+  // Toast once per lost monster when the host attributes a monster we
+  // optimistically credited to a different hunter. Ref-dedup; lostCaptures is
+  // append-only for the hunt and reset on hunt change.
+  const shownLostRef = useRef<Set<string>>(new Set());
+  useEffect(() => {
+    for (const lost of state.lostCaptures) {
+      if (shownLostRef.current.has(lost.monsterId)) continue;
+      shownLostRef.current.add(lost.monsterId);
+      toast({
+        title: 'Too slow!',
+        description: `Another hunter got ${lost.monsterName}!`,
+        variant: 'destructive',
+      });
+    }
+  }, [state.lostCaptures, toast]);
+
+  // Clear the shown-toast memory when the hunt changes.
+  useEffect(() => {
+    shownLostRef.current = new Set();
+  }, [activeHunt?.id]);
 
   // Handle host ending the hunt
   const handleEndHunt = useCallback(async () => {

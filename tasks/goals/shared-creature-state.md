@@ -1,6 +1,6 @@
 # Goal: Shared creature state — all players see one world
 
-**Status**: in progress (phases 0–1 done)
+**Status**: in progress (phases 0–2 done)
 **Why**: In a multi-player hunt every player must see the same creatures in the
 same places, and when player 1 catches one it must disappear from player 2's map.
 The field test showed this is glitchy: caught creatures linger as "ghosts" on other
@@ -87,17 +87,51 @@ encrypted `capture_state` message to connected players' sessions containing the
   N messages is corrected by the next one. Host also rebroadcasts periodically
   (e.g. every ~15s while any player is connected) so recovery doesn't depend on
   capture activity.
-- Authenticity comes from the zero-trust session itself (per-session encryption
-  keys established at the authenticated hello) — a message that decrypts under
-  the session is by construction from the host; there is no host-npub signature
-  to leak or verify. Sequence-window rules already reject replays.
+- ~~Authenticity comes from the zero-trust session itself~~ **Corrected
+  2026-07-08 (code reality):** the hunt session is PSK-derived from the
+  shareCode (`createSessionFromPSK`, zeroTrustRelay.ts) and inner events are
+  NOT signed — any player can build a message that decrypts under the session.
+  Encryption alone therefore authenticates *hunt membership*, not the host.
+  Host authenticity instead: the host generates an **ephemeral per-hunt
+  broadcast keypair** (persisted in host localStorage next to captureSecret,
+  never the real npub, never logged), announces `hostBroadcastPubkey` inside
+  the already-encrypted hello hunt data, and each `capture_state` payload is a
+  signed Nostr event under that key. Players `verifyEvent` it AND require
+  `pubkey === hostBroadcastPubkey` from their hello before acting. The hello
+  itself is only as trustworthy as today's monsters/captureSecret delivery —
+  a pre-existing accepted risk, unchanged by this goal. Sequence-window rules
+  still reject replays at the channel layer; the signed payload also carries
+  its own timestamp for the standard freshness window.
 - On receiving `capture_state`: monsters in the list become terminally captured;
   if the local player optimistically credited a capture the state attributes to
   someone else, roll back the credit and show "Too slow — another hunter got it!".
-- **Verify during phase design:** whether player zero-trust sessions currently
-  stay subscribed after the hello handshake or are torn down
-  (`useHuntConnection.ts` resolves after one payload) — if torn down, keeping the
-  subscription alive is part of Phase 2.
+- **Transport (resolved 2026-07-08, code-verified):** player sessions ARE torn
+  down after the hello payload (`waitForZeroTrustData` resolves once), and the
+  session seq machinery cannot serve broadcasts anyway — `decryptZeroTrustMessage`
+  has a 50-seq lookahead, and a 15s heartbeat burns ~240 seqs/hour, so any
+  late joiner/rejoiner would permanently fall outside the decrypt window.
+  Instead, `capture_state` uses a dedicated stateless broadcast path
+  (new `src/lib/captureBroadcast.ts`, mirroring zeroTrustRelay primitives):
+  - Well-known **cast keypair** derived from the PSK: privkey =
+    hash-to-valid-secp-key of `sha256("sat-hunter-cast:" + shareCode)`. Every
+    participant derives it; relay observers can't (they'd need the shareCode
+    AND to bother — same secrecy level as the PSK itself).
+  - Host publishes outer kind 21111 (ephemeral) events tagged
+    `['p', castPubkey]`, content = encrypt(ECDH(ephemeral sender key,
+    castPubkey), signedInnerEventJSON). One event per broadcast regardless of
+    player count; players subscribe on `#p = castPubkey`.
+  - The inner payload is a **signed Nostr event** under `hostBroadcastPubkey`
+    (players: `verifyEvent` + pubkey match + freshness window + monotonic
+    `stateVersion` — full state is idempotent so replays are harmless anyway).
+  - No per-player sessions, no seq windows: any player can decrypt any
+    broadcast at any time, which is exactly the self-healing property we want.
+- **Winner privacy:** the broadcast must NOT carry winners' real npubs (the
+  host decrypts those from capture events; other players have no need to learn
+  them). Each entry carries `winnerProof = sha256("{monsterId}:{winnerPubkey}")`
+  — a player computes their own proof to answer "did I win this?" for rollback
+  UX, and learns nothing about who else won. (Noted: join events kind 32961
+  already leak player npubs publicly — pre-existing, out of scope, added to
+  open questions.)
 
 ### Late joiners / reconnects
 Host merges `syncedCaptures` into the monster list it sends in the hello snapshot
@@ -156,9 +190,10 @@ range stays tied to capture range (~15m — read gameTypes.ts for the live value
 - Payment/anti-cheat changes ship with tests proving the failure case:
   - two players capture the same monster in one poll batch → exactly one payment;
   - forged Tier 1 event (valid `d` tag, garbage content) hides but never credits;
-  - a `capture_state` message not encrypted under the player's zero-trust session
-    fails to decrypt and is ignored (host authenticity by construction);
-  - replayed/out-of-window `capture_state` is rejected by the sequence rules;
+  - a forged `capture_state` (valid PSK encryption, but signed by a non-host
+    key or unsigned) is rejected — a malicious co-player must not be able to
+    fake the authoritative state or trigger credit rollback;
+  - stale/backdated signed `capture_state` is rejected (freshness window);
   - no new player-readable payload contains lat/lng/geohash (assert on the
     serialized messages, not just types).
 - Never `npm run deploy` / never publish real Nostr events from tests — follow the
@@ -181,7 +216,7 @@ range stays tied to capture range (~15m — read gameTypes.ts for the live value
       `useHuntSync` so claimed monsters get marked captured in GameContext
       (display-only reducer action, no stats/sats side effects). Ghost creatures
       disappear within one poll (~5s).
-- [ ] **2. Host `capture_state` broadcasts (Tier 2)** — keep player zero-trust
+- [x] **2. Host `capture_state` broadcasts (Tier 2)** — keep player zero-trust
       sessions alive past hello (verify current lifetime first); host broadcasts
       full captured-state over the ephemeral relay after each validated capture
       and on a ~15s heartbeat; players terminally resolve monsters from it,
@@ -212,6 +247,9 @@ range stays tied to capture range (~15m — read gameTypes.ts for the live value
 - Existing leak worth a separate look (out of scope here): the 32959 hunt event
   exposes shareCode, total_sats, times, and a bolt11 invoice under the host's
   real npub — consider a follow-up goal if that bothers us.
+- Existing leak #2 (out of scope): join events (kind 32961) are signed by
+  players' real npubs and publicly tag the hunt — anyone can enumerate who
+  played. Candidate follow-up: session-key-signed joins.
 
 ## Progress log
 <!-- /goal appends dated entries here as work lands -->
@@ -266,3 +304,41 @@ range stays tied to capture range (~15m — read gameTypes.ts for the live value
 - Ghost-creature fix latency: within one 5s poll of the relay seeing the
   capture event. Losing-player "too slow" UX + credit rollback is Phase 2
   (needs the authoritative winner, which Tier 1 can't provide).
+
+### 2026-07-08 — Phase 2 complete (Tier 2 capture_state broadcasts), built by builder agent, verified manually
+- Verifier agent was cut off by a session limit mid-check; full manual
+  verification done instead against the same checklist (crypto rejection paths,
+  effect-loop safety, rollback math vs CAPTURE_MONSTER, persistence stripping,
+  privacy payload audit, full suite).
+- `src/lib/captureBroadcast.ts`: `deriveCastKeypair` (hash-to-valid-scalar loop
+  from `"sat-hunter-cast:"+shareCode`), `buildCaptureStateEvent` (SIGNED inner
+  kind 21113 under hostBroadcastPubkey, encrypted to castPubkey with ephemeral
+  sender key, outer kind 21111), `decryptCaptureStateEvent` (fail-closed:
+  verifyEvent + pubkey match + kind check + 5-min freshness + shape check),
+  `computeWinnerProof`. Keys zeroed after use; nothing logged.
+- Host: broadcast keypair persisted per hunt (`sathunter:broadcast-key:{id}`,
+  survives refresh so players' learned pubkey stays valid); pubkey rides the
+  encrypted hello next to captureSecret; HostDashboard broadcasts full state on
+  each accepted capture (syncedCaptures-keyed effect — builder chose this over
+  an inline call in onMonsterCaptured to avoid a stale-closure bug, behavior
+  identical) + 15s heartbeat while hosting an active hunt. One event per
+  broadcast regardless of player count.
+- Player: `useCaptureStateSync` (dead for host/demo/no-broadcast-pubkey),
+  monotonic stateVersion guard, cast privkey zeroed on cleanup. GameContext
+  `APPLY_CAPTURE_STATE`: terminal captures, instant nearbyMonsters removal,
+  loser rollback mirroring CAPTURE_MONSTER's exact increments, idempotent
+  (same-state re-apply returns same reference), can never increase stats;
+  `lostCaptures` drives a ref-deduped "Too slow!" toast in GamePage.
+- Builder deviations accepted: castPubkey as explicit param; no payload.huntId
+  filter (cast key + signature already scope per hunt; hunt.id changes after
+  publish so filtering on it would drop valid broadcasts); APPLY_CAPTURE_STATE
+  does NOT run activateNextUnspawned (Tier 1 handles replacement activation
+  within one poll; avoids double-activation — revisit in Phase 3/4 for the
+  Tier-2-only edge case).
+- Known limitation for Phase 3: hostBroadcastPubkey is (deliberately) never
+  persisted client-side, so a player who refreshes loses Tier 2 until re-hello;
+  Tier 1 still covers them. Phase 3's snapshot merge + re-hello is the fix.
+- Tests: `captureBroadcast.test.ts` (node env, 6 — incl. co-player forgery with
+  valid cast encryption but wrong signer REJECTED, tampered inner, stale
+  timestamp) + `captureState.test.tsx` (6 — rollback math, winner keeps credit,
+  idempotency, never-increases). Suite: 119 tests green, tsc/eslint/build clean.

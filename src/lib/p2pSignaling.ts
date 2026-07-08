@@ -28,6 +28,7 @@ export interface HuntLocationData {
   monsters: Monster[];
   satStops: SatStop[];
   captureSecret?: string; // HMAC key for capture proof — only sent via encrypted channel
+  hostBroadcastPubkey?: string; // Tier 2: ephemeral key players verify capture_state broadcasts against
 }
 
 // Signaling message types

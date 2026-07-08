@@ -10,7 +10,13 @@ import { useNostr } from '@nostrify/react';
 import { useCurrentUser } from './useCurrentUser';
 import { useLocalStorage } from './useLocalStorage';
 import { generateSecretKey, getPublicKey } from 'nostr-tools';
+import { bytesToHex, hexToBytes } from '@noble/hashes/utils.js';
 import type { HuntEvent } from '@/lib/gameTypes';
+import {
+  deriveCastKeypair,
+  buildCaptureStateEvent,
+  type CaptureStateEntry,
+} from '@/lib/captureBroadcast';
 import {
   P2P_OFFER_KIND,
   createPlayerConnection,
@@ -51,6 +57,9 @@ interface UseHostConnectionResult {
   captureSecret: string | null;
   startHosting: () => void;
   stopHosting: () => void;
+  // Tier 2: broadcast the full authoritative captured-state to players over the
+  // ephemeral relay (signed under the per-hunt broadcast key). No-op until hosting.
+  broadcastCaptureState: (entries: CaptureStateEntry[], stateVersion: number) => Promise<void>;
 }
 
 // Default relays for zero-trust messaging
@@ -95,6 +104,19 @@ export function useHostConnection(
     null
   );
   const captureSecretRef = useRef<string | null>(persistedCaptureSecret);
+
+  // Persist the ephemeral per-hunt broadcast keypair (Tier 2 host authenticity).
+  // Store the privkey hex so it survives refresh; NEVER log or print it.
+  const broadcastKeyStorageKey = useMemo(
+    () => `sathunter:broadcast-key:${hunt?.id ?? 'no-hunt'}`,
+    [hunt?.id]
+  );
+  const [persistedBroadcastKey, setPersistedBroadcastKey] = useLocalStorage<string | null>(
+    broadcastKeyStorageKey,
+    null
+  );
+  const broadcastPrivkeyRef = useRef<Uint8Array | null>(null);
+  const broadcastPubkeyRef = useRef<string | null>(null);
 
   // Persist processed offer IDs
   const processedOffersKey = useMemo(
@@ -141,6 +163,11 @@ export function useHostConnection(
       zeroTrustPrivkeyRef.current.fill(0);
       zeroTrustPrivkeyRef.current = null;
     }
+    if (broadcastPrivkeyRef.current) {
+      broadcastPrivkeyRef.current.fill(0);
+      broadcastPrivkeyRef.current = null;
+    }
+    broadcastPubkeyRef.current = null;
     setZeroTrustHandshake(null);
   }, []);
 
@@ -337,12 +364,25 @@ export function useHostConnection(
         setPersistedCaptureSecret(captureSecretRef.current);
       }
 
-      // Prepare hunt data (includes captureSecret for player verification)
+      // Reuse or generate the ephemeral per-hunt broadcast keypair. Persisted as
+      // privkey hex so a host refresh keeps signing under the same key players
+      // already learned; never logged.
+      let broadcastPrivkeyHex = persistedBroadcastKey;
+      if (!broadcastPrivkeyHex) {
+        broadcastPrivkeyHex = bytesToHex(generateSecretKey());
+        setPersistedBroadcastKey(broadcastPrivkeyHex);
+      }
+      broadcastPrivkeyRef.current = hexToBytes(broadcastPrivkeyHex);
+      broadcastPubkeyRef.current = getPublicKey(broadcastPrivkeyRef.current);
+
+      // Prepare hunt data (includes captureSecret for player verification and the
+      // broadcast pubkey players verify Tier 2 capture-state against)
       huntDataRef.current = {
         geoFence: hunt.geoFence,
         monsters: hunt.monsters,
         satStops: hunt.satStops,
         captureSecret: captureSecretRef.current,
+        hostBroadcastPubkey: broadcastPubkeyRef.current,
       };
 
       // Initialize zero-trust
@@ -353,12 +393,35 @@ export function useHostConnection(
       console.error('[Host] Failed to start hosting:', err);
       setError(err instanceof Error ? err.message : 'Failed to start hosting');
     }
-  }, [hunt, user, initZeroTrust, persistedCaptureSecret, setPersistedCaptureSecret]);
+  }, [hunt, user, initZeroTrust, persistedCaptureSecret, setPersistedCaptureSecret, persistedBroadcastKey, setPersistedBroadcastKey]);
 
   // Stop hosting
   const stopHosting = useCallback(() => {
     cleanup();
   }, [cleanup]);
+
+  // Tier 2: publish the full authoritative captured-state as an encrypted,
+  // host-signed broadcast over the ephemeral relay. One outer event regardless
+  // of player count; players subscribe on the shareCode-derived cast pubkey.
+  const broadcastCaptureState = useCallback(
+    async (entries: CaptureStateEntry[], stateVersion: number) => {
+      if (!hunt || !nostr || !broadcastPrivkeyRef.current) return;
+      try {
+        const cast = deriveCastKeypair(hunt.shareCode);
+        const event = buildCaptureStateEvent(
+          broadcastPrivkeyRef.current,
+          cast.pubkey,
+          hunt.id,
+          stateVersion,
+          entries
+        );
+        await nostr.event(event);
+      } catch (err) {
+        console.error('[Host ZeroTrust] Failed to broadcast capture state:', err);
+      }
+    },
+    [hunt, nostr]
+  );
 
   // Poll for P2P offers
   useEffect(() => {
@@ -471,5 +534,6 @@ export function useHostConnection(
     captureSecret: captureSecretRef.current,
     startHosting,
     stopHosting,
+    broadcastCaptureState,
   };
 }

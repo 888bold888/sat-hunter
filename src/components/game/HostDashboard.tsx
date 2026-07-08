@@ -38,6 +38,7 @@ import { usePayPlayer } from '@/hooks/usePayPlayer';
 import { useToast } from '@/hooks/useToast';
 import { ANTI_CHEAT_CONFIG } from '@/lib/antiCheat';
 import { useHostConnection } from '@/hooks/useHostConnection';
+import { computeWinnerProof, type CaptureStateEntry } from '@/lib/captureBroadcast';
 import { useHostApprovals, usePlayerMetadata } from '@/hooks/useHostApprovals';
 import { useLocalStorage } from '@/hooks/useLocalStorage';
 import { usePublishKick } from '@/hooks/usePublishKick';
@@ -411,6 +412,7 @@ export function HostDashboard() {
     captureSecret,
     startHosting,
     stopHosting,
+    broadcastCaptureState,
   } = useHostConnection(activeHunt);
 
   // Host approvals for join requests
@@ -596,6 +598,42 @@ export function HostDashboard() {
     onPlayerJoined,
     onPlayerLeft,
   }, user?.signer);
+
+  // Tier 2: assemble the FULL authoritative captured-state (all captured monster
+  // ids with a winnerProof + capturedAt) from both the host's own monster flags
+  // and the decrypted syncedCaptures. Winner npubs never leave the host — only
+  // the sha256 winnerProof does (goal file: winner privacy).
+  const buildStateEntries = useCallback((): CaptureStateEntry[] => {
+    if (!activeHunt) return [];
+    const byId = new Map<string, { winnerPubkey: string; capturedAt: number }>();
+    // Host's own knowledge (e.g. host also playing) — capturedBy is the winner.
+    for (const m of activeHunt.monsters) {
+      if (m.captured && m.capturedBy) {
+        byId.set(m.id, { winnerPubkey: m.capturedBy, capturedAt: m.capturedAt ?? Date.now() });
+      }
+    }
+    // Decrypted player captures are authoritative for the winner identity.
+    for (const [monsterId, data] of syncedCaptures.entries()) {
+      byId.set(monsterId, { winnerPubkey: data.playerPubkey, capturedAt: data.capturedAt });
+    }
+    return Array.from(byId.entries()).map(([monsterId, { winnerPubkey, capturedAt }]) => ({
+      monsterId,
+      capturedAt,
+      winnerProof: computeWinnerProof(monsterId, winnerPubkey),
+    }));
+  }, [activeHunt, syncedCaptures]);
+
+  // Broadcast the full captured-state after each accepted capture (syncedCaptures
+  // change re-runs this effect → immediate fresh-state broadcast) and on a 15s
+  // heartbeat so sleeping/late-joining players self-heal. Full-state is
+  // idempotent; this never touches payment or anti-cheat logic.
+  useEffect(() => {
+    if (!isHostingActive || !activeHunt || activeHunt.status !== 'active') return;
+    const broadcast = () => { void broadcastCaptureState(buildStateEntries(), Date.now()); };
+    broadcast();
+    const interval = setInterval(broadcast, 15000);
+    return () => clearInterval(interval);
+  }, [isHostingActive, activeHunt, syncedCaptures, buildStateEntries, broadcastCaptureState]);
 
   // Update time remaining
   useEffect(() => {

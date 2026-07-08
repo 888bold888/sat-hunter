@@ -291,6 +291,7 @@ export default function JoinHuntPage() {
           monsters: locationData.monsters,
           satStops: locationData.satStops,
           captureSecret: locationData.captureSecret,
+          hostBroadcastPubkey: locationData.hostBroadcastPubkey,
         };
 
         toast({

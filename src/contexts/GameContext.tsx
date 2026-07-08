@@ -30,6 +30,7 @@ import type { BoundaryType, SpawnMode } from '@/lib/gameTypes';
 import type { SatStopsResult, MonstersResult } from '@/lib/gameUtils';
 import type { HuntStatus, HuntParticipant } from '@/lib/gameTypes';
 import { isMockLocationEnabled, getMockLocation } from '@/lib/devMode';
+import { computeWinnerProof } from '@/lib/captureBroadcast';
 import {
   checkLocationIntegrity,
   updateCooldownState,
@@ -52,6 +53,25 @@ export interface GameState {
   wasKicked: boolean;
   kickReason: string | null;
   manualMovement: boolean; // Couch-mode demo: player moves via tap-to-walk, not GPS
+  // Tier 2: monsters the local player optimistically credited but the host's
+  // authoritative capture-state attributed to another hunter (loser rollback).
+  // Append-only for the active hunt; UI toasts once per monsterId (ref-dedup).
+  lostCaptures: LostCapture[];
+}
+
+// Minimal, npub-free record for the "too slow" toast (winner privacy: the
+// broadcast carries only winnerProof, never the winner's real pubkey).
+export interface LostCapture {
+  monsterId: string;
+  monsterName: string;
+  satAmount: number;
+}
+
+// A single entry of the host's authoritative captured-state broadcast.
+export interface CaptureStateEntry {
+  monsterId: string;
+  capturedAt: number;
+  winnerProof: string;
 }
 
 type GameAction =
@@ -64,6 +84,7 @@ type GameAction =
   | { type: 'SET_NEARBY_STOPS'; stops: SatStop[] }
   | { type: 'CAPTURE_MONSTER'; monster: Monster; huntName: string }
   | { type: 'MARK_MONSTER_CLAIMED'; monsterId: string }
+  | { type: 'APPLY_CAPTURE_STATE'; entries: CaptureStateEntry[]; myPubkey: string }
   | { type: 'COLLECT_BALLS'; stopId: string; balls: number }
   | { type: 'USE_BALL' }
   | { type: 'SET_CAPTURING'; capturing: boolean }
@@ -107,6 +128,7 @@ export const initialState: GameState = {
   wasKicked: false,
   kickReason: null,
   manualMovement: false,
+  lostCaptures: [],
 };
 
 // scattered_replacement mode: activate the first unspawned monster (shared
@@ -128,7 +150,8 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
     case 'SET_ACTIVE_HUNT':
       // manualMovement is a couch-mode demo flag; any hunt change resets it unless
       // explicitly set (only a manual-movement demo start passes it true)
-      return { ...state, activeHunt: action.hunt, manualMovement: action.manualMovement ?? false };
+      // Any hunt change clears the previous hunt's loser-rollback toasts.
+      return { ...state, activeHunt: action.hunt, manualMovement: action.manualMovement ?? false, lostCaptures: [] };
     case 'UPDATE_HUNT':
       return { ...state, activeHunt: action.hunt };
     case 'SET_PLAYER_LOCATION':
@@ -173,6 +196,77 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
         // Remove from the map immediately — a real disappearance is signal, and
         // must not wait for the next location tick or linger via stickiness.
         nearbyMonsters: state.nearbyMonsters.filter(m => m.id !== action.monsterId),
+      };
+    }
+    case 'APPLY_CAPTURE_STATE': {
+      // Tier 2: the host's authoritative captured-state broadcast
+      // (tasks/goals/shared-creature-state.md). Terminally marks monsters
+      // captured and rolls back any credit the local player optimistically took
+      // for a monster the host awarded to a different hunter.
+      // HARD RULE: this action must NEVER increase any stat or credit anything.
+      if (!state.activeHunt) return state;
+      const huntId = state.activeHunt.id;
+      const entryById = new Map(action.entries.map(e => [e.monsterId, e]));
+
+      // 1. Mark monsters terminally captured. Idempotent: an already-captured
+      //    monster keeps its capturedBy/capturedAt; we only fill capturedAt for
+      //    newly-captured ones (capturedBy stays unset — the winner's npub is
+      //    intentionally not in the broadcast).
+      const newlyCapturedIds = new Set<string>();
+      const monsters = state.activeHunt.monsters.map(m => {
+        const entry = entryById.get(m.id);
+        if (!entry || m.captured) return m;
+        newlyCapturedIds.add(m.id);
+        return { ...m, captured: true, capturedAt: entry.capturedAt };
+      });
+
+      // 2. Loser rollback: strip credit for any monster we recorded locally that
+      //    the host attributes to someone else. Mirrors exactly what
+      //    CAPTURE_MONSTER incremented for a real hunt (demo never reaches here).
+      let stats = state.playerStats;
+      const alreadyLost = new Set(state.lostCaptures.map(l => l.monsterId));
+      const lostAdds: LostCapture[] = [];
+      for (const entry of action.entries) {
+        const mine = stats.capturedMonsters.find(
+          cm => cm.huntId === huntId && cm.monsterId === entry.monsterId
+        );
+        if (!mine) continue; // never credited locally — nothing to roll back
+        // We won the race iff our proof matches the broadcast — then keep credit.
+        if (computeWinnerProof(entry.monsterId, action.myPubkey) === entry.winnerProof) continue;
+        stats = {
+          ...stats,
+          capturedMonsters: stats.capturedMonsters.filter(
+            cm => !(cm.huntId === huntId && cm.monsterId === entry.monsterId)
+          ),
+          currentHuntCaptured: stats.currentHuntCaptured - 1,
+          currentHuntSatsEarned: stats.currentHuntSatsEarned - mine.satAmount,
+          lifetimeCaptured: stats.lifetimeCaptured - 1,
+          lifetimeSatsEarned: stats.lifetimeSatsEarned - mine.satAmount,
+          totalCaptured: stats.totalCaptured - 1,
+          totalSatsEarned: stats.totalSatsEarned - mine.satAmount,
+        };
+        if (!alreadyLost.has(entry.monsterId)) {
+          lostAdds.push({ monsterId: entry.monsterId, monsterName: mine.monsterName, satAmount: mine.satAmount });
+          alreadyLost.add(entry.monsterId);
+        }
+      }
+
+      const monstersChanged = newlyCapturedIds.size > 0;
+      const statsChanged = stats !== state.playerStats;
+      // Idempotent: a repeated broadcast that changes nothing keeps the same
+      // state reference (no re-render, no duplicate toast).
+      if (!monstersChanged && !statsChanged) return state;
+
+      return {
+        ...state,
+        activeHunt: monstersChanged ? { ...state.activeHunt, monsters } : state.activeHunt,
+        playerStats: stats,
+        // Newly-confirmed captures are signal, not jitter — drop them from the
+        // map immediately regardless of distance/stickiness.
+        nearbyMonsters: monstersChanged
+          ? state.nearbyMonsters.filter(m => !newlyCapturedIds.has(m.id))
+          : state.nearbyMonsters,
+        lostCaptures: lostAdds.length > 0 ? [...state.lostCaptures, ...lostAdds] : state.lostCaptures,
       };
     }
     case 'CAPTURE_MONSTER': {
@@ -371,6 +465,7 @@ interface GameContextType {
   isHost: () => boolean;
   captureMonster: (monster: Monster) => boolean;
   markMonsterClaimed: (monsterId: string) => void;
+  applyCaptureState: (entries: CaptureStateEntry[], myPubkey: string) => void;
   collectBalls: (stop: SatStop) => boolean;
   startLocationTracking: () => void;
   stopLocationTracking: () => void;
@@ -437,7 +532,9 @@ export function GameProvider({ children }: { children: ReactNode }) {
   // Demo hunts are local-only and never persisted (they don't survive a refresh).
   useEffect(() => {
     if (state.activeHunt && !state.activeHunt.isDemo) {
-      const { captureSecret: _, ...huntWithoutSecret } = state.activeHunt;
+      // Drop captureSecret (must never persist) and the ephemeral broadcast pubkey
+      // (regenerated each host session; a stale one would reject live broadcasts).
+      const { captureSecret: _s, hostBroadcastPubkey: _b, ...huntWithoutSecret } = state.activeHunt;
       setSavedHunt(huntWithoutSecret as HuntEvent);
     } else {
       setSavedHunt(null);
@@ -790,6 +887,12 @@ export function GameProvider({ children }: { children: ReactNode }) {
     dispatch({ type: 'MARK_MONSTER_CLAIMED', monsterId });
   }, []);
 
+  // Tier 2: apply the host's authoritative captured-state broadcast (terminal
+  // captures + loser rollback). See APPLY_CAPTURE_STATE reducer case.
+  const applyCaptureState = useCallback((entries: CaptureStateEntry[], myPubkey: string) => {
+    dispatch({ type: 'APPLY_CAPTURE_STATE', entries, myPubkey });
+  }, []);
+
   // Collect balls from a sat stop
   const collectBalls = useCallback(
     (stop: SatStop): boolean => {
@@ -957,6 +1060,7 @@ export function GameProvider({ children }: { children: ReactNode }) {
         isHost,
         captureMonster,
         markMonsterClaimed,
+        applyCaptureState,
         collectBalls,
         startLocationTracking,
         stopLocationTracking,

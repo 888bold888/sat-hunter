@@ -86,6 +86,10 @@ export interface HuntEvent {
   // Security settings
   requiresApproval?: boolean; // Host must approve players before they can join
   captureSecret?: string; // HMAC key for capture proof (received via encrypted channel, never persisted)
+  // Ephemeral per-hunt host broadcast pubkey (Tier 2 capture-state authenticity):
+  // learned from the encrypted hello, players verifyEvent + match against it before
+  // acting on any capture_state broadcast. Never persisted (dropped like captureSecret).
+  hostBroadcastPubkey?: string;
   // Demo hunts are fully local: never published to Nostr, never persisted, never paid
   isDemo?: boolean;
 }
