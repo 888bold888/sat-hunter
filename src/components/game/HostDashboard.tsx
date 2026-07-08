@@ -39,6 +39,12 @@ import { useToast } from '@/hooks/useToast';
 import { ANTI_CHEAT_CONFIG } from '@/lib/antiCheat';
 import { useHostConnection } from '@/hooks/useHostConnection';
 import { computeWinnerProof, type CaptureStateEntry } from '@/lib/captureBroadcast';
+import {
+  createArbiterState,
+  arbitrateCapture,
+  releaseCaptureClaim,
+  type ArbiterState,
+} from '@/lib/captureArbiter';
 import { useHostApprovals, usePlayerMetadata } from '@/hooks/useHostApprovals';
 import { useLocalStorage } from '@/hooks/useLocalStorage';
 import { usePublishKick } from '@/hooks/usePublishKick';
@@ -344,6 +350,10 @@ export function HostDashboard() {
     new Map(),
     mapSerializer
   ); // monsterId -> reason
+  // monsterId -> playerPubkey of the claim we rejected. Rejected claims no longer
+  // enter syncedCaptures (winner consistency, Phase 4), so the player-monitor
+  // reads this to attribute blocked captures to a player. Display-only.
+  const [rejectedByPlayer, setRejectedByPlayer] = useState<Map<string, string>>(new Map());
 
   const { payPlayer } = usePayPlayer();
   const { toast } = useToast();
@@ -362,6 +372,26 @@ export function HostDashboard() {
 
   // Rate limiting: track capture timestamps per player (max 3 per 10 seconds)
   const captureTimestampsRef = useRef<Map<string, number[]>>(new Map());
+
+  // Phase 4 race hardening: the SYNCHRONOUS in-batch lock. React state setters
+  // (paidCaptures/payingCaptures/rejectedCaptures) queue and don't update the
+  // reading closures within one poll batch, so two claims for the same monster
+  // in a batch could both pass the state guards and be paid twice. This ref is
+  // check-and-set synchronously at the decision point in onMonsterCaptured,
+  // before any await/setState, so exactly one claim per monster is paid and that
+  // same claim is the winner recorded in syncedCaptures / capture_state.
+  const arbiterStateRef = useRef<ArbiterState>(createArbiterState([], []));
+
+  // Seed/reconcile the synchronous lock from the persisted record on mount and
+  // whenever the hunt changes. paidCaptures/rejectedCaptures are localStorage-
+  // backed and survive a host refresh, so re-seeding guarantees a refresh never
+  // re-pays and never un-poisons. Keyed on huntId only: during a live session the
+  // ref accumulates from arbiter decisions and must NOT be rebuilt on every
+  // paidCaptures change (that would drop in-flight, not-yet-persisted locks).
+  useEffect(() => {
+    arbiterStateRef.current = createArbiterState(paidCaptures, rejectedCaptures.keys());
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [huntId]);
 
   // Handle kicking a player
   const handleKickPlayer = useCallback(async (playerPubkey: string) => {
@@ -465,39 +495,16 @@ export function HostDashboard() {
     };
   }, [activeHunt?.id, activeHunt?.shareCode, activeHunt?.requiresApproval, startApprovalListening, stopApprovalListening]);
 
-  // Pay player when a capture is detected (with anti-cheat validation)
+  // Pay the winner of a monster. All dedup / anti-cheat gating already happened
+  // synchronously in onMonsterCaptured via the arbiter (which took the lock), so
+  // this function assumes it is called at most once per monster per accepted
+  // claim and just performs the payment + records the durable paid/pending state.
   const processPayment = useCallback(async (
     monsterId: string,
     playerPubkey: string,
     satAmount: number,
-    monsterName: string,
-    antiCheat?: CaptureAntiCheat
+    monsterName: string
   ) => {
-    // Skip if already paid, paying, pending, or rejected
-    if (paidCaptures.has(monsterId) || payingCaptures.has(monsterId) || pendingCaptures.has(monsterId) || rejectedCaptures.has(monsterId)) {
-      return;
-    }
-
-    // Anti-cheat validation: check trust score
-    if (antiCheat?.trustScore !== undefined) {
-      if (antiCheat.trustScore < ANTI_CHEAT_CONFIG.MIN_TRUST_SCORE) {
-        const reason = `Trust score ${antiCheat.trustScore} below threshold ${ANTI_CHEAT_CONFIG.MIN_TRUST_SCORE}`;
-        console.warn(`[AntiCheat] Rejecting capture: ${reason}`, antiCheat.trustFlags);
-        setRejectedCaptures(prev => new Map(prev).set(monsterId, reason));
-        toast({
-          title: 'Suspicious capture detected',
-          description: `Payment blocked: ${reason}`,
-          variant: 'destructive',
-        });
-        return;
-      }
-
-      // Log any flags for monitoring (payment still proceeds if score is OK)
-      if (antiCheat.trustFlags && antiCheat.trustFlags.length > 0) {
-        console.log(`[AntiCheat] Capture flags for ${monsterName}:`, antiCheat.trustFlags);
-      }
-    }
-
     setPayingCaptures(prev => new Set(prev).add(monsterId));
 
     const result = await payPlayer(playerPubkey, satAmount, monsterName);
@@ -515,6 +522,17 @@ export function HostDashboard() {
         description: `${satAmount} sats for ${monsterName} is being routed. Check your wallet.`,
       });
     } else {
+      // Payment failed (not pending): release the synchronous lock AND roll back
+      // the winner record so a later valid claim (this or another player) can
+      // retry and win cleanly — mirrors the existing payingCaptures delete.
+      // Success and pending both KEEP the lock (permanently locked / in flight).
+      releaseCaptureClaim(arbiterStateRef.current, monsterId, playerPubkey);
+      setSyncedCaptures(prev => {
+        if (prev.get(monsterId)?.playerPubkey !== playerPubkey) return prev;
+        const next = new Map(prev);
+        next.delete(monsterId);
+        return next;
+      });
       toast({
         title: 'Payment failed',
         description: result.error || 'Could not pay player',
@@ -527,9 +545,16 @@ export function HostDashboard() {
       next.delete(monsterId);
       return next;
     });
-  }, [payPlayer, paidCaptures, payingCaptures, pendingCaptures, rejectedCaptures, toast, setPaidCaptures, setRejectedCaptures]);
+  }, [payPlayer, toast, setPaidCaptures]);
 
-  // Callbacks for hunt sync
+  // Callbacks for hunt sync.
+  //
+  // Conflict resolution (goal file): the FIRST valid claim the host processes wins
+  // — host processing order is the authority. Exactly one payment and exactly one
+  // winner in capture_state per monster, and they are the SAME player. This is
+  // enforced by arbitrateCapture, which check-and-sets the synchronous lock
+  // (arbiterStateRef) at the decision point BELOW, before any await/setState, so a
+  // second claim for the same monster in the same poll batch can never also pay.
   const onMonsterCaptured = useCallback((
     monsterId: string,
     playerPubkey: string,
@@ -537,60 +562,102 @@ export function HostDashboard() {
     capturedAt: number,
     antiCheat?: CaptureAntiCheat
   ) => {
-    setSyncedCaptures(prev => {
-      const next = new Map(prev);
-      next.set(monsterId, { playerPubkey, satAmount, capturedAt, antiCheat });
-      return next;
-    });
-    // Also track player if not already in participants
+    // Track the player as present (monitor/display only — no payment effect).
     setSyncedPlayers(prev => {
       const next = new Set(prev);
       next.add(playerPubkey);
       return next;
     });
 
-    // Find the monster name and trigger payment (with anti-cheat validation)
-    if (activeHunt) {
-      const monster = activeHunt.monsters.find(m => m.id === monsterId);
-      if (monster && !paidCaptures.has(monsterId)) {
-        // Rate limit: max 3 captures per 10 seconds per player
-        const now = Date.now();
-        const timestamps = captureTimestampsRef.current.get(playerPubkey) ?? [];
-        const recent = timestamps.filter(t => now - t < 10000);
-        if (recent.length >= 3) {
-          console.warn(`[AntiCheat] Rate limiting player ${playerPubkey.slice(0, 8)}...: ${recent.length} captures in 10s`);
-          setRejectedCaptures(prev => new Map(prev).set(monsterId, 'Capture rate limit exceeded'));
-          return;
-        }
-        recent.push(now);
-        captureTimestampsRef.current.set(playerPubkey, recent);
+    if (!activeHunt) return;
+    const monster = activeHunt.monsters.find(m => m.id === monsterId);
+    // Unknown monster: cannot value or pay it — ignore (never counts as a capture).
+    if (!monster) return;
 
-        // Host-side distance check: reject captures from obviously wrong locations
-        // Geohash precision 5 = ~5km cells, so use 5km threshold to catch remote attacks
-        if (antiCheat?.geohash) {
-          const playerLocation = decodeGeohash(antiCheat.geohash);
-          const distance = calculateDistance(playerLocation, monster.location);
-          if (distance > 5000) {
-            console.warn(`[AntiCheat] Rejecting capture: player ${distance.toFixed(0)}m from monster`);
-            setRejectedCaptures(prev => new Map(prev).set(monsterId, `Player location ${distance.toFixed(0)}m from monster`));
-            return;
-          }
-        }
-        // Verify HMAC capture proof (proves player received hunt data via authenticated channel)
-        // Log warnings but don't block — proof mismatches can happen after host refresh
-        if (captureSecret) {
-          if (!antiCheat?.captureProof) {
-            console.warn(`[AntiCheat] Missing capture proof from player ${playerPubkey.slice(0, 8)}... (allowing — may be from pre-refresh session)`);
-          } else if (!verifyCaptureProof(captureSecret, monsterId, playerPubkey, capturedAt, antiCheat.captureProof)) {
-            console.warn(`[AntiCheat] Invalid capture proof from player ${playerPubkey.slice(0, 8)}... (allowing — secret may have rotated)`);
-          }
-        }
-
-        // Use host-side monster value, NOT player-reported satAmount
-        processPayment(monsterId, playerPubkey, monster.satAmount, monster.name, antiCheat);
+    // Reject-validations (rate limit, distance, trust score) + non-blocking proof
+    // warning. Runs BEFORE the arbiter takes the lock so an invalid claim never
+    // locks the monster out from a later valid claim by another player. Returns a
+    // rejection reason, or null when the claim is valid. Anti-cheat checks are
+    // preserved byte-for-byte from the prior inline/processPayment logic.
+    const validate = (): string | null => {
+      // Rate limit: max 3 captures per 10 seconds per player.
+      const now = Date.now();
+      const timestamps = captureTimestampsRef.current.get(playerPubkey) ?? [];
+      const recent = timestamps.filter(t => now - t < 10000);
+      if (recent.length >= 3) {
+        console.warn(`[AntiCheat] Rate limiting player ${playerPubkey.slice(0, 8)}...: ${recent.length} captures in 10s`);
+        return 'Capture rate limit exceeded';
       }
+      recent.push(now);
+      captureTimestampsRef.current.set(playerPubkey, recent);
+
+      // Host-side distance check: reject captures from obviously wrong locations.
+      // Geohash precision 5 = ~5km cells, so use 5km threshold to catch remote attacks.
+      if (antiCheat?.geohash) {
+        const playerLoc = decodeGeohash(antiCheat.geohash);
+        const distance = calculateDistance(playerLoc, monster.location);
+        if (distance > 5000) {
+          console.warn(`[AntiCheat] Rejecting capture: player ${distance.toFixed(0)}m from monster`);
+          return `Player location ${distance.toFixed(0)}m from monster`;
+        }
+      }
+
+      // Verify HMAC capture proof — log warnings but DON'T block (proof mismatches
+      // can happen after host refresh / secret rotation). Unchanged behavior.
+      if (captureSecret) {
+        if (!antiCheat?.captureProof) {
+          console.warn(`[AntiCheat] Missing capture proof from player ${playerPubkey.slice(0, 8)}... (allowing — may be from pre-refresh session)`);
+        } else if (!verifyCaptureProof(captureSecret, monsterId, playerPubkey, capturedAt, antiCheat.captureProof)) {
+          console.warn(`[AntiCheat] Invalid capture proof from player ${playerPubkey.slice(0, 8)}... (allowing — secret may have rotated)`);
+        }
+      }
+
+      // Anti-cheat trust score gate (was inside processPayment; must run before
+      // the lock so a low-trust claim doesn't lock out a valid one).
+      if (antiCheat?.trustScore !== undefined && antiCheat.trustScore < ANTI_CHEAT_CONFIG.MIN_TRUST_SCORE) {
+        const reason = `Trust score ${antiCheat.trustScore} below threshold ${ANTI_CHEAT_CONFIG.MIN_TRUST_SCORE}`;
+        console.warn(`[AntiCheat] Rejecting capture: ${reason}`, antiCheat.trustFlags);
+        toast({
+          title: 'Suspicious capture detected',
+          description: `Payment blocked: ${reason}`,
+          variant: 'destructive',
+        });
+        return reason;
+      }
+      // Non-blocking flags for monitoring (payment still proceeds).
+      if (antiCheat?.trustFlags && antiCheat.trustFlags.length > 0) {
+        console.log(`[AntiCheat] Capture flags for ${monster.name}:`, antiCheat.trustFlags);
+      }
+      return null;
+    };
+
+    const decision = arbitrateCapture(
+      arbiterStateRef.current,
+      { monsterId, playerPubkey },
+      validate
+    );
+
+    if (decision.action === 'ignore') return;
+
+    if (decision.action === 'reject') {
+      setRejectedCaptures(prev => new Map(prev).set(monsterId, decision.reason));
+      setRejectedByPlayer(prev => new Map(prev).set(monsterId, playerPubkey));
+      return;
     }
-  }, [activeHunt, paidCaptures, processPayment, setRejectedCaptures, captureSecret]);
+
+    // decision.action === 'pay': this claim WON the monster (first valid claim).
+    // Record the winner first-write-wins (never overwrite) so the entry that
+    // feeds buildStateEntries / computeWinnerProof is exactly the player we pay.
+    setSyncedCaptures(prev => {
+      if (prev.has(monsterId)) return prev; // first-write-wins
+      const next = new Map(prev);
+      next.set(monsterId, { playerPubkey, satAmount, capturedAt, antiCheat });
+      return next;
+    });
+
+    // Use host-side monster value, NOT player-reported satAmount.
+    processPayment(monsterId, playerPubkey, monster.satAmount, monster.name);
+  }, [activeHunt, processPayment, setRejectedCaptures, captureSecret, toast]);
 
   const onPlayerJoined = useCallback((playerPubkey: string) => {
     setSyncedPlayers(prev => {
@@ -1025,13 +1092,12 @@ export function HostDashboard() {
                     }
                   });
 
-                  // Count rejected captures for this player
-                  const rejectedForPlayer = Array.from(rejectedCaptures.entries())
-                    .filter(([monsterId]) => {
-                      // Check if this monster was attempted by this player
-                      const capture = syncedCaptures.get(monsterId);
-                      return capture?.playerPubkey === pubkey;
-                    }).length;
+                  // Count rejected captures for this player. Rejected claims no
+                  // longer live in syncedCaptures (winner consistency), so attribute
+                  // via rejectedByPlayer instead.
+                  const rejectedForPlayer = Array.from(rejectedCaptures.keys())
+                    .filter((monsterId) => rejectedByPlayer.get(monsterId) === pubkey)
+                    .length;
 
                   // Calculate average trust score
                   const avgTrustScore = trustScores.length > 0

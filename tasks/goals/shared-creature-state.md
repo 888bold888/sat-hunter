@@ -1,6 +1,6 @@
 # Goal: Shared creature state — all players see one world
 
-**Status**: in progress (phases 0–3 done)
+**Status**: in progress (phases 0–4 done)
 **Why**: In a multi-player hunt every player must see the same creatures in the
 same places, and when player 1 catches one it must disappear from player 2's map.
 The field test showed this is glitchy: caught creatures linger as "ghosts" on other
@@ -226,9 +226,10 @@ range stays tied to capture range (~15m — read gameTypes.ts for the live value
       spec corrected to match the Tier 2 winner-privacy decision); rejoining
       players reconcile from the snapshot + next heartbeat rather than duplicate;
       refresh recovery re-hello restores in-memory secrets.
-- [ ] **4. Race hardening on the host** — ref-based paid/processing guard so one
+- [x] **4. Race hardening on the host** — ref-based paid/processing guard so one
       poll batch with N claims for one monster produces exactly one payment and
-      one winner in `capture_state`; first-capturedAt-wins documented and tested.
+      one winner in `capture_state`; first-VALID-PROCESSED-wins (host processing
+      order, not client capturedAt) documented and tested.
 - [ ] **5. Field-glitch regression tests** — the failure cases listed under hard
       constraints, plus: player 2 taps an optimistically-hidden monster → clean
       "already captured" refusal, no capture event published.
@@ -255,6 +256,43 @@ range stays tied to capture range (~15m — read gameTypes.ts for the live value
 
 ## Progress log
 <!-- /goal appends dated entries here as work lands -->
+
+### 2026-07-08 — Phase 4 complete (host race hardening), verified manually
+- Verifier agent cut off by session limit again (as in Phase 2); full manual
+  verification done instead: traced the real HostDashboard closure path, all
+  processPayment call sites (exactly one, post-arbitration), refresh seeding,
+  failure-release semantics, harness fidelity, full suite run.
+- `src/lib/captureArbiter.ts` (pure, node-testable): `arbitrateCapture`
+  check-and-sets a synchronous lock (`locked: Map<monsterId, winnerPubkey>` +
+  `poisoned` set) at the decision point and returns pay/reject/ignore;
+  `releaseCaptureClaim` (holder-guarded) frees a monster after a hard payment
+  failure; `createArbiterState` seeds from persisted paidCaptures (+
+  `PAID_SENTINEL`) and rejectedCaptures so a host refresh never re-pays.
+- HostDashboard: all dedup gating moved out of React-state closures into
+  `arbiterStateRef` (seeded per huntId). `onMonsterCaptured` runs the
+  reject-validations (rate limit, 5km distance, HMAC warning, trust-score gate
+  — moved OUT of processPayment) BEFORE the lock so an invalid claim never
+  locks out a later valid one; poisoning is preserved but now synchronous.
+  `processPayment` is now pay-only; hard failure releases the lock AND rolls
+  back the syncedCaptures winner. First-VALID-PROCESSED-wins documented in code.
+- Winner consistency (was a live bug): syncedCaptures was written
+  unconditionally + overwrite-style BEFORE validation, so the broadcast
+  winnerProof could name a different (even rejected) player than the one paid.
+  Now written only on the pay decision, first-write-wins — broadcast winner ≡
+  paid player. Side effect: rejected claims no longer appear as captures in
+  host UI/stats; new display-only `rejectedByPlayer` map keeps the per-player
+  blocked-capture counts in the monitor.
+- Note: a same-batch losing claim is consumed (processedEventsRef) and never
+  redelivered, so if the winner's payment later hard-fails the loser is not
+  auto-retried — identical to pre-Phase-4 behavior (both events were consumed
+  then too), just now without the double-pay risk. Retry happens on any new
+  valid claim.
+- Tests: `captureArbiter.test.ts` (node env, 12 — same-batch double-claim →
+  one payment + winnerProof ≡ paid player; first-processed-wins regardless of
+  client capturedAt; invalid-then-valid poisoning asserted as documented
+  behavior; failure→retriable / success→locked / pending→locked; N-monster
+  batch isolation; refresh seeding). Suite: 137 tests green, tsc/eslint/build
+  clean.
 
 ### 2026-07-08 — Phase 0 complete (sticky visibility), verifier PASS after one fix
 - Constants consolidated in gameTypes.ts: `CAPTURE_RANGE_METERS=15`,
