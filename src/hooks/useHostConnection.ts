@@ -21,6 +21,7 @@ import {
   P2P_OFFER_KIND,
   createPlayerConnection,
   sendHuntData,
+  buildHelloPayload,
   buildAnswerEvent,
   parseOfferFromEvent,
   type HuntLocationData,
@@ -72,10 +73,19 @@ const ZERO_TRUST_RELAYS = [
 export function useHostConnection(
   hunt: HuntEvent | null,
   onPlayerJoined?: (pubkey: string) => void,
-  onPlayerLeft?: (pubkey: string) => void
+  onPlayerLeft?: (pubkey: string) => void,
+  // Tier 2 late-joiner correctness: return the host's current authoritative
+  // captured-state so every hello (P2P + zero-trust) reflects captures up to send
+  // time. Held in a ref (updated each render) so the hello handlers stay stable
+  // and never capture a stale snapshot.
+  getCaptureState?: () => { stateVersion: number; entries: CaptureStateEntry[] } | null
 ): UseHostConnectionResult {
   const { nostr } = useNostr();
   const { user } = useCurrentUser();
+
+  // Keep the latest getter without re-creating the hello handlers.
+  const getCaptureStateRef = useRef(getCaptureState);
+  getCaptureStateRef.current = getCaptureState;
 
   const [isActive, setIsActive] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -205,7 +215,12 @@ export function useHostConnection(
 
             if (huntDataRef.current) {
               try {
-                sendHuntData(channel, huntDataRef.current);
+                // Attach the authoritative captured-state at SEND time so a late
+                // joiner's map is correct immediately (winnerProof only, no npubs).
+                sendHuntData(
+                  channel,
+                  buildHelloPayload(huntDataRef.current, getCaptureStateRef.current)
+                );
                 connection.state = 'sent';
                 setPersistedSentDataTo((prev) => prev + 1);
               } catch (err) {
@@ -281,10 +296,13 @@ export function useHostConnection(
         const savedTheirThrowaway = zeroTrustSessionRef.current.theirThrowawayPubkey;
         zeroTrustSessionRef.current.theirThrowawayPubkey = playerNextThrowaway;
 
-        // Send hunt data (don't rotate throwaway — host must keep receiving on same key for other players)
+        // Send hunt data (don't rotate throwaway — host must keep receiving on same key for other players).
+        // Attach the authoritative captured-state at SEND time so late joiners are
+        // correct from second zero (winnerProof only, never a winner npub).
+        const helloPayload = buildHelloPayload(huntDataRef.current!, getCaptureStateRef.current);
         const { event } = buildZeroTrustMessage(
           zeroTrustSessionRef.current,
-          huntDataRef.current!,
+          helloPayload,
           false, // includeNextThrowaway
           false  // rotateThrowaway — 1-to-many scenario
         );

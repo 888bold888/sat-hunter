@@ -1,6 +1,6 @@
 # Goal: Shared creature state — all players see one world
 
-**Status**: in progress (phases 0–2 done)
+**Status**: in progress (phases 0–3 done)
 **Why**: In a multi-player hunt every player must see the same creatures in the
 same places, and when player 1 catches one it must disappear from player 2's map.
 The field test showed this is glitchy: caught creatures linger as "ghosts" on other
@@ -221,9 +221,11 @@ range stays tied to capture range (~15m — read gameTypes.ts for the live value
       full captured-state over the ephemeral relay after each validated capture
       and on a ~15s heartbeat; players terminally resolve monsters from it,
       including loser rollback + "too slow" UX.
-- [ ] **3. Late-joiner correctness** — host hello snapshot merges syncedCaptures
-      into monster captured/capturedBy flags; rejoining players reconcile from
-      the snapshot + next heartbeat rather than duplicate.
+- [x] **3. Late-joiner correctness** — host hello snapshot carries the
+      authoritative capture state (winnerProof entries, NOT capturedBy npubs —
+      spec corrected to match the Tier 2 winner-privacy decision); rejoining
+      players reconcile from the snapshot + next heartbeat rather than duplicate;
+      refresh recovery re-hello restores in-memory secrets.
 - [ ] **4. Race hardening on the host** — ref-based paid/processing guard so one
       poll batch with N claims for one monster produces exactly one payment and
       one winner in `capture_state`; first-capturedAt-wins documented and tested.
@@ -342,3 +344,33 @@ range stays tied to capture range (~15m — read gameTypes.ts for the live value
   valid cast encryption but wrong signer REJECTED, tampered inner, stale
   timestamp) + `captureState.test.tsx` (6 — rollback math, winner keeps credit,
   idempotency, never-increases). Suite: 119 tests green, tsc/eslint/build clean.
+
+### 2026-07-08 — Phase 3 complete (late-joiner correctness), verifier PASS
+- **Spec correction:** phase text said hello merges "captured/capturedBy flags",
+  but that conflicts with the Tier 2 winner-privacy decision (npubs never leave
+  the host). Hello now carries `captureState: { stateVersion, entries }` using
+  the same winnerProof `CaptureStateEntry[]` as the Tier 2 broadcast.
+- `p2pSignaling.ts`: `HuntLocationData.captureState` + pure `buildHelloPayload`
+  helper. `useHostConnection` takes optional `getCaptureState`, held in a ref
+  updated each render; BOTH send paths (zero-trust hello, P2P channel.onopen)
+  evaluate it at send time, so every hello reflects current captures.
+  HostDashboard supplies `buildStateEntries` + `Date.now()` version.
+- `APPLY_CAPTURE_STATE` now activates `activateNextUnspawned` once per NEWLY
+  captured monster (scattered_replacement) — resolves the Phase 2 deferral.
+  No double-activation by construction: Tier-1-claimed monsters are already
+  `captured` so they never enter `newlyCapturedIds`. Late joiner with N
+  pre-join captures activates exactly N. Idempotency (same-reference) intact.
+- JoinHuntPage applies the snapshot via `applyCaptureState(entries, user.pubkey)`
+  right after `joinHunt` — late joiners correct from second zero; rejoiners get
+  the standard loser rollback instead of duplicate credit.
+- Refresh recovery: new `useReHello` (GamePage) — one-shot per hunt id for
+  non-host/non-demo active hunts missing `hostBroadcastPubkey`; on success a
+  new `MERGE_HUNT_SECRETS` action merges captureSecret + hostBroadcastPubkey
+  into the FRESHEST hunt (reducer-side, huntId-guarded — avoids the stale-
+  closure clobber UPDATE_HUNT would risk), then applies the snapshot. Failure
+  non-fatal (Tier 1 still covers). Persistence still strips both secrets.
+  This closes Phase 2's "refresh loses Tier 2" known limitation.
+- Tests: `helloSnapshot.test.ts` (node env, 3 — hello freshness, no-getter
+  omission, privacy: serialized captureState has no npub/lat/lng/geohash) +
+  3 in `captureState.test.tsx` (late-joiner N-activation, non-replacement
+  control, no-double-activation). Suite: 125 tests green, tsc/eslint/build clean.

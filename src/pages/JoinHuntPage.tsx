@@ -8,6 +8,7 @@ import { usePublishJoin } from '@/hooks/useHuntSync';
 import { useAuthor } from '@/hooks/useAuthor';
 import { useNWC } from '@/hooks/useNWCContext';
 import { useHuntConnection } from '@/hooks/useHuntConnection';
+import type { CaptureStateEntry } from '@/lib/captureBroadcast';
 import { useJoinRequest } from '@/hooks/useJoinRequest';
 import { useAntiCheat } from '@/hooks/useAntiCheat';
 import { LoginArea } from '@/components/auth/LoginArea';
@@ -41,7 +42,7 @@ export default function JoinHuntPage() {
   const { toast } = useToast();
   const { code } = useParams<{ code?: string }>();
   const navigate = useNavigate();
-  const { state, joinHunt, addParticipant, startLocationTracking, clearKicked } = useGame();
+  const { state, joinHunt, addParticipant, startLocationTracking, clearKicked, applyCaptureState } = useGame();
   const { user } = useCurrentUser();
   const { publishJoin } = usePublishJoin();
   const { connections } = useNWC();
@@ -257,6 +258,10 @@ export default function JoinHuntPage() {
       }
 
       let huntToJoin = foundHunt;
+      // Tier 2 late-joiner correctness: the host's authoritative captured-state at
+      // hello time, applied after joinHunt so the late joiner's map is correct from
+      // second zero and a rejoiner gets loser rollback instead of duplicate credit.
+      let joinCaptureState: { stateVersion: number; entries: CaptureStateEntry[] } | undefined;
 
       // If hunt requires P2P, connect to host for location data (with relay fallback)
       if (foundHunt.requiresP2P) {
@@ -293,6 +298,7 @@ export default function JoinHuntPage() {
           captureSecret: locationData.captureSecret,
           hostBroadcastPubkey: locationData.hostBroadcastPubkey,
         };
+        joinCaptureState = locationData.captureState;
 
         toast({
           title: 'Connected!',
@@ -302,6 +308,12 @@ export default function JoinHuntPage() {
 
       // Join the hunt
       joinHunt(huntToJoin);
+      // Apply the authoritative snapshot AFTER join (the reducer processes
+      // SET_ACTIVE_HUNT before this). Late joiners see already-caught creatures as
+      // captured; a rejoiner gets the standard loser rollback, not double credit.
+      if (joinCaptureState && joinCaptureState.entries.length > 0) {
+        applyCaptureState(joinCaptureState.entries, user.pubkey);
+      }
       addParticipant(user.pubkey);
 
       // Publish join event to Nostr for host to see

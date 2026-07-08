@@ -17,6 +17,7 @@ import { useCurrentUser } from '@/hooks/useCurrentUser';
 import { usePublishHuntEnd } from '@/hooks/usePublishHuntEnd';
 import { useHuntSync } from '@/hooks/useHuntSync';
 import { useCaptureStateSync } from '@/hooks/useCaptureStateSync';
+import { useReHello } from '@/hooks/useReHello';
 import { useMyHunts } from '@/hooks/useMyHunts';
 import { useSeoMeta } from '@unhead/react';
 import { Button } from '@/components/ui/button';
@@ -159,6 +160,11 @@ export default function GamePage() {
   // Tier 2: apply the host's authoritative capture-state broadcasts (terminal
   // captures + loser rollback). Host and demo hunts pass null (dead paths).
   useCaptureStateSync((!userIsHost && !activeHunt?.isDemo) ? activeHunt : null);
+
+  // Phase 3 refresh recovery: a player who refreshed lost captureSecret +
+  // hostBroadcastPubkey (both in-memory only). Re-hello the host once to restore
+  // Tier 2. Internally guarded to non-host, non-demo, active, missing-key hunts.
+  useReHello();
 
   // Toast once per lost monster when the host attributes a monster we
   // optimistically credited to a different hunter. Ref-dedup; lostCaptures is

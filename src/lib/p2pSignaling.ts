@@ -7,6 +7,7 @@
  */
 
 import type { GeoFence, Monster, SatStop } from './gameTypes';
+import type { CaptureStateEntry } from './captureBroadcast';
 
 // Nostr event kinds for P2P signaling
 // Reversed flow: Player creates offer, Host responds with answer
@@ -29,6 +30,10 @@ export interface HuntLocationData {
   satStops: SatStop[];
   captureSecret?: string; // HMAC key for capture proof — only sent via encrypted channel
   hostBroadcastPubkey?: string; // Tier 2: ephemeral key players verify capture_state broadcasts against
+  // Tier 2 late-joiner correctness: the host's authoritative captured-state at
+  // hello time, so a late/rejoining player's map is correct from second zero.
+  // Carries only winnerProof (never a winner npub) and never any lat/lng/geohash.
+  captureState?: { stateVersion: number; entries: CaptureStateEntry[] };
 }
 
 // Signaling message types
@@ -135,6 +140,20 @@ export async function applyAnswer(
   answer: RTCSessionDescriptionInit
 ): Promise<void> {
   await peerConnection.setRemoteDescription(answer);
+}
+
+/**
+ * Assemble a hello snapshot: the base hunt data plus the host's authoritative
+ * captured-state evaluated AT CALL TIME (so every hello reflects captures up to
+ * the moment it is sent). Pure + relay-free so both send paths share one format
+ * and it is unit-testable. The captureState carries only winnerProof (never a
+ * winner npub) and no lat/lng/geohash — see HuntLocationData.
+ */
+export function buildHelloPayload(
+  huntData: HuntLocationData,
+  getCaptureState?: () => { stateVersion: number; entries: CaptureStateEntry[] } | null
+): HuntLocationData {
+  return { ...huntData, captureState: getCaptureState?.() ?? undefined };
 }
 
 /**

@@ -402,7 +402,34 @@ export function HostDashboard() {
     }
   }, [activeHunt, publishKick, toast, setKickedPlayers]);
 
-  // P2P + Zero-Trust Relay hosting for secure location data transfer
+  // Tier 2: assemble the FULL authoritative captured-state (all captured monster
+  // ids with a winnerProof + capturedAt) from both the host's own monster flags
+  // and the decrypted syncedCaptures. Winner npubs never leave the host — only
+  // the sha256 winnerProof does (goal file: winner privacy).
+  const buildStateEntries = useCallback((): CaptureStateEntry[] => {
+    if (!activeHunt) return [];
+    const byId = new Map<string, { winnerPubkey: string; capturedAt: number }>();
+    // Host's own knowledge (e.g. host also playing) — capturedBy is the winner.
+    for (const m of activeHunt.monsters) {
+      if (m.captured && m.capturedBy) {
+        byId.set(m.id, { winnerPubkey: m.capturedBy, capturedAt: m.capturedAt ?? Date.now() });
+      }
+    }
+    // Decrypted player captures are authoritative for the winner identity.
+    for (const [monsterId, data] of syncedCaptures.entries()) {
+      byId.set(monsterId, { winnerPubkey: data.playerPubkey, capturedAt: data.capturedAt });
+    }
+    return Array.from(byId.entries()).map(([monsterId, { winnerPubkey, capturedAt }]) => ({
+      monsterId,
+      capturedAt,
+      winnerProof: computeWinnerProof(monsterId, winnerPubkey),
+    }));
+  }, [activeHunt, syncedCaptures]);
+
+  // P2P + Zero-Trust Relay hosting for secure location data transfer.
+  // The 4th arg lets every hello snapshot (P2P + relay) carry the authoritative
+  // captured-state at send time (stateVersion convention matches the heartbeat
+  // broadcast effect below: Date.now()), so late joiners are correct immediately.
   const {
     isActive: isHostingActive,
     connectedPlayers: _hostConnectedPlayers,
@@ -413,7 +440,10 @@ export function HostDashboard() {
     startHosting,
     stopHosting,
     broadcastCaptureState,
-  } = useHostConnection(activeHunt);
+  } = useHostConnection(activeHunt, undefined, undefined, () => ({
+    stateVersion: Date.now(),
+    entries: buildStateEntries(),
+  }));
 
   // Host approvals for join requests
   const {
@@ -598,30 +628,6 @@ export function HostDashboard() {
     onPlayerJoined,
     onPlayerLeft,
   }, user?.signer);
-
-  // Tier 2: assemble the FULL authoritative captured-state (all captured monster
-  // ids with a winnerProof + capturedAt) from both the host's own monster flags
-  // and the decrypted syncedCaptures. Winner npubs never leave the host — only
-  // the sha256 winnerProof does (goal file: winner privacy).
-  const buildStateEntries = useCallback((): CaptureStateEntry[] => {
-    if (!activeHunt) return [];
-    const byId = new Map<string, { winnerPubkey: string; capturedAt: number }>();
-    // Host's own knowledge (e.g. host also playing) — capturedBy is the winner.
-    for (const m of activeHunt.monsters) {
-      if (m.captured && m.capturedBy) {
-        byId.set(m.id, { winnerPubkey: m.capturedBy, capturedAt: m.capturedAt ?? Date.now() });
-      }
-    }
-    // Decrypted player captures are authoritative for the winner identity.
-    for (const [monsterId, data] of syncedCaptures.entries()) {
-      byId.set(monsterId, { winnerPubkey: data.playerPubkey, capturedAt: data.capturedAt });
-    }
-    return Array.from(byId.entries()).map(([monsterId, { winnerPubkey, capturedAt }]) => ({
-      monsterId,
-      capturedAt,
-      winnerProof: computeWinnerProof(monsterId, winnerPubkey),
-    }));
-  }, [activeHunt, syncedCaptures]);
 
   // Broadcast the full captured-state after each accepted capture (syncedCaptures
   // change re-runs this effect → immediate fresh-state broadcast) and on a 15s

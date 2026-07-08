@@ -77,6 +77,7 @@ export interface CaptureStateEntry {
 type GameAction =
   | { type: 'SET_ACTIVE_HUNT'; hunt: HuntEvent | null; manualMovement?: boolean }
   | { type: 'UPDATE_HUNT'; hunt: HuntEvent }
+  | { type: 'MERGE_HUNT_SECRETS'; huntId: string; captureSecret?: string; hostBroadcastPubkey?: string }
   | { type: 'SET_PLAYER_LOCATION'; location: GeoLocation }
   | { type: 'SET_PLAYER_POSITION'; position: GeolocationPosition; integrityCheck: LocationIntegrityResult }
   | { type: 'SET_LOCATION_ERROR'; error: string | null }
@@ -154,6 +155,28 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
       return { ...state, activeHunt: action.hunt, manualMovement: action.manualMovement ?? false, lostCaptures: [] };
     case 'UPDATE_HUNT':
       return { ...state, activeHunt: action.hunt };
+    case 'MERGE_HUNT_SECRETS': {
+      // Refresh-recovery re-hello (Phase 3): a player who refreshed lost the
+      // in-memory-only captureSecret + hostBroadcastPubkey (both stripped before
+      // persistence). Merge them back into the CURRENT active hunt only, reading
+      // the freshest hunt from reducer state so a concurrent change isn't
+      // clobbered by a stale closure. Non-destructive; never touches monsters
+      // (local monsters carry local capture knowledge and must be preserved).
+      if (!state.activeHunt || state.activeHunt.id !== action.huntId) return state;
+      const merged = {
+        ...state.activeHunt,
+        captureSecret: action.captureSecret ?? state.activeHunt.captureSecret,
+        hostBroadcastPubkey: action.hostBroadcastPubkey ?? state.activeHunt.hostBroadcastPubkey,
+      };
+      // Nothing to merge: keep the same reference (no re-render).
+      if (
+        merged.captureSecret === state.activeHunt.captureSecret &&
+        merged.hostBroadcastPubkey === state.activeHunt.hostBroadcastPubkey
+      ) {
+        return state;
+      }
+      return { ...state, activeHunt: merged };
+    }
     case 'SET_PLAYER_LOCATION':
       return { ...state, playerLocation: action.location, locationError: null };
     case 'SET_PLAYER_POSITION':
@@ -213,12 +236,24 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
       //    newly-captured ones (capturedBy stays unset — the winner's npub is
       //    intentionally not in the broadcast).
       const newlyCapturedIds = new Set<string>();
-      const monsters = state.activeHunt.monsters.map(m => {
+      let monsters = state.activeHunt.monsters.map(m => {
         const entry = entryById.get(m.id);
         if (!entry || m.captured) return m;
         newlyCapturedIds.add(m.id);
         return { ...m, captured: true, capturedAt: entry.capturedAt };
       });
+
+      // scattered_replacement: each NEWLY-captured monster spawns one replacement,
+      // mirroring MARK_MONSTER_CLAIMED / CAPTURE_MONSTER so every player's world
+      // progresses identically. Monsters already captured (e.g. by a prior Tier 1
+      // claim that already activated) are not in newlyCapturedIds, so this can
+      // never double-activate. Idempotent by construction: a repeat broadcast adds
+      // nothing to newlyCapturedIds and thus activates nothing.
+      if (state.activeHunt.spawnMode === 'scattered_replacement') {
+        for (let i = 0; i < newlyCapturedIds.size; i++) {
+          monsters = activateNextUnspawned(monsters);
+        }
+      }
 
       // 2. Loser rollback: strip credit for any monster we recorded locally that
       //    the host attributes to someone else. Mirrors exactly what
@@ -466,6 +501,7 @@ interface GameContextType {
   captureMonster: (monster: Monster) => boolean;
   markMonsterClaimed: (monsterId: string) => void;
   applyCaptureState: (entries: CaptureStateEntry[], myPubkey: string) => void;
+  mergeHuntSecrets: (huntId: string, secrets: { captureSecret?: string; hostBroadcastPubkey?: string }) => void;
   collectBalls: (stop: SatStop) => boolean;
   startLocationTracking: () => void;
   stopLocationTracking: () => void;
@@ -893,6 +929,15 @@ export function GameProvider({ children }: { children: ReactNode }) {
     dispatch({ type: 'APPLY_CAPTURE_STATE', entries, myPubkey });
   }, []);
 
+  // Phase 3 refresh recovery: merge the re-hello's in-memory-only secrets back
+  // into the active hunt (see MERGE_HUNT_SECRETS reducer case).
+  const mergeHuntSecrets = useCallback(
+    (huntId: string, secrets: { captureSecret?: string; hostBroadcastPubkey?: string }) => {
+      dispatch({ type: 'MERGE_HUNT_SECRETS', huntId, ...secrets });
+    },
+    []
+  );
+
   // Collect balls from a sat stop
   const collectBalls = useCallback(
     (stop: SatStop): boolean => {
@@ -1061,6 +1106,7 @@ export function GameProvider({ children }: { children: ReactNode }) {
         captureMonster,
         markMonsterClaimed,
         applyCaptureState,
+        mergeHuntSecrets,
         collectBalls,
         startLocationTracking,
         stopLocationTracking,
