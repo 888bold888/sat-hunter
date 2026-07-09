@@ -323,6 +323,31 @@ range stays tied to capture range (~15m — read gameTypes.ts for the live value
 - Verifier note: the two PoW-heavy zeroTrust tests still flake under parallel
   CPU contention (pass in isolation) — pre-existing, unrelated.
 
+### 2026-07-09 — Simulated field test at 2/10/50/100/1000 players: ALL PASS
+- `src/test/fieldSim.test.ts` (commit fbf5423), gated behind `FIELD_SIM=1` so
+  the normal suite stays fast. Run: `FIELD_SIM=1 npx vitest run src/test/fieldSim.test.ts`.
+- Offline sim of the full pipeline using the REAL modules + real crypto:
+  contended races (1-3 players per monster per poll batch), forged Tier 1
+  claims, forged capture_state broadcasts, spoofed-location claim, mid-hunt +
+  end-of-hunt late joiners, one refresh-recovery player. Invariants held at
+  every scale: one payment per creature (paid == broadcast winner == first
+  valid processed), all player worlds converge to host state, losers rolled
+  back exactly once (253 rollbacks across 167 races at n=1000), per-player
+  sats accounting exact, no npub/GPS in any player-readable wire bytes.
+- **Scaling finding #1 (real):** the full-state capture_state broadcast grows
+  with captured count — 53KB outer event at 250 captured monsters (n=1000
+  hunt). Public relays commonly cap event size (some at 16-64KB). Fine at
+  field-realistic sizes (≤100 monsters → ~6KB), but a 200+ monster hunt risks
+  relay rejection of the heartbeat. Candidate follow-up: chunked or capped
+  broadcasts if hunts ever get that big.
+- **Known edge (documented design, not a regression):** a claim rejected by
+  host validation (spoofed distance / low trust) poisons the monster; the
+  claiming player keeps their optimistic LOCAL credit forever, because
+  capture_state never lists that monster so no rollback fires (and no payment
+  arrives). Griefed (forged-tag) monsters similarly stay hidden for players
+  who saw the tag until a real capture heals them; late joiners are unaffected
+  (snapshot comes from host truth).
+
 ### 2026-07-08 — Phase 0 complete (sticky visibility), verifier PASS after one fix
 - Constants consolidated in gameTypes.ts: `CAPTURE_RANGE_METERS=15`,
   `SATSTOP_RANGE_METERS=10`, `MONSTER_APPEAR_RANGE_METERS=capture`,
